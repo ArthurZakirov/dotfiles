@@ -39,6 +39,8 @@ Both `personal` and `professional` profiles call [`src/apps.sh`](../src/apps.sh)
 | Google Drive | `google-drive` | `Google Drive.app` or Homebrew cask registration |
 | Hammerspoon | `hammerspoon` | `Hammerspoon.app` |
 | Logi Options+ | `logi-options+` | `Logi Options+.app`, `logioptionsplus.app`, or Homebrew cask registration |
+| Logi Tune | `logitune` | `LogiTune.app`, `Logi Tune.app`, or Homebrew cask registration |
+| Docker Desktop | `docker-desktop` | `Docker.app` or Homebrew cask registration |
 | Node.js | `node` | `command -v node` |
 | Raycast | `raycast` | `Raycast.app` |
 | Rectangle | `rectangle` | `Rectangle.app` |
