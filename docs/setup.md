@@ -13,8 +13,6 @@ sh -c "$(curl -fsLS https://get.chezmoi.io)" -- init --apply "$GITHUB_USERNAME"
 
 Chezmoi natively discovers `$GITHUB_USERNAME/dotfiles` on GitHub, clones the default branch, prompts you to select the **personal** or **professional** profile, and applies the configuration. Its installation hook provisions Homebrew if missing, the packages in [Brewfile](../Brewfile), VS Code, and Oh My Zsh. Only the personal profile also installs Bitwarden Secrets Manager CLI and enables LangSmith.
 
-While this work exists only on the feature branch, add `--branch feat/mac-shell-bootstrap` after `--apply` in the installer command when provisioning a **new Mac**. Once merged, omit the branch option and use the default branch.
-
 macOS may request administrator authorization or installation of Apple Command Line Tools. On personal Macs, Bitwarden authentication is a separate one-time step; the shell can start before the Keychain account is configured. Open a new Terminal after installation.
 
 If an existing `~/.zshrc` is present, a run-once hook saves a timestamped copy in `~/Library/Application Support/dotfiles/backups/` before it is replaced. **An existing chezmoi configuration is generated during `init`, before that hook runs**; copy `~/.config/chezmoi/chezmoi.toml` separately if you need to preserve it. Chezmoi normally prompts before overwriting modified managed files; the installation instructions do not use `--force`.
@@ -23,7 +21,7 @@ The installer covers the shell and editor, not the entire workstation. Raycast s
 
 ## Already configured Mac: synchronize safely
 
-**Do not rerun the new-Mac installer on either existing Mac.** Work from its current chezmoi repository, review changes, then apply deliberately:
+**Do not rerun the new-Mac installer on an already configured Mac.** Work from its current chezmoi repository, review changes, then apply deliberately:
 
 ```sh
 chezmoi diff
@@ -46,4 +44,4 @@ To change the personal Bitwarden Keychain account, use `chezmoi init --prompt`. 
 
 ## How the clean-machine path is tested
 
-[macOS GitHub Actions](../.github/workflows/shell.yml) provisions **separate temporary HOME directories for both personal and professional profiles** on ephemeral macOS runners via `chezmoi init --apply`, exercising real installation hooks, profile-specific integrations, and GitHub username discovery for branch pushes. It never runs provisioning against either personal Mac. The runner already includes macOS tooling, including Homebrew, so CI does **not** prove the Homebrew-from-zero or macOS permission prompts on a completely blank physical Mac. A Linux devcontainer cannot faithfully cover those macOS-specific steps.
+[macOS GitHub Actions](../.github/workflows/shell.yml) provisions **separate temporary HOME directories for both personal and professional profiles** on ephemeral macOS runners via `chezmoi init --apply`, exercising real installation hooks, profile-specific integrations, and GitHub username discovery for branch pushes. It does not provision the developer's existing Macs. The runner already includes macOS tooling, including Homebrew, so CI does **not** prove the Homebrew-from-zero or macOS permission prompts on a completely blank physical Mac. A Linux devcontainer cannot faithfully cover those macOS-specific steps.

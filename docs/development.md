@@ -39,4 +39,4 @@ Each test describes **Given / When / Then** and has a descriptive name, so a rea
 
 The [test runner](../tests/run.sh) orchestrates syntax, behavior, and whitespace checks. [GitHub Actions](../.github/workflows/shell.yml) runs isolated fresh-home provisioning for both personal and professional profiles on ephemeral macOS runners. That integration test refuses to run outside GitHub Actions. The hosted runner already has Homebrew; full bare-metal installation and permissions must still be verified separately if needed.
 
-Review your Git diff and CI checks before merging the feature branch. Do not run a destructive first-time provisioning test on an existing Mac.
+Review your Git diff and CI checks before publishing changes. Do not run a destructive first-time provisioning test on an existing Mac.
