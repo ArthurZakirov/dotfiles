@@ -11,21 +11,40 @@ install_homebrew_packages() {
   brew bundle install --no-upgrade --file="$DOTFILES_ROOT/Brewfile"
 }
 
-install_visual_studio_code() {
-  local app
-  if [[ ! -d "/Applications/Visual Studio Code.app" && ! -d "$HOME/Applications/Visual Studio Code.app" ]]; then
-    brew install --cask visual-studio-code
+configure_vscode_cli() {
+  local app cli target
+  if command -v code >/dev/null 2>&1; then
+    code --version >/dev/null 2>&1 || {
+      echo "Existing code CLI failed its version check." >&2
+      return 1
+    }
+    return 0
   fi
-  if ! command -v code >/dev/null 2>&1; then
-    app="/Applications/Visual Studio Code.app"
-    [[ -d "$app" ]] || app="$HOME/Applications/Visual Studio Code.app"
-    mkdir -p "$HOME/.local/bin"
-    ln -s "$app/Contents/Resources/app/bin/code" "$HOME/.local/bin/code"
-  fi
-}
 
-install_editors() {
-  install_visual_studio_code
+  app="/Applications/Visual Studio Code.app"
+  [[ -d "$app" ]] || app="$HOME/Applications/Visual Studio Code.app"
+  cli="$app/Contents/Resources/app/bin/code"
+  if [[ ! -f "$cli" ]]; then
+    echo "VS Code CLI not found at $cli" >&2
+    return 1
+  fi
+  mkdir -p "$HOME/.local/bin"
+  target="$HOME/.local/bin/code"
+  if [[ -L "$target" && ! -e "$target" ]]; then
+    rm "$target"
+  fi
+  if [[ -e "$target" || -L "$target" ]]; then
+    if [[ -x "$target" ]] && "$target" --version >/dev/null 2>&1; then
+      return 0
+    fi
+    echo "Cannot create code CLI: $target already exists but is unusable." >&2
+    return 1
+  fi
+  ln -s "$cli" "$target"
+  PATH="$HOME/.local/bin:$PATH" code --version >/dev/null 2>&1 || {
+    echo "VS Code CLI failed its version check after linking." >&2
+    return 1
+  }
 }
 
 install_oh_my_zsh() {
@@ -92,7 +111,7 @@ main() {
   configure_homebrew
   install_homebrew_packages
   install_common_apps
-  install_editors
+  configure_vscode_cli
   install_oh_my_zsh
   install_profile
 }

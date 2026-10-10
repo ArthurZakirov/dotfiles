@@ -11,7 +11,7 @@ test_professional_profile_installs_shared_tools_only() {
   main
 
   # THEN the common installers run, without Bitwarden
-  assert_installation_sequence "homebrew configure packages apps vscode oh-my-zsh"
+  assert_installation_sequence "homebrew configure packages apps vscode-cli oh-my-zsh"
 }
 
 test_personal_profile_installs_bitwarden_after_shared_tools() {
@@ -22,18 +22,7 @@ test_personal_profile_installs_bitwarden_after_shared_tools() {
   main
 
   # THEN its profile factory adds the Bitwarden installer
-  assert_installation_sequence "homebrew configure packages apps vscode oh-my-zsh bitwarden"
-}
-
-test_editor_factory_calls_visual_studio_code_installer() {
-  # GIVEN a profile with concrete installer spies
-  given_profile professional
-
-  # WHEN installing all configured editors
-  install_editors
-
-  # THEN the VS Code installer is invoked exactly once
-  assert_installation_sequence "vscode"
+  assert_installation_sequence "homebrew configure packages apps vscode-cli oh-my-zsh bitwarden"
 }
 
 test_personal_factory_calls_bitwarden_installer() {
@@ -76,11 +65,10 @@ test_invalid_profile_fails_before_installing_anything() {
 main_tests() {
   test_professional_profile_installs_shared_tools_only
   test_personal_profile_installs_bitwarden_after_shared_tools
-  test_editor_factory_calls_visual_studio_code_installer
   test_personal_factory_calls_bitwarden_installer
   test_professional_factory_has_no_additional_tools
   test_invalid_profile_fails_before_installing_anything
-  echo "shell setup: 6 Given/When/Then cases passed (no installers executed)"
+  echo "shell setup: 5 Given/When/Then cases passed (no installers executed)"
 }
 
 main_tests

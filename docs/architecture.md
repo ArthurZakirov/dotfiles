@@ -44,8 +44,9 @@ Both `personal` and `professional` profiles call [`src/apps.sh`](../src/apps.sh)
 | Node.js | `node` | `command -v node` |
 | Raycast | `raycast` | `Raycast.app` |
 | Rectangle | `rectangle` | `Rectangle.app` |
+| Visual Studio Code | `visual-studio-code` | `Visual Studio Code.app` |
 
-Application paths are checked under `/Applications` and `$HOME/Applications`; DDPM uses the vendor's `DDPM/` subdirectory. The first installation can request administrator approval, accessibility permissions, or a restart (especially DisplayLink and Logi Options+). These checks detect installations, not whether an application has been configured or granted permissions. No package updates are requested for already installed software.
+Application paths are checked under `/Applications` and `$HOME/Applications`; DDPM uses the vendor's `DDPM/` subdirectory. The first installation can request administrator approval, accessibility permissions, or a restart (especially DisplayLink and Logi Options+). After VS Code installation, `configure_vscode_cli` ensures the `code` command is available and passes `code --version`; if necessary, it adds a symlink in `$HOME/.local/bin`. These checks detect installations, not whether an application has been configured or granted permissions. No package updates are requested for already installed software.
 
 ## Synchronization and safety
 
