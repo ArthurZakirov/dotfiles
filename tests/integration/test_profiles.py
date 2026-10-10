@@ -50,6 +50,17 @@ def test_profile_integrations_are_scoped(
             assert forbidden not in scripts
 
 
+def test_bitwarden_keys_are_exported_to_child_processes(
+    profile_factory: ChezmoiProfileFixture,
+) -> None:
+    # GIVEN a personal profile and synthetic Bitwarden env assignments
+    rendered = profile_factory.render("personal")
+
+    # WHEN sourcing the personal shell configuration
+    # THEN a child zsh inherits the variables and allexport is restored
+    profile_factory.verify_bws_variables_reach_child_processes(rendered)
+
+
 def test_interactive_shell_starts_without_secrets(
     rendered_profile: RenderedProfile, profile_factory: ChezmoiProfileFixture
 ) -> None:

@@ -78,6 +78,31 @@ class ChezmoiProfileFixture:
         ):
             self.run(interpreter, "-n", str(path))
 
+    def verify_bws_variables_reach_child_processes(self, rendered: RenderedProfile) -> None:
+        # Synthetic CLI output only; no Keychain, network, or real secrets.
+        fake_bin = self.scratch_directory / "fake-bin"
+        fake_bin.mkdir(exist_ok=True)
+        fake_bws = fake_bin / "bws"
+        fake_bws.write_text('#!/bin/sh\necho \'TEST_BWS_EXPORT="synthetic-value"\'\n')
+        fake_bws.chmod(0o755)
+
+        environment = os.environ.copy()
+        environment["PATH"] = f"{fake_bin}:{environment['PATH']}"
+        isolated_home = self.scratch_directory / "bws-test-home"
+        isolated_home.mkdir(exist_ok=True)
+        environment["HOME"] = str(isolated_home)
+
+        # Sourcing the rendered file runs the genuine loading logic.
+        shell_check = r"""
+security() { return 0; }
+source "$1"
+[[ "$TEST_BWS_EXPORT" == synthetic-value ]] || exit 20
+[[ ! -o allexport ]] || exit 21
+/bin/zsh -fc '[[ "$TEST_BWS_EXPORT" == synthetic-value ]]' || exit 22
+"""
+        self.run("/bin/zsh", "-fc", shell_check, "verify", str(rendered.zshrc),
+                 env=environment)
+
     def start_interactive_shell_without_secrets(self, rendered: RenderedProfile) -> None:
         # Isolate HOME so test startup cannot source the user's .zshrc.local.
         isolated_home = self.scratch_directory / f"home-{rendered.name}"
