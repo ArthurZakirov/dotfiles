@@ -15,6 +15,7 @@ sourceDir = {{ .chezmoi.workingTree | quote }}
 [diff]
     command = "code"
     args = ["--wait", "--diff"]
+    exclude = ["scripts"]
 
 [edit]
     command = "code"
