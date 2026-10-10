@@ -1,0 +1,9 @@
+{{- $profile := promptChoiceOnce . "profile" "Mac profile" (list "personal" "professional") "personal" -}}
+{{- $account := "" -}}
+{{- if eq $profile "personal" -}}
+{{- $account = promptStringOnce . "bwsAccount" "Bitwarden Keychain account" "bws-macbook-air" -}}
+{{- end -}}
+sourceDir = {{ .chezmoi.workingTree | quote }}
+[data]
+profile = {{ $profile | quote }}
+bwsAccount = {{ $account | quote }}

@@ -1,0 +1,20 @@
+name: Validate Mac shell profiles
+on:
+  push:
+  pull_request:
+jobs:
+  profiles:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shell dependencies
+        run: |
+          brew bundle install --no-upgrade --file=home/.chezmoitemplates/Brewfile
+          git clone https://github.com/ohmyzsh/ohmyzsh.git "$HOME/.oh-my-zsh"
+          revision=$(sed -n 's/^ohMyZshCommit = "\(.*\)"/\1/p' home/.chezmoidata.toml)
+          git -C "$HOME/.oh-my-zsh" checkout --detach "$revision"
+      - name: Verify both profiles
+        run: |
+          bash -n scripts/bootstrap.sh
+          python3 scripts/verify.py
+          git diff --check
