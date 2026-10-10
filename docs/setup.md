@@ -2,38 +2,39 @@
 
 [← README](../README.md)
 
-## Bootstrap
+## New Mac: one native chezmoi command
 
-On a personal Mac, run:
+On a **new** Mac, choose your GitHub account and run the [official chezmoi installer](https://www.chezmoi.io/install/):
 
 ```sh
 export GITHUB_USERNAME="ArthurZakirov"
-/bin/bash -c "$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_USERNAME}/dotfiles/HEAD/scripts/run_bootstrap.sh")" -- personal
+sh -c "$(curl -fsLS https://get.chezmoi.io)" -- init --apply "$GITHUB_USERNAME"
 ```
 
-For a professional Mac, replace `personal` with `professional`. The GitHub username identifies the `<username>/dotfiles` repo. The script uses the default branch (remote HEAD) unless `DOTFILES_BRANCH` is set.
+Chezmoi natively discovers `$GITHUB_USERNAME/dotfiles` on GitHub, clones the default branch, prompts you to select the **personal** or **professional** profile, and applies the configuration. Its installation hook provisions Homebrew if missing, the packages in [Brewfile](../Brewfile), VS Code, and Oh My Zsh. Only the personal profile also installs Bitwarden Secrets Manager CLI and enables LangSmith.
 
-**Until this feature branch is merged into the default branch**, run from an existing checkout:
+While this work exists only on the feature branch, add `--branch feat/mac-shell-bootstrap` after `--apply` in the installer command when provisioning a **new Mac**. Once merged, omit the branch option and use the default branch.
+
+macOS may request administrator authorization or installation of Apple Command Line Tools. On personal Macs, Bitwarden authentication is a separate one-time step; the shell can start before the Keychain account is configured. Open a new Terminal after installation.
+
+If an existing `~/.zshrc` is present, a run-once hook saves a timestamped copy in `~/Library/Application Support/dotfiles/backups/` before it is replaced. **An existing chezmoi configuration is generated during `init`, before that hook runs**; copy `~/.config/chezmoi/chezmoi.toml` separately if you need to preserve it. Chezmoi normally prompts before overwriting modified managed files; the installation instructions do not use `--force`.
+
+The installer covers the shell and editor, not the entire workstation. Raycast shortcuts and `sync-systemsmith` are optional integrations; their other dependencies are not installed here.
+
+## Already configured Mac: synchronize safely
+
+**Do not rerun the new-Mac installer on either existing Mac.** Work from its current chezmoi repository, review changes, then apply deliberately:
 
 ```sh
-/bin/bash scripts/run_bootstrap.sh personal
+chezmoi diff
+chezmoi apply
 ```
 
-macOS may ask for an administrator password or Command Line Tools approval. The installer backs up existing zsh/configuration files to a timestamped directory and prints its location. Start a new terminal after setup. Personal Macs may require separate one-time Bitwarden authentication; the shell works before that Keychain entry exists.
+To fetch and apply changes **after you are ready**, use `chezmoi update`. Changes are propagated through Git and chezmoi explicitly, not synchronized automatically. Homebrew packages are checked but not automatically upgraded.
 
-The installer covers the shell and editor, not the whole workstation. Optional Raycast shortcuts and `sync-systemsmith` require external tooling not installed here.
+For changes to the chezmoi configuration template (such as the VS Code editor/diff settings), `chezmoi init` can regenerate the local `~/.config/chezmoi/chezmoi.toml`; inspect and back up the current config first. It can prompt for profile and other machine-local options.
 
-## Synchronize
-
-Synchronization is **manual**, through Git and chezmoi. After committing and pushing changes from one Mac, run on another:
-
-```sh
-chezmoi update
-```
-
-This pulls and applies changes. `chezmoi apply` checks dependencies but does not upgrade installed packages; upgrade Homebrew packages deliberately.
-
-## Inspect and configure
+## Inspect your installation
 
 ```sh
 chezmoi source-path
@@ -41,4 +42,8 @@ chezmoi managed
 chezmoi execute-template '{{ .profile }}'
 ```
 
-To change the personal Bitwarden Keychain account, use `chezmoi init --prompt` and answer the prompts. Use untracked `~/.zshrc.local` for optional machine-specific additions. For the component model see [architecture](architecture.md); for editing and testing see [development](development.md).
+To change the personal Bitwarden Keychain account, use `chezmoi init --prompt`. Place optional machine-local additions in untracked `~/.zshrc.local`. See [architecture](architecture.md) and [development](development.md).
+
+## How the clean-machine path is tested
+
+[macOS GitHub Actions](../.github/workflows/shell.yml) provisions a **separate temporary HOME** on an ephemeral runner via `chezmoi init --apply`, exercising real installation hooks and GitHub username discovery for branch pushes. It never runs provisioning against either personal Mac. The runner already includes macOS tooling, including Homebrew, so CI does **not** prove the Homebrew-from-zero or macOS permission prompts on a completely blank physical Mac. A Linux devcontainer cannot faithfully cover those macOS-specific steps.

@@ -19,6 +19,9 @@ with tempfile.TemporaryDirectory() as temporary:
         run(*base, "init", "--promptChoice", f"Mac profile={profile}",
             "--promptString", "GitHub username=ArthurZakirov",
             "--promptString", "Bitwarden Keychain account=bws-macbook-air")
+        generated_config = config.read_text()
+        assert '[diff]\n    command = "code"' in generated_config
+        assert '[edit]\n    command = "code"' in generated_config
         shell = work / f"{profile}.zsh"
         shell.write_text(run(*base, "cat", str(Path.home() / ".zshrc")).stdout)
         run("/bin/zsh", "-n", str(shell))
@@ -26,6 +29,10 @@ with tempfile.TemporaryDirectory() as temporary:
         installer.write_text(run(*base, "execute-template", "--file",
             str(ROOT / "home/run_before_10-install-shell.sh.tmpl")).stdout)
         run("/bin/bash", "-n", str(installer))
+        backup = work / f"backup-{profile}.sh"
+        backup.write_text(run(*base, "execute-template", "--file",
+            str(ROOT / "home/run_once_before_00-backup-shell.sh.tmpl")).stdout)
+        run("/bin/bash", "-n", str(backup))
         if profile == "professional":
             for forbidden in ("LANGSMITH", "BWS_ACCESS_TOKEN", "bws()", "bws.bitwarden.com"):
                 assert forbidden not in shell.read_text() + installer.read_text(), forbidden

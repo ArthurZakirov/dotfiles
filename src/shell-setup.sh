@@ -45,15 +45,26 @@ install_oh_my_zsh() {
 
 install_profile_tools() {
   local installer
-  [[ "$DOTFILES_PROFILE" == personal ]] || return
+  [[ "$DOTFILES_PROFILE" == personal ]] || return 0
   command -v bws >/dev/null 2>&1 && return
   installer="$(mktemp)"
-  trap 'rm -f "$installer"' EXIT
-  curl -fsSL https://bws.bitwarden.com/install -o "$installer"
-  /bin/sh "$installer"
+  if ! curl -fsSL https://bws.bitwarden.com/install -o "$installer"; then
+    rm -f "$installer"
+    return 1
+  fi
+  if ! /bin/sh "$installer"; then
+    rm -f "$installer"
+    return 1
+  fi
+  rm -f "$installer"
 }
 
 main() {
+  [[ "$(uname -s)" == Darwin ]] || {
+    echo "This dotfiles setup currently requires macOS." >&2
+    return 1
+  }
+  install_homebrew
   configure_homebrew
   install_homebrew_packages
   install_editor

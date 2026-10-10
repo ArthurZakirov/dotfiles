@@ -2,16 +2,26 @@ name: Validate Mac shell profiles
 on:
   push:
   pull_request:
+
 jobs:
   profiles:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install shell dependencies
+      - name: Install shell dependencies for read-only tests
         run: |
           brew bundle install --no-upgrade --file=Brewfile
           git clone https://github.com/ohmyzsh/ohmyzsh.git "$HOME/.oh-my-zsh"
           revision=$(sed -n 's/^ohMyZshCommit = "\(.*\)"/\1/p' home/.chezmoidata.toml)
           git -C "$HOME/.oh-my-zsh" checkout --detach "$revision"
-      - name: Run test suite
+      - name: Run read-only test suite
         run: ./tests/run.sh
+
+  fresh-home:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install chezmoi for integration test
+        run: brew install chezmoi
+      - name: Provision isolated temporary HOME
+        run: bash ./tests/run_fresh_home.sh

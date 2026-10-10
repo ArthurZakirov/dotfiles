@@ -1,5 +1,22 @@
 #!/bin/bash
 
+install_homebrew() {
+  local installer
+  if [[ -x /opt/homebrew/bin/brew || -x /usr/local/bin/brew ]]; then
+    return
+  fi
+  installer="$(mktemp)"
+  if ! curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o "$installer"; then
+    rm -f "$installer"
+    return 1
+  fi
+  if ! /bin/bash "$installer"; then
+    rm -f "$installer"
+    return 1
+  fi
+  rm -f "$installer"
+}
+
 configure_homebrew() {
   if [[ -x /opt/homebrew/bin/brew ]]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"

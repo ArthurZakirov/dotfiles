@@ -2,9 +2,9 @@
 
 [← README](../README.md) · [Architecture](architecture.md)
 
-## Edit and propagate changes
+## Change and share configuration
 
-Use chezmoi to edit the managed source and preview the resulting configuration:
+Chezmoi edits the managed source and can show the rendered difference:
 
 ```sh
 chezmoi edit ~/.zshrc
@@ -15,16 +15,18 @@ chezmoi git -- commit -m "Update shared shell configuration"
 chezmoi git -- push
 ```
 
-The [chezmoi config template](../home/.chezmoi.toml.tmpl) configures VS Code as the editor and diff tool. Changes become available on another Mac after `chezmoi update`.
+The [chezmoi config template](../home/.chezmoi.toml.tmpl) configures VS Code for editing and diff views. Another Mac can fetch and apply committed changes with `chezmoi update`.
 
-Keep scripts in `scripts/` as `run_*` entry points, and reusable logic in `src/` instead of duplicating functions. Update the [Brewfile](../Brewfile) for shell packages, [chezmoi data](../home/.chezmoidata.toml) for shared constants, and the [zsh template](../home/dot_zshrc.tmpl) for shell behavior. Account-specific additions belong in [personal.zsh](../home/.chezmoitemplates/personal.zsh); `~/.zshrc.local` is for untracked local overrides.
+Reusable implementation belongs in [`src/`](../src/shell-setup.sh); lifecycle entry points belong in the [chezmoi hooks](../home/run_before_10-install-shell.sh.tmpl). Keep functions reusable rather than copying installer logic. Update the [Brewfile](../Brewfile) for required Homebrew packages, [chezmoi data](../home/.chezmoidata.toml) for shared settings, and the [zsh template](../home/dot_zshrc.tmpl) for shell behavior. Personal-only additions belong in [personal.zsh](../home/.chezmoitemplates/personal.zsh); local-only overrides can be placed in untracked `~/.zshrc.local`.
 
 ## Tests
 
-Run from the repository root:
+The local test runner is **read-only with respect to your Mac's setup**: it renders templates, validates syntax, and stubs installation functions rather than running the installers.
 
 ```sh
 ./tests/run.sh
 ```
 
-The runner validates shell syntax and bootstrap input handling, renders personal and professional profiles, checks that personal integrations do not leak to professional profiles, and exercises interactive shell initialization without accessing secrets. The same runner is used in [macOS CI](../.github/workflows/shell.yml). A full clean-machine bootstrap still depends on macOS permissions and network access.
+The tests validate the provisioning sequence, render both profiles, ensure personal integrations are absent from the professional profile, and check interactive shell initialization without reading secrets. [GitHub Actions](../.github/workflows/shell.yml) additionally runs an isolated fresh-home provisioning integration test on an ephemeral macOS runner via [`tests/run_fresh_home.sh`](../tests/run_fresh_home.sh). That integration test refuses to run outside GitHub Actions. The hosted runner already has Homebrew; full bare-metal installation and permissions must still be verified separately if needed.
+
+Review your Git diff and CI checks before merging the feature branch. Do not run a destructive first-time provisioning test on an existing Mac.

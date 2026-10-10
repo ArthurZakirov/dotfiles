@@ -2,23 +2,24 @@
 
 [← README](../README.md)
 
-**Git** versions the shared configuration, **chezmoi** renders and applies it per machine, and **Homebrew** installs dependencies. The current scope is macOS shell and editor setup, with personal and professional profiles.
+**Chezmoi** is the native entry point. It discovers `<GitHub username>/dotfiles`, clones the repository, generates a machine-local configuration, and applies the declared files. **Git** carries updates between Macs, while **Homebrew** installs dependencies. The supported operating system is macOS.
 
-## Components
+## Components and order
 
-1. The [bootstrap entry point](../scripts/run_bootstrap.sh) orchestrates first-time setup, using the [bootstrap module](../src/bootstrap.sh) and shared [Homebrew module](../src/homebrew.sh).
-2. The [Brewfile](../Brewfile) declares required packages. Package versions come from Homebrew; this is not a version-locked image.
-3. The [chezmoi configuration template](../home/.chezmoi.toml.tmpl) selects the machine's profile and GitHub username, and on personal Macs the Bitwarden Keychain account. Credentials remain outside Git. It also configures VS Code for `chezmoi edit` and `chezmoi diff`.
-4. [Shared template data](../home/.chezmoidata.toml) includes the desired Oh My Zsh revision.
-5. The [installation hook](../home/run_before_10-install-shell.sh.tmpl) calls the [shell setup module](../src/shell-setup.sh).
-6. The [shared zsh template](../home/dot_zshrc.tmpl) defines history, completion, prompt, Git helpers, fzf and plugins. Only the personal profile includes [personal integrations](../home/.chezmoitemplates/personal.zsh), including Bitwarden Secrets Manager CLI and LangSmith.
+1. The [official chezmoi installer](https://www.chezmoi.io/install/) installs chezmoi and forwards `init --apply USERNAME`. There is no custom remote bootstrap downloader.
+2. The [chezmoi configuration template](../home/.chezmoi.toml.tmpl) prompts for the personal or professional profile, GitHub username, and optionally the Bitwarden Keychain account. Credentials stay outside Git. It configures VS Code for chezmoi editing and diffs.
+3. The [once-before backup hook](../home/run_once_before_00-backup-shell.sh.tmpl) backs up a pre-existing zshrc before chezmoi applies the rendered version.
+4. The [shell installation hook](../home/run_before_10-install-shell.sh.tmpl) invokes the reusable [shell setup module](../src/shell-setup.sh). The shared [Homebrew module](../src/homebrew.sh) installs Homebrew if needed, then configures its environment.
+5. The [Brewfile](../Brewfile) lists Homebrew packages. Package versions follow Homebrew; this is a reproducible configuration, not an exact version-locked image. The module also installs VS Code, Oh My Zsh, and profile-specific tools.
+6. [Shared chezmoi data](../home/.chezmoidata.toml) contains the pinned Oh My Zsh revision. If aligning that revision would overwrite tracked local changes, installation stops.
+7. The [zsh template](../home/dot_zshrc.tmpl) renders history, completion, prompt, Git helpers, fzf, and plugins. Only the personal profile includes [personal integrations](../home/.chezmoitemplates/personal.zsh), including Bitwarden Secrets Manager CLI and LangSmith.
 
-Setup stops rather than overwriting tracked local Oh My Zsh changes when revision alignment is necessary.
+The installation hook runs before the managed `~/.zshrc` is applied, so required shell dependencies are available on first shell startup. The backup hook is run-once; the installer hook is idempotent and checks dependencies on subsequent applies.
 
-## Synchronization model
+## Synchronization and safety
 
-Configuration changes committed and pushed from one Mac become available to others via `chezmoi update`. This is an **explicit** pull-and-apply operation, not background synchronization. The selected profile and its machine-local settings stay local; shared templates live in Git.
+Changes committed and pushed on one Mac are available to the other via `chezmoi update`, an **explicit** pull-and-apply operation. Machine-local profile settings stay in that machine's chezmoi config. No source command automatically reinitializes or overwrites configurations on existing Macs.
 
-An earlier Desktop Commander/LaunchAgent/Claude pilot is parked in [AgentDesk's archive branch](https://github.com/ArthurZakirov/AgentDesk/tree/chore/park-dotfiles-extras/experiments/parked-dotfiles). Archiving its source did not uninstall its LaunchAgent.
+An earlier Desktop Commander/LaunchAgent/Claude pilot is parked in [AgentDesk's archive branch](https://github.com/ArthurZakirov/AgentDesk/tree/chore/park-dotfiles-extras/experiments/parked-dotfiles). Archiving its source did not uninstall the LaunchAgent.
 
-For first-time installation, see [setup](setup.md). For changing scripts or templates, see [development](development.md).
+See [setup](setup.md) to provision a machine or [development](development.md) to modify and test this repository.
