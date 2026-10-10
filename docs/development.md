@@ -32,9 +32,15 @@ git switch -c feat/describe-change
 code .
 ```
 
-### Step 3 — Edit the source
+### Step 3 — Edit or add dotfiles
 
-Change the repository templates rather than generated files under `$HOME`:
+**New file only:** Create the file in `$HOME`, then start tracking it with chezmoi before editing its source:
+
+```sh
+chezmoi add ~/.example
+```
+
+**Option A — Edit chezmoi's source directly.** Open the appropriate tracked file:
 
 | Purpose | File |
 |---|---|
@@ -44,11 +50,21 @@ Change the repository templates rather than generated files under `$HOME`:
 | Shared template data | [`home/.chezmoidata.toml`](../home/.chezmoidata.toml) |
 | Installers and packages | [`src/shell-setup.sh`](../src/shell-setup.sh), [`src/homebrew.sh`](../src/homebrew.sh), [`Brewfile`](../Brewfile) |
 
-Edit the relevant file, then inspect the rendered result before writing tests:
+Inspect the generated output without applying it:
 
 ```sh
 chezmoi cat ~/.zshrc
 ```
+
+**Option B — Edit an existing, non-templated file already managed by chezmoi.** Replace `~/.example` with the actual managed path. Modify it directly, review the difference, then import the change into chezmoi's source:
+
+```sh
+code ~/.example
+chezmoi diff ~/.example
+chezmoi re-add ~/.example
+```
+
+`chezmoi re-add` does **not** overwrite templates. For a templated file such as `~/.zshrc`, use Option A and edit [`home/dot_zshrc.tmpl`](../home/dot_zshrc.tmpl) instead. Inspect the Git diff after either option.
 
 For repository structure and installer responsibilities, see [Architecture](architecture.md).
 
