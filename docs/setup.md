@@ -8,14 +8,14 @@
 flowchart TD
     A{"command -v chezmoi<br/>returns a path?"}
     A -- No --> B{"New or unconfigured Mac?"}
-    B -- Yes --> NEW["New Mac setup"]
-    B -- No --> INSPECT["Inspect existing configuration first"]
+    B -- Yes --> NEW["New Mac: one native chezmoi command"]
+    B -- No --> INSPECT["Inspect your installation"]
     A -- Yes --> C{"chezmoi source-path exists<br/>and chezmoi managed lists files?"}
-    C -- Yes --> SYNC["Synchronize configured Mac"]
+    C -- Yes --> SYNC["Already configured Mac: synchronize safely"]
     C -- No --> INSPECT
-    click NEW "#new-mac-one-native-chezmoi-command" "New Mac setup"
+    click NEW "#new-mac-one-native-chezmoi-command" "New Mac: one native chezmoi command"
     click INSPECT "#inspect-your-installation" "Inspect your installation"
-    click SYNC "#already-configured-mac-synchronize-safely" "Synchronize configured Mac"
+    click SYNC "#already-configured-mac-synchronize-safely" "Already configured Mac: synchronize safely"
 ```
 
 The commands in the decision nodes are read-only. **Do not run `init --apply` on an existing Mac until its configuration has been inspected and backed up.**
