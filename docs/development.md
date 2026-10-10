@@ -4,6 +4,14 @@
 
 ## Development workflow
 
+### Step 0 — Decide the sharing scope
+
+| Sharing scope | Action |
+|---|---|
+| **Local only** (not version-controlled; e.g., work-specific settings) | Keep the file outside chezmoi. For shell settings use `~/.zshrc.local`; skip Steps 1–2 and go directly to Step 3. Do not commit it. |
+| **Version-controlled, shared across profiles** | Edit or add a managed file without profile conditions. Follow Steps 1–7. |
+| **Version-controlled, profile-specific** | Edit or add a managed template using a condition for `personal` or `professional`. Follow Steps 1–7. This is **committed to the shared Git repository**; do not store work secrets or confidential data there. |
+
 ### Step 1 — Open the repository
 
 ```sh
@@ -19,7 +27,9 @@ git status --short --branch
 
 Check existing changes before switching branches.
 
-### Step 2 — Create a feature branch (no Git worktree)
+### Step 2 — Create a feature branch if you plan to share the change (no Git worktree)
+
+Skip this step for local-only settings such as `~/.zshrc.local`.
 
 **Exception to the usual Git-worktree workflow:** Work directly in the checkout returned by `chezmoi source-path`. Do **not** create a separate Git worktree for this repository. Chezmoi uses its configured source directory, so `chezmoi cat`, `chezmoi diff`, and `chezmoi apply` would otherwise read the original checkout rather than changes made in a separate worktree.
 
@@ -34,10 +44,26 @@ code .
 
 ### Step 3 — Edit or add dotfiles
 
-**New file only:** Create the file in `$HOME`, then start tracking it with chezmoi before editing its source:
+Use the sharing scope selected in [Step 0](#step-0--decide-the-sharing-scope).
+
+**Local-only shell overrides** (on whichever Mac needs them):
+
+```sh
+touch "$HOME/.zshrc.local"
+code "$HOME/.zshrc.local"
+# After saving your changes:
+exec zsh
+```
+
+The managed [`home/dot_zshrc.tmpl`](../home/dot_zshrc.tmpl) already sources `~/.zshrc.local`. Leave this local file unmanaged so subsequent shared updates do not overwrite it. For other local-only configuration files, use the application's supported local include or override mechanism. **For local-only changes, stop here; Steps 4–7 concern version-controlled changes.**
+
+**For version-controlled changes, use one of these workflows:**
+
+**New file only:** Create it in `$HOME`, then register it with chezmoi (use `--template` if the new file needs profile conditions):
 
 ```sh
 chezmoi add ~/.example
+# Alternatively: chezmoi add --template ~/.example
 ```
 
 **Option A — Edit chezmoi's source directly.** Open the appropriate tracked file:
@@ -115,29 +141,3 @@ git pull --ff-only
 ### Step 7 — Preview and apply on this Mac
 
 Follow [Already configured Mac: synchronize safely](setup.md#already-configured-mac-synchronize-safely).
-
-### Professional Mac — Keep work-only shell settings local
-
-1. On the professional Mac, create or edit the unmanaged override file:
-
-   ```sh
-   touch "$HOME/.zshrc.local"
-   code "$HOME/.zshrc.local"
-   ```
-
-2. Add work-specific aliases, environment variables, or paths, for example:
-
-   ```zsh
-   export WORK_PROJECTS="$HOME/Repos/professional"
-   alias work='cd "$WORK_PROJECTS"'
-   ```
-
-3. Reload the shell to pick up the changes:
-
-   ```sh
-   exec zsh
-   ```
-
-4. To receive published shared changes, follow [Already configured Mac: synchronize safely](setup.md#already-configured-mac-synchronize-safely), or run `chezmoi update` **only when the chezmoi source checkout is clean and tracking the intended upstream branch**.
-
-Do **not** run `chezmoi add` or `chezmoi re-add` on `~/.zshrc.local`, and do not commit it. The managed [`home/dot_zshrc.tmpl`](../home/dot_zshrc.tmpl) already sources that file when readable; `chezmoi update` does not manage it.
