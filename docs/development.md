@@ -54,23 +54,27 @@ For repository structure and installer responsibilities, see [Architecture](arch
 
 ### Step 4 — Write tests and run them
 
-Install Poetry separately as a development tool, then set up project-local dependencies:
+1. Add or adjust [unit tests](../tests/unit/test_shell_setup_module.sh) for installer logic and [integration tests](../tests/integration/test_profiles.py) for rendered behavior.
+2. Install Poetry separately as a development tool. Set up the project-local environment and run the tests:
 
-```sh
-poetry config virtualenvs.in-project true --local  # Once per checkout
-poetry sync
-./tests/run.sh
-```
+   ```sh
+   poetry config virtualenvs.in-project true --local  # Once per checkout
+   poetry sync
+   ./tests/run.sh
+   ```
 
-If an intentional template change modifies the rendered `.zshrc` or chezmoi TOML, update the reviewed fixtures and inspect the diff:
+3. Fix failing tests. If a template change intentionally affects the rendered `.zshrc` or chezmoi TOML, regenerate the [snapshots](../tests/fixtures/rendered/), inspect their diff, and rerun the tests:
 
-```sh
-poetry run python -m tests.support.update_rendered_snapshots
-git diff -- tests/fixtures/rendered/
-./tests/run.sh
-```
+   ```sh
+   poetry run python -m tests.support.update_rendered_snapshots
+   git diff -- tests/fixtures/rendered/
+   ./tests/run.sh
+   ```
 
-Do not regenerate snapshots merely to silence a failing test. Running tests does not apply configuration to your Mac.
+   Do not regenerate snapshots merely to silence a failing test. These tests do not apply configuration to your Mac.
+4. After opening the PR in Step 5, check the [GitHub Actions workflow](../.github/workflows/shell.yml). Confirm both profile jobs and fresh-home jobs pass. Do **not** run the fresh-home provisioning tests on an existing Mac.
+
+For testing architecture and CI coverage, see [Architecture](architecture.md#testing-and-validation).
 
 ### Step 5 — Review and open a pull request
 
@@ -100,12 +104,3 @@ chezmoi apply
 ```
 
 If [`.chezmoi.toml.tmpl`](../home/.chezmoi.toml.tmpl) changed, first back up the existing chezmoi configuration and run `chezmoi init` (without `--apply`). Review `chezmoi diff` and run `chezmoi apply` **only if you accept the changes**. See [Setup](setup.md#already-configured-mac-synchronize-safely) for another Mac.
-
-## Test checklist
-
-1. Add or adjust [unit tests](../tests/unit/test_shell_setup_module.sh) for installer logic and [integration tests](../tests/integration/test_profiles.py) for rendered behavior.
-2. Run `./tests/run.sh` and fix any failures.
-3. If rendered configuration changed intentionally, regenerate the [snapshots](../tests/fixtures/rendered/) using the command in [Step 4](#step-4--write-tests-and-run-them); review the diff before committing.
-4. Check the [GitHub Actions workflow](../.github/workflows/shell.yml) after opening the PR. Confirm both profile jobs and fresh-home jobs pass. The fresh-home jobs provision only ephemeral macOS CI environments; do **not** run them on an existing Mac.
-
-For how the testing components work and what CI does not cover, see [Architecture](architecture.md#testing-and-validation).
