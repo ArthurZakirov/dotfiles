@@ -2,32 +2,100 @@
 
 [← README](../README.md) · [Architecture](architecture.md)
 
-## Change and share configuration
+## Development workflow
 
-Chezmoi edits the managed source and can show the rendered difference:
+### Step 1 — Open the repository
 
 ```sh
-chezmoi edit ~/.zshrc
-chezmoi diff
-chezmoi apply
-chezmoi git -- add .
-chezmoi git -- commit -m "Update shared shell configuration"
-chezmoi git -- push
+chezmoi cd
 ```
 
-The [chezmoi config template](../home/.chezmoi.toml.tmpl) configures VS Code for editing and diff views. Another Mac can fetch and apply committed changes with `chezmoi update`.
-
-Reusable implementation belongs in [`src/`](../src/shell-setup.sh); lifecycle entry points belong in the [chezmoi hooks](../home/run_before_10-install-shell.sh.tmpl). Keep functions reusable rather than copying installer logic. `install_editors` orchestrates concrete editor installers (currently `install_visual_studio_code`). `install_profile` dispatches to `install_personal_profile` or `install_professional_profile`; each profile function invokes concrete tool installers (for example, `install_bitwarden_secrets_manager`). To add another editor or profile-specific tool, add its installer and call it from the corresponding orchestrator. Update the [Brewfile](../Brewfile) for required Homebrew packages, [chezmoi data](../home/.chezmoidata.toml) for shared settings, and the [zsh template](../home/dot_zshrc.tmpl) for shell behavior. Personal-only additions belong in [personal.zsh](../home/.chezmoitemplates/personal.zsh); local-only overrides can be placed in untracked `~/.zshrc.local`.
-
-## Tests
-
-The local test runner is **read-only with respect to your Mac's setup**: it renders templates, validates syntax, and stubs installation functions rather than running the installers. Python behavior tests use **pytest** in a Poetry-managed, project-local `.venv`; parameterized fixtures exercise both machine profiles. Install Poetry separately as a development tool (it is intentionally not part of machine provisioning). Then run:
+Chezmoi opens a shell in its source directory (`home/` in this repository). **In that shell**, switch to the Git root and inspect the working tree:
 
 ```sh
-poetry config virtualenvs.in-project true --local
+cd "$(git rev-parse --show-toplevel)"
+git status --short --branch
+```
+
+Check existing changes before switching branches.
+
+### Step 2 — Create a feature branch
+
+From a clean working tree:
+
+```sh
+git switch main
+git pull --ff-only
+git switch -c feat/describe-change
+code .
+```
+
+### Step 3 — Edit the source
+
+Change the repository templates rather than generated files under `$HOME`:
+
+| Purpose | File |
+|---|---|
+| Zsh configuration | [`dot_zshrc.tmpl`](../home/dot_zshrc.tmpl) |
+| Personal-only configuration | [`personal.zsh`](../home/.chezmoitemplates/personal.zsh) |
+| Chezmoi configuration | [`.chezmoi.toml.tmpl`](../home/.chezmoi.toml.tmpl) |
+| Shared template data | [`.chezmoidata.toml`](../home/.chezmoidata.toml) |
+| Installers and packages | [`shell-setup.sh`](../src/shell-setup.sh), [`homebrew.sh`](../src/homebrew.sh), [`Brewfile`](../Brewfile) |
+
+Reusable installer functions belong in `src/`; [lifecycle hooks](../home/run_before_10-install-shell.sh.tmpl) orchestrate them. Keep machine-local overrides in untracked `~/.zshrc.local`.
+
+### Step 4 — Write tests and run them
+
+Install Poetry separately as a development tool, then set up project-local dependencies:
+
+```sh
+poetry config virtualenvs.in-project true --local  # Once per checkout
 poetry sync
 ./tests/run.sh
 ```
+
+If an intentional template change modifies the rendered `.zshrc` or chezmoi TOML, update the reviewed fixtures and inspect the diff:
+
+```sh
+poetry run python -m tests.support.update_rendered_snapshots
+git diff -- tests/fixtures/rendered/
+./tests/run.sh
+```
+
+Do not regenerate snapshots merely to silence a failing test. Running tests does not apply configuration to your Mac.
+
+### Step 5 — Review and open a pull request
+
+```sh
+git diff --check
+git status --short
+git add <changed-files>
+git commit -m "Describe the change"
+git push -u origin HEAD
+gh pr create --fill
+```
+
+Review the diff, CodeRabbit feedback, and GitHub Actions results. Fix issues on the branch and merge the PR only when the checks pass.
+
+### Step 6 — Update your local checkout after merging
+
+```sh
+git switch main
+git pull --ff-only
+```
+
+### Step 7 — Preview and apply on this Mac
+
+```sh
+chezmoi diff
+chezmoi apply
+```
+
+Inspect the diff **before** applying. `chezmoi apply` runs applicable lifecycle hooks, including the idempotent package installer. If [`.chezmoi.toml.tmpl`](../home/.chezmoi.toml.tmpl) changed, review/back up your existing chezmoi configuration and run `chezmoi init` to regenerate it **without** `--apply` before previewing. On another Mac, fetch changes explicitly with `chezmoi update` after reviewing what will be applied; it fetches and applies in one operation.
+
+## Tests
+
+The local test runner is **read-only with respect to your Mac's setup**: it renders templates, validates syntax, and stubs installation functions rather than running installers. Python behavior tests use **pytest** in a Poetry-managed, project-local `.venv`; parameterized fixtures exercise both machine profiles. See [Step 4](#step-4--write-tests-and-run-them) for setup and execution commands.
 
 `pyproject.toml` and `poetry.lock` define the reproducible test dependencies. `.venv/` and `poetry.toml` are local-only and should not be committed.
 

@@ -4,13 +4,21 @@
 
 ## Which setup case applies?
 
-| Check (read-only) | Result | Action |
-|---|---|---|
-| `command -v chezmoi` | No output; new/unconfigured Mac | [New Mac setup](#new-mac-one-native-chezmoi-command) |
-| `command -v chezmoi` | No output; existing Mac with custom configuration | [New Mac setup](#new-mac-one-native-chezmoi-command) — review backup precautions before installing |
-| `chezmoi source-path` and `chezmoi managed` | Source missing or no managed files | [Inspect your installation](#inspect-your-installation) first; preserve existing configuration before any `init --apply` |
-| `chezmoi source-path` and `chezmoi managed` | Source exists and managed files are listed | [Synchronize an already configured Mac](#already-configured-mac-synchronize-safely) |
-| `chezmoi execute-template '{{ .profile }}'` | Profile or repository unclear | [Inspect your installation](#inspect-your-installation) |
+```mermaid
+flowchart TD
+    A{"command -v chezmoi<br/>returns a path?"}
+    A -- No --> B{"New or unconfigured Mac?"}
+    B -- Yes --> NEW["New Mac setup"]
+    B -- No --> INSPECT["Inspect existing configuration first"]
+    A -- Yes --> C{"chezmoi source-path exists<br/>and chezmoi managed lists files?"}
+    C -- Yes --> SYNC["Synchronize configured Mac"]
+    C -- No --> INSPECT
+    click NEW "#new-mac-one-native-chezmoi-command" "New Mac setup"
+    click INSPECT "#inspect-your-installation" "Inspect your installation"
+    click SYNC "#already-configured-mac-synchronize-safely" "Synchronize configured Mac"
+```
+
+The commands in the decision nodes are read-only. **Do not run `init --apply` on an existing Mac until its configuration has been inspected and backed up.**
 
 ## New Mac: one native chezmoi command
 
