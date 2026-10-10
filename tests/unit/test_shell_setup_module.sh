@@ -11,7 +11,7 @@ test_professional_profile_installs_shared_tools_only() {
   main
 
   # THEN the common installers run, without Bitwarden
-  assert_installation_sequence "homebrew configure packages apps vscode-cli oh-my-zsh"
+  assert_installation_sequence "homebrew configure packages apps node-tools vscode-cli oh-my-zsh"
 }
 
 test_personal_profile_installs_bitwarden_after_shared_tools() {
@@ -22,7 +22,7 @@ test_personal_profile_installs_bitwarden_after_shared_tools() {
   main
 
   # THEN its profile factory adds the Bitwarden installer
-  assert_installation_sequence "homebrew configure packages apps vscode-cli oh-my-zsh bitwarden"
+  assert_installation_sequence "homebrew configure packages apps node-tools vscode-cli oh-my-zsh bitwarden personal-apps"
 }
 
 test_personal_factory_calls_bitwarden_installer() {
@@ -33,7 +33,7 @@ test_personal_factory_calls_bitwarden_installer() {
   install_personal_profile
 
   # THEN only Bitwarden Secrets Manager is requested
-  assert_installation_sequence "bitwarden"
+  assert_installation_sequence "bitwarden personal-apps"
 }
 
 test_professional_factory_has_no_additional_tools() {
@@ -45,6 +45,14 @@ test_professional_factory_has_no_additional_tools() {
 
   # THEN no personal-only tools are requested
   assert_installation_sequence ""
+}
+
+test_ci_skips_optional_app_downloads() {
+  given_profile personal
+  DOTFILES_SKIP_OPTIONAL_APPS=1
+  main
+  assert_installation_sequence "homebrew configure packages oh-my-zsh bitwarden"
+  unset DOTFILES_SKIP_OPTIONAL_APPS
 }
 
 test_invalid_profile_fails_before_installing_anything() {
@@ -67,8 +75,9 @@ main_tests() {
   test_personal_profile_installs_bitwarden_after_shared_tools
   test_personal_factory_calls_bitwarden_installer
   test_professional_factory_has_no_additional_tools
+  test_ci_skips_optional_app_downloads
   test_invalid_profile_fails_before_installing_anything
-  echo "shell setup: 5 Given/When/Then cases passed (no installers executed)"
+  echo "shell setup: 6 Given/When/Then cases passed (no installers executed)"
 }
 
 main_tests

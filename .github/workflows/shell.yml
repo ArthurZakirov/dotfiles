@@ -41,4 +41,5 @@ jobs:
       - name: Provision isolated temporary HOME
         env:
           DOTFILES_PROFILE: ${{ matrix.profile }}
+          DOTFILES_SKIP_OPTIONAL_APPS: "1"
         run: bash ./tests/integration/run_fresh_home.sh

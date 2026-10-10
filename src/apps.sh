@@ -60,4 +60,28 @@ install_common_apps() {
   install_missing_cask raycast 'Raycast.app'
   install_missing_cask rectangle 'Rectangle.app'
   install_missing_cask visual-studio-code 'Visual Studio Code.app'
+  install_missing_cask google-chrome 'Google Chrome.app'
+  install_missing_cask claude 'Claude.app'
+  install_missing_cask chatgpt 'ChatGPT.app'
+}
+
+# Only the personal profile installs these apps.
+install_personal_apps() {
+  install_missing_cask bitwarden 'Bitwarden.app'
+  install_missing_cask telegram 'Telegram.app'
+  install_missing_cask whatsapp 'WhatsApp.app'
+  install_missing_cask todoist-app 'Todoist.app'
+  install_missing_cask notion 'Notion.app'
+  install_missing_cli_cask xurl xdevplatform/tap/xurl
+  install_missing_formula langsmith langchain-ai/tap/langsmith-cli
+}
+
+verify_node_toolchain() {
+  local tool
+  for tool in node npm npx; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      echo "Missing $tool after Node.js installation." >&2
+      return 1
+    fi
+  done
 }

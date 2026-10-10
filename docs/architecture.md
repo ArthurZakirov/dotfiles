@@ -45,8 +45,21 @@ Both `personal` and `professional` profiles call [`src/apps.sh`](../src/apps.sh)
 | Raycast | `raycast` | `Raycast.app` |
 | Rectangle | `rectangle` | `Rectangle.app` |
 | Visual Studio Code | `visual-studio-code` | `Visual Studio Code.app` |
+| Google Chrome | `google-chrome` | `Google Chrome.app` |
+| Claude Desktop | `claude` | `Claude.app` |
+| ChatGPT Desktop | `chatgpt` | `ChatGPT.app` |
 
 Application paths are checked under `/Applications` and `$HOME/Applications`; DDPM uses the vendor's `DDPM/` subdirectory. The first installation can request administrator approval, accessibility permissions, or a restart (especially DisplayLink and Logi Options+). After VS Code installation, `configure_vscode_cli` ensures the `code` command is available and passes `code --version`; if necessary, it adds a symlink in `$HOME/.local/bin`. These checks detect installations, not whether an application has been configured or granted permissions. No package updates are requested for already installed software.
+
+### Personal-only applications
+
+The personal profile also installs missing Bitwarden Desktop (`bitwarden`), Telegram (`telegram`), WhatsApp (`whatsapp`), Todoist (`todoist-app`), Notion (`notion`), xurl (`xdevplatform/tap/xurl`), and LangSmith CLI (`langchain-ai/tap/langsmith-cli`). Node.js is shared: the installer verifies `node`, `npm`, and `npx` exist after installing Node.
+
+**Not yet automated:** Bitdefender Antivirus does not have a verified Homebrew cask; Desktop Commander Device (`~/.desktop-commander-device`) is a device pairing/configuration directory, **not** the `@wonderwhy-er/desktop-commander` CLI. Do not copy pairing credentials between devices. Codex Computer Use is not a separate `code` CLI to install; its setup requires confirming the appropriate product/application capability.
+
+### CI provisioning scope
+
+The GitHub Actions fresh-home jobs set `DOTFILES_SKIP_OPTIONAL_APPS=1` to skip optional GUI downloads and third-party CLIs. They still exercise chezmoi templates, shell hooks, Oh My Zsh, shared Brewfile packages and (for personal) the Bitwarden Secrets Manager CLI. This avoids flaky upstream app download checksums and very slow GUI installs; mocked tests validate application installation decisions, and an isolated integration test verifies the VS Code `code` symlink behavior.
 
 ## Synchronization and safety
 

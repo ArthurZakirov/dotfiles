@@ -16,10 +16,13 @@ configure_homebrew() { record_installation configure; }
 install_homebrew_packages() { record_installation packages; }
 configure_vscode_cli() { record_installation vscode-cli; }
 install_common_apps() { record_installation apps; }
+verify_node_toolchain() { record_installation node-tools; }
+install_personal_apps() { record_installation personal-apps; }
 install_oh_my_zsh() { record_installation oh-my-zsh; }
 install_bitwarden_secrets_manager() { record_installation bitwarden; }
 
 given_profile() {
+  unset DOTFILES_SKIP_OPTIONAL_APPS
   DOTFILES_PROFILE="$1"
   installed_tools=()
 }

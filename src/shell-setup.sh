@@ -84,6 +84,9 @@ install_bitwarden_secrets_manager() {
 
 install_personal_profile() {
   install_bitwarden_secrets_manager
+  if [[ "${DOTFILES_SKIP_OPTIONAL_APPS:-}" != 1 ]]; then
+    install_personal_apps
+  fi
 }
 
 install_professional_profile() {
@@ -110,8 +113,13 @@ main() {
   install_homebrew
   configure_homebrew
   install_homebrew_packages
-  install_common_apps
-  configure_vscode_cli
+  # GitHub's ephemeral runners test rendering and shell provisioning, not GUI
+  # downloads. Regular Macs always execute the full application setup.
+  if [[ "${DOTFILES_SKIP_OPTIONAL_APPS:-}" != 1 ]]; then
+    install_common_apps
+    verify_node_toolchain
+    configure_vscode_cli
+  fi
   install_oh_my_zsh
   install_profile
 }
