@@ -2,6 +2,21 @@
 
 [← README](../README.md)
 
+## Which setup case applies?
+
+Run these read-only checks in Terminal:
+
+```sh
+command -v chezmoi
+chezmoi source-path
+chezmoi managed
+```
+
+- **`command -v chezmoi` prints nothing:** Chezmoi is not available on your PATH. For a new Mac, follow [New Mac: one native chezmoi command](#new-mac-one-native-chezmoi-command).
+- **Chezmoi is installed, but `source-path` is missing or `managed` lists no files:** Chezmoi may not yet be initialized. See [New Mac: one native chezmoi command](#new-mac-one-native-chezmoi-command), but do not use `init --apply` on an existing configured Mac without inspecting and backing up its settings first.
+- **`source-path` exists and `managed` lists files such as `.zshrc`:** Follow [Already configured Mac: synchronize safely](#already-configured-mac-synchronize-safely).
+- **Unsure which repository or profile is active?** Follow [Inspect your installation](#inspect-your-installation) before making changes.
+
 ## New Mac: one native chezmoi command
 
 On a **new** Mac, choose your GitHub account and run the [official chezmoi installer](https://www.chezmoi.io/install/):
