@@ -19,6 +19,10 @@ jobs:
           git clone https://github.com/ohmyzsh/ohmyzsh.git "$HOME/.oh-my-zsh"
           revision=$(sed -n 's/^ohMyZshCommit = "\(.*\)"/\1/p' home/.chezmoidata.toml)
           git -C "$HOME/.oh-my-zsh" checkout --detach "$revision"
+      - name: Install Poetry and test dependencies
+        run: |
+          pipx install poetry
+          POETRY_VIRTUALENVS_IN_PROJECT=true poetry install --no-interaction --sync
       - name: Run read-only test suite
         run: ./tests/run.sh
 

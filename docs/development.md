@@ -21,11 +21,15 @@ Reusable implementation belongs in [`src/`](../src/shell-setup.sh); lifecycle en
 
 ## Tests
 
-The local test runner is **read-only with respect to your Mac's setup**: it renders templates, validates syntax, and stubs installation functions rather than running the installers. Python behavior tests use **pytest** (declared in the root [Brewfile](../Brewfile)); parameterized fixtures exercise both machine profiles.
+The local test runner is **read-only with respect to your Mac's setup**: it renders templates, validates syntax, and stubs installation functions rather than running the installers. Python behavior tests use **pytest** in a Poetry-managed, project-local `.venv`; parameterized fixtures exercise both machine profiles. Install Poetry separately as a development tool (it is intentionally not part of machine provisioning). Then run:
 
 ```sh
+poetry config virtualenvs.in-project true --local
+poetry sync
 ./tests/run.sh
 ```
+
+`pyproject.toml` and `poetry.lock` define the reproducible test dependencies. `.venv/` and `poetry.toml` are local-only and should not be committed.
 
 ### Finding and extending tests
 

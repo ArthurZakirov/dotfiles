@@ -23,7 +23,7 @@ run_unit_tests() {
 
 run_integration_tests() {
   # Real chezmoi rendering and shell startup, without provisioning this Mac.
-  PYTHONDONTWRITEBYTECODE=1 pytest -q "$repo_root/tests/integration/test_profiles.py"
+  PYTHONDONTWRITEBYTECODE=1 "$repo_root/.venv/bin/pytest" -q "$repo_root/tests/integration/test_profiles.py"
 }
 
 run_quality_checks() {

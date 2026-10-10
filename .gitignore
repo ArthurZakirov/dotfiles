@@ -2,3 +2,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# Poetry in-project virtual environment
+.venv/
+poetry.toml
