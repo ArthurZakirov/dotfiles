@@ -43,6 +43,10 @@ Each test describes **Given / When / Then** and has a descriptive name, so a rea
 
 Rendered `.zshrc` and chezmoi TOML configurations for both profiles are locked down in [`tests/fixtures/rendered/`](../tests/fixtures/rendered/). The integration tests render these configurations, normalize machine-specific absolute paths to `<HOME>` and `<DOTFILES_REPO>`, and compare the results byte-for-byte with committed snapshots. Lifecycle scripts are syntax-checked separately, without full-output snapshots. If a template change intentionally affects generated files, regenerate the fixtures with `python3 -m tests.support.update_rendered_snapshots`, review the Git diff, and commit the resulting snapshot changes alongside the template. Never blindly regenerate them to make a failing test pass.
 
-The [test runner](../tests/run.sh) orchestrates syntax, behavior, and whitespace checks. [GitHub Actions](../.github/workflows/shell.yml) runs isolated fresh-home provisioning for both personal and professional profiles on ephemeral macOS runners. That integration test refuses to run outside GitHub Actions. The hosted runner already has Homebrew; full bare-metal installation and permissions must still be verified separately if needed.
+The [test runner](../tests/run.sh) orchestrates syntax, behavior, and whitespace checks.
+
+### How the clean-machine path is tested
+
+[macOS GitHub Actions](../.github/workflows/shell.yml) provisions **separate temporary HOME directories for both personal and professional profiles** on ephemeral macOS runners via `chezmoi init --apply`, exercising real installation hooks, profile-specific integrations, and GitHub username discovery for branch pushes. It does not provision the developer's existing Macs. The runner already includes macOS tooling, including Homebrew, so CI does **not** prove the Homebrew-from-zero or macOS permission prompts on a completely blank physical Mac. A Linux devcontainer cannot faithfully cover those macOS-specific steps.
 
 Review your Git diff and CI checks before publishing changes. Do not run a destructive first-time provisioning test on an existing Mac.

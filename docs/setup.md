@@ -56,7 +56,3 @@ chezmoi execute-template '{{ .profile }}'
 ```
 
 To change the personal Bitwarden Keychain account, use `chezmoi init --prompt`. Place optional machine-local additions in untracked `~/.zshrc.local`. See [architecture](architecture.md) and [development](development.md).
-
-## How the clean-machine path is tested
-
-[macOS GitHub Actions](../.github/workflows/shell.yml) provisions **separate temporary HOME directories for both personal and professional profiles** on ephemeral macOS runners via `chezmoi init --apply`, exercising real installation hooks, profile-specific integrations, and GitHub username discovery for branch pushes. It does not provision the developer's existing Macs. The runner already includes macOS tooling, including Homebrew, so CI does **not** prove the Homebrew-from-zero or macOS permission prompts on a completely blank physical Mac. A Linux devcontainer cannot faithfully cover those macOS-specific steps.
