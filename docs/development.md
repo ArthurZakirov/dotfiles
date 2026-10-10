@@ -19,7 +19,9 @@ git status --short --branch
 
 Check existing changes before switching branches.
 
-### Step 2 — Create a feature branch
+### Step 2 — Create a feature branch (no Git worktree)
+
+**Exception to the usual Git-worktree workflow:** Work directly in the checkout returned by `chezmoi source-path`. Do **not** create a separate Git worktree for this repository. Chezmoi uses its configured source directory, so `chezmoi cat`, `chezmoi diff`, and `chezmoi apply` would otherwise read the original checkout rather than changes made in a separate worktree.
 
 From a clean working tree:
 
@@ -36,11 +38,11 @@ Change the repository templates rather than generated files under `$HOME`:
 
 | Purpose | File |
 |---|---|
-| Zsh configuration | [`dot_zshrc.tmpl`](../home/dot_zshrc.tmpl) |
-| Personal-only configuration | [`personal.zsh`](../home/.chezmoitemplates/personal.zsh) |
-| Chezmoi configuration | [`.chezmoi.toml.tmpl`](../home/.chezmoi.toml.tmpl) |
-| Shared template data | [`.chezmoidata.toml`](../home/.chezmoidata.toml) |
-| Installers and packages | [`shell-setup.sh`](../src/shell-setup.sh), [`homebrew.sh`](../src/homebrew.sh), [`Brewfile`](../Brewfile) |
+| Zsh configuration | [`home/dot_zshrc.tmpl`](../home/dot_zshrc.tmpl) |
+| Personal-only configuration | [`home/.chezmoitemplates/personal.zsh`](../home/.chezmoitemplates/personal.zsh) |
+| Chezmoi configuration | [`home/.chezmoi.toml.tmpl`](../home/.chezmoi.toml.tmpl) |
+| Shared template data | [`home/.chezmoidata.toml`](../home/.chezmoidata.toml) |
+| Installers and packages | [`src/shell-setup.sh`](../src/shell-setup.sh), [`src/homebrew.sh`](../src/homebrew.sh), [`Brewfile`](../Brewfile) |
 
 Edit the relevant file, then inspect the rendered result before writing tests:
 
