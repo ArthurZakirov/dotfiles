@@ -3,7 +3,7 @@ set -euo pipefail
 [[ "$(uname -s)" == Darwin ]] || { echo "This setup requires macOS." >&2; exit 1; }
 profile="${1:-personal}"
 case "$profile" in personal|professional) ;; *) echo "Usage: bootstrap.sh [personal|professional]" >&2; exit 2;; esac
-branch="${DOTFILES_BRANCH:-feat/mac-shell-bootstrap}"
+branch="${DOTFILES_BRANCH:-HEAD}"
 source_dir="$HOME/Repos/personal/dotfiles"
 
 if [[ ! -x /opt/homebrew/bin/brew && ! -x /usr/local/bin/brew ]]; then
@@ -21,7 +21,11 @@ command -v chezmoi >/dev/null 2>&1 || brew install chezmoi
 command -v git >/dev/null 2>&1 || brew install git
 if [[ ! -e "$source_dir" ]]; then
   mkdir -p "$(dirname "$source_dir")"
-  git clone --branch "$branch" https://github.com/ArthurZakirov/dotfiles.git "$source_dir"
+  if [[ "$branch" == HEAD ]]; then
+    git clone https://github.com/ArthurZakirov/dotfiles.git "$source_dir"
+  else
+    git clone --branch "$branch" https://github.com/ArthurZakirov/dotfiles.git "$source_dir"
+  fi
 else
   [[ -f "$source_dir/.chezmoiroot" && -f "$source_dir/home/dot_zshrc.tmpl" ]] || {
     echo "Existing source directory has no shell setup. Update it manually, preserving local changes." >&2; exit 1;

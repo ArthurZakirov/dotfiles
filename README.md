@@ -7,10 +7,16 @@ One command installs Homebrew (if needed), chezmoi, shell dependencies, Oh My Zs
 Run in Terminal on a personal Mac:
 
 ```sh
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/ArthurZakirov/dotfiles/feat/mac-shell-bootstrap/scripts/bootstrap.sh)" -- personal
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/ArthurZakirov/dotfiles/HEAD/scripts/bootstrap.sh)" -- personal
 ```
 
-For a professional Mac, replace the final `personal` with `professional`. The branch in this URL is intentional while this setup is under review.
+For a professional Mac, replace the final `personal` with `professional`. `HEAD` follows the repository's default branch. Fresh clones use the remote's HEAD too; no default branch name is hardcoded. To explicitly clone another branch, set `DOTFILES_BRANCH` before running the script.
+
+The download command becomes available once this setup is merged into the default branch. Until then, run the [local bootstrap script](scripts/bootstrap.sh) from a checkout containing this setup:
+
+```sh
+/bin/bash scripts/bootstrap.sh personal
+```
 
 macOS may request your administrator password or approval to install Command Line Tools. Bitwarden authentication is a separate, one-time step on personal Macs; the shell starts normally before the Keychain entry exists. The installer preserves existing zsh/config files in a timestamped backup and prints its location. Open a new terminal after installation.
 
