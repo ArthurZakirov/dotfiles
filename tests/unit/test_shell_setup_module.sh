@@ -11,7 +11,7 @@ test_professional_profile_installs_shared_tools_only() {
   main
 
   # THEN the common installers run, without Bitwarden
-  assert_installation_sequence "homebrew configure packages vscode oh-my-zsh"
+  assert_installation_sequence "homebrew configure packages apps vscode oh-my-zsh"
 }
 
 test_personal_profile_installs_bitwarden_after_shared_tools() {
@@ -22,7 +22,7 @@ test_personal_profile_installs_bitwarden_after_shared_tools() {
   main
 
   # THEN its profile factory adds the Bitwarden installer
-  assert_installation_sequence "homebrew configure packages vscode oh-my-zsh bitwarden"
+  assert_installation_sequence "homebrew configure packages apps vscode oh-my-zsh bitwarden"
 }
 
 test_editor_factory_calls_visual_studio_code_installer() {

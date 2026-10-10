@@ -15,6 +15,7 @@ install_homebrew() { record_installation homebrew; }
 configure_homebrew() { record_installation configure; }
 install_homebrew_packages() { record_installation packages; }
 install_visual_studio_code() { record_installation vscode; }
+install_common_apps() { record_installation apps; }
 install_oh_my_zsh() { record_installation oh-my-zsh; }
 install_bitwarden_secrets_manager() { record_installation bitwarden; }
 

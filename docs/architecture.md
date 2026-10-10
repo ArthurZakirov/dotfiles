@@ -14,12 +14,36 @@
 | [`home/run_before_10-install-shell.sh.tmpl`](../home/run_before_10-install-shell.sh.tmpl) | Runs the shell installation process. |
 | [`src/shell-setup.sh`](../src/shell-setup.sh) | Reusable shell, editor, and profile installers; selects personal or professional integrations. |
 | [`src/homebrew.sh`](../src/homebrew.sh) | Installs Homebrew if missing and configures its shell environment. |
+| [`src/apps.sh`](../src/apps.sh) | Checks for installed shared applications and CLIs, installing only missing Homebrew packages. |
 | [`Brewfile`](../Brewfile) | Declares Homebrew packages without locking exact package versions. |
 | [`home/.chezmoidata.toml`](../home/.chezmoidata.toml) | Stores shared settings including the pinned Oh My Zsh revision. |
 | [`home/dot_zshrc.tmpl`](../home/dot_zshrc.tmpl) | Renders shell history, completion, prompt, Git helpers, fzf, and plugins. |
 | [`home/.chezmoitemplates/personal.zsh`](../home/.chezmoitemplates/personal.zsh) | Adds personal-only integrations such as Bitwarden Secrets Manager CLI and LangSmith. |
 
 The installation hook runs before the managed `~/.zshrc` is applied, so required shell dependencies are available on first shell startup. The backup hook is run-once; the installer hook is idempotent and checks dependencies on subsequent applies.
+
+
+### Shared application provisioning
+
+Both `personal` and `professional` profiles call [`src/apps.sh`](../src/apps.sh) during the existing setup hook. The installer checks Homebrew's cask registration and the listed macOS application locations (including `$HOME/Applications`); CLI tools are checked via `command -v`. **Existing installations are skipped**, including apps installed without Homebrew. Missing tools are installed with `brew install` or `brew install --cask`.
+
+| Tool | Homebrew package | Installation check |
+|---|---|---|
+| AltTab | `alt-tab` | `AltTab.app` |
+| BetterDisplay | `betterdisplay` | `BetterDisplay.app` |
+| DisplayLink Manager | `displaylink` | `DisplayLink Manager.app` or Homebrew cask registration |
+| Codex CLI | `codex` | `command -v codex` |
+| Claude Code CLI | `claude-code` | `command -v claude` |
+| Dell Display and Peripheral Manager (DDPM) | `ddpm` | `DDPM/DDPM.app` or Homebrew cask registration |
+| Warp | `warp` | `Warp.app` |
+| Google Drive | `google-drive` | `Google Drive.app` or Homebrew cask registration |
+| Hammerspoon | `hammerspoon` | `Hammerspoon.app` |
+| Logi Options+ | `logi-options+` | `Logi Options+.app`, `logioptionsplus.app`, or Homebrew cask registration |
+| Node.js | `node` | `command -v node` |
+| Raycast | `raycast` | `Raycast.app` |
+| Rectangle | `rectangle` | `Rectangle.app` |
+
+Application paths are checked under `/Applications` and `$HOME/Applications`; DDPM uses the vendor's `DDPM/` subdirectory. The first installation can request administrator approval, accessibility permissions, or a restart (especially DisplayLink and Logi Options+). These checks detect installations, not whether an application has been configured or granted permissions. No package updates are requested for already installed software.
 
 ## Synchronization and safety
 

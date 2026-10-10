@@ -4,6 +4,7 @@
 : "${DOTFILES_PROFILE:?DOTFILES_PROFILE must be personal or professional}"
 module_dir="${DOTFILES_MODULE_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
 source "$module_dir/homebrew.sh"
+source "$module_dir/apps.sh"
 
 install_homebrew_packages() {
   export PATH="$HOME/.local/bin:$PATH"
@@ -90,6 +91,7 @@ main() {
   install_homebrew
   configure_homebrew
   install_homebrew_packages
+  install_common_apps
   install_editors
   install_oh_my_zsh
   install_profile
