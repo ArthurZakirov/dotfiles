@@ -18,20 +18,14 @@ else
 fi
 ```
 
-**Step 2 — Follow the branch matching the printed result:**
+**Step 2 — Follow the section matching the printed status:**
 
-```mermaid
-flowchart TD
-    A{"Diagnosis result?"}
-    A -- "NOT INSTALLED" --> B{"New / unconfigured Mac?"}
-    A -- "NOT INITIALIZED" --> INSPECT["Inspect your installation"]
-    A -- "MANAGED" --> SYNC["Already configured Mac: synchronize safely"]
-    B -- Yes --> NEW["New Mac: one native chezmoi command"]
-    B -- No --> INSPECT
-    click NEW "#new-mac-one-native-chezmoi-command" "New Mac: one native chezmoi command"
-    click INSPECT "#inspect-your-installation" "Inspect your installation"
-    click SYNC "#already-configured-mac-synchronize-safely" "Already configured Mac: synchronize safely"
-```
+| Status | Section |
+|---|---|
+| `NOT INSTALLED` (new/unconfigured Mac) | [New Mac: one native chezmoi command](#new-mac-one-native-chezmoi-command) |
+| `NOT INSTALLED` (previously configured Mac) | [Inspect your installation](#inspect-your-installation) |
+| `NOT INITIALIZED` | [Inspect your installation](#inspect-your-installation) |
+| `MANAGED` | [Already configured Mac: synchronize safely](#already-configured-mac-synchronize-safely) |
 
 **Do not run `init --apply` on an existing Mac until you have inspected and preserved its configuration.**
 
