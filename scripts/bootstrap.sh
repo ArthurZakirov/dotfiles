@@ -1,123 +1,25 @@
 #!/bin/bash
 set -euo pipefail
 
-# Inputs are injected through the environment so this script does not own a
-# repository URL, account name, or source-directory policy.
-profile=""
-github_username="${GITHUB_USERNAME:-}"
-source_dir="${DOTFILES_SOURCE_DIR:-$HOME/Repos/personal/dotfiles}"
-dotfiles_branch="${DOTFILES_BRANCH:-}"
-backup_dir=""
-
-usage() {
-  cat <<'EOF'
-Usage: GITHUB_USERNAME=<github-user> bootstrap.sh [personal|professional]
-
-Optional environment variables:
-  DOTFILES_SOURCE_DIR  Local checkout location.
-  DOTFILES_BRANCH      Git branch to use. Omit it to follow the remote HEAD.
-EOF
-}
-
-parse_arguments() {
-  profile="${1:-personal}"
-  case "$profile" in
-    personal|professional) ;;
-    -h|--help) usage; exit 0 ;;
-    *) usage >&2; exit 2 ;;
-  esac
-}
-
-validate_environment() {
-  [[ "$(uname -s)" == Darwin ]] || {
-    echo "This setup requires macOS." >&2
-    exit 1
-  }
-  [[ -n "$github_username" ]] || {
-    echo "Set GITHUB_USERNAME to the GitHub account that owns the dotfiles repository." >&2
-    exit 2
-  }
-}
-
-install_homebrew() {
-  local installer
-  if [[ -x /opt/homebrew/bin/brew || -x /usr/local/bin/brew ]]; then
+load_bootstrap_module() {
+  local entrypoint_dir module_path remote_ref temporary_module
+  entrypoint_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  module_path="$entrypoint_dir/../src/bootstrap.sh"
+  if [[ -r "$module_path" ]]; then
+    source "$module_path"
     return
   fi
-  installer="$(mktemp)"
-  trap 'rm -f "$installer"' EXIT
-  curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o "$installer"
-  /bin/bash "$installer"
+
+  [[ -n "${GITHUB_USERNAME:-}" ]] || {
+    echo "Set GITHUB_USERNAME before running the remote bootstrap entry point." >&2
+    exit 2
+  }
+  remote_ref="${DOTFILES_BRANCH:-HEAD}"
+  temporary_module="$(mktemp)"
+  curl -fsSL "https://raw.githubusercontent.com/${GITHUB_USERNAME}/dotfiles/${remote_ref}/src/bootstrap.sh" -o "$temporary_module"
+  source "$temporary_module"
+  rm -f "$temporary_module"
 }
 
-configure_homebrew() {
-  if [[ -x /opt/homebrew/bin/brew ]]; then
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-  elif [[ -x /usr/local/bin/brew ]]; then
-    eval "$(/usr/local/bin/brew shellenv)"
-  else
-    echo "Homebrew was installed but its executable could not be found." >&2
-    exit 1
-  fi
-}
-
-install_bootstrap_tools() {
-  local formula
-  local bootstrap_formulae=(chezmoi git)
-  for formula in "${bootstrap_formulae[@]}"; do
-    command -v "$formula" >/dev/null 2>&1 || brew install "$formula"
-  done
-}
-
-initialize_chezmoi() {
-  local init_args=(
-    init
-    --source "$source_dir"
-    --prompt
-    --promptChoice "Mac profile=$profile"
-    --promptString "GitHub username=$github_username"
-    --promptString 'Bitwarden Keychain account=bws-macbook-air'
-  )
-  if [[ -e "$source_dir" ]]; then
-    [[ -f "$source_dir/.chezmoiroot" && -f "$source_dir/home/dot_zshrc.tmpl" ]] || {
-      echo "Existing source directory is not this shell setup: $source_dir" >&2
-      exit 1
-    }
-  else
-    mkdir -p "$(dirname "$source_dir")"
-    [[ -z "$dotfiles_branch" ]] || init_args+=(--branch "$dotfiles_branch")
-    init_args+=("$github_username")
-  fi
-  chezmoi "${init_args[@]}"
-}
-
-backup_existing_configuration() {
-  local chezmoi_config="$HOME/.config/chezmoi/chezmoi.toml"
-  backup_dir="$HOME/Library/Application Support/dotfiles/backups/$(date +%Y%m%d-%H%M%S)-$$"
-  mkdir -p "$backup_dir"
-  [[ ! -e "$HOME/.zshrc" ]] || cp -p "$HOME/.zshrc" "$backup_dir/zshrc"
-  [[ ! -e "$chezmoi_config" ]] || cp -p "$chezmoi_config" "$backup_dir/chezmoi.toml"
-}
-
-apply_dotfiles() {
-  chezmoi apply --force
-}
-
-validate_shell() {
-  /bin/zsh -n "$HOME/.zshrc"
-}
-
-main() {
-  parse_arguments "$@"
-  validate_environment
-  install_homebrew
-  configure_homebrew
-  install_bootstrap_tools
-  backup_existing_configuration
-  initialize_chezmoi
-  apply_dotfiles
-  validate_shell
-  echo "Shell setup complete ($profile). Backup: $backup_dir. Open a new terminal."
-}
-
+load_bootstrap_module
 main "$@"
