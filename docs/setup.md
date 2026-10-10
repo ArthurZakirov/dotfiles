@@ -29,26 +29,48 @@ export GITHUB_USERNAME="ArthurZakirov"
 sh -c "$(curl -fsLS https://get.chezmoi.io)" -- init --apply "$GITHUB_USERNAME"
 ```
 
-Chezmoi natively discovers `$GITHUB_USERNAME/dotfiles` on GitHub, clones the default branch, prompts you to select the **personal** or **professional** profile, and applies the configuration. Its installation hook provisions Homebrew if missing, the packages in [Brewfile](../Brewfile), VS Code, and Oh My Zsh. Only the personal profile also installs Bitwarden Secrets Manager CLI and enables LangSmith.
+1. If this Mac already has a chezmoi configuration, **stop** and follow [Inspect your installation](#inspect-your-installation) first. Back up `~/.config/chezmoi/chezmoi.toml` before initializing.
+2. Run the installer command above. Select **personal** or **professional** when prompted. Approve any expected macOS administrator or Command Line Tools prompts.
+3. Open a new Terminal, then verify:
 
-macOS may request administrator authorization or installation of Apple Command Line Tools. On personal Macs, Bitwarden authentication is a separate one-time step; the shell can start before the Keychain account is configured. Open a new Terminal after installation.
+   ```sh
+   chezmoi source-path
+   chezmoi managed
+   chezmoi execute-template '{{ .profile }}'
+   ```
 
-If an existing `~/.zshrc` is present, a run-once hook saves a timestamped copy in `~/Library/Application Support/dotfiles/backups/` before it is replaced. **An existing chezmoi configuration is generated during `init`, before that hook runs**; copy `~/.config/chezmoi/chezmoi.toml` separately if you need to preserve it. Chezmoi normally prompts before overwriting modified managed files; the installation instructions do not use `--force`.
+4. For the personal profile, configure your Bitwarden Secrets Manager Keychain account separately if needed.
+5. If you had a previous `~/.zshrc`, check the backup in `~/Library/Application Support/dotfiles/backups/` before deleting anything.
 
-The installer covers the shell and editor, not the entire workstation. Raycast shortcuts and `sync-systemsmith` are optional integrations; their other dependencies are not installed here.
+For the underlying provisioning sequence, see [Architecture](architecture.md).
 
 ## Already configured Mac: synchronize safely
 
-**Do not rerun the new-Mac installer on an already configured Mac.** Work from its current chezmoi repository, review changes, then apply deliberately:
+1. **Do not rerun the new-Mac installer.** Check the active source and your local Git changes:
 
-```sh
-chezmoi diff
-chezmoi apply
-```
+   ```sh
+   chezmoi source-path
+   git -C "$(chezmoi source-path)" status --short --branch
+   ```
 
-To fetch and apply changes **after you are ready**, use `chezmoi update`. Changes are propagated through Git and chezmoi explicitly, not synchronized automatically. Homebrew packages are checked but not automatically upgraded.
+2. Fetch the latest source changes without applying them. **Only if the working tree is clean:**
 
-For changes to the chezmoi configuration template (such as the VS Code editor/diff settings), `chezmoi init` can regenerate the local `~/.config/chezmoi/chezmoi.toml`; inspect and back up the current config first. It can prompt for profile and other machine-local options.
+   ```sh
+   git -C "$(chezmoi source-path)" pull --ff-only
+   ```
+
+3. If [`.chezmoi.toml.tmpl`](../home/.chezmoi.toml.tmpl) changed, back up `~/.config/chezmoi/chezmoi.toml`, then run `chezmoi init` (without `--apply`).
+4. Review the proposed changes:
+
+   ```sh
+   chezmoi diff
+   ```
+
+5. **Only when the diff is acceptable**, apply deliberately:
+
+   ```sh
+   chezmoi apply
+   ```
 
 ## Inspect your installation
 
@@ -58,4 +80,4 @@ chezmoi managed
 chezmoi execute-template '{{ .profile }}'
 ```
 
-To change the personal Bitwarden Keychain account, use `chezmoi init --prompt`. Place optional machine-local additions in untracked `~/.zshrc.local`. See [architecture](architecture.md) and [development](development.md).
+If the source path is missing or unexpected, **stop** before applying anything. To change the personal Bitwarden Keychain account, run `chezmoi init --prompt` and review the generated configuration. For implementation details, see [Architecture](architecture.md).

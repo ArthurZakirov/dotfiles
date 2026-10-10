@@ -22,4 +22,12 @@ Changes committed and pushed on one Mac are available to the other via `chezmoi 
 
 An earlier Desktop Commander/LaunchAgent/Claude pilot is parked in [AgentDesk's archive branch](https://github.com/ArthurZakirov/AgentDesk/tree/chore/park-dotfiles-extras/experiments/parked-dotfiles). Archiving its source did not uninstall the LaunchAgent.
 
+## Testing and validation
+
+The local [test runner](../tests/run.sh) validates shell syntax and exercises installer functions with stubs instead of provisioning the developer's Mac. Python tests use pytest in a Poetry-managed `.venv`. Unit tests live in [`tests/unit/`](../tests/unit/), while [`tests/integration/`](../tests/integration/) covers actual chezmoi rendering and interactive zsh behavior using temporary homes. Shared test helpers live in [`tests/support/`](../tests/support/).
+
+The complete rendered `.zshrc` and chezmoi TOML configurations for both profiles are stored in [`tests/fixtures/rendered/`](../tests/fixtures/rendered/) as reviewed snapshots. Tests normalize absolute machine paths and compare each generated configuration byte-for-byte with its snapshot. Lifecycle hooks are syntax-checked rather than snapshotted.
+
+[macOS GitHub Actions](../.github/workflows/shell.yml) also provisions separate temporary HOME directories for both profiles on ephemeral runners using `chezmoi init --apply`. The runner already includes Homebrew and other macOS tooling; this does not verify Homebrew-from-zero or permission prompts on a completely blank physical Mac. A Linux devcontainer cannot fully reproduce those macOS steps. The CI-only provisioning test refuses to run outside GitHub Actions.
+
 See [setup](setup.md) to provision a machine or [development](development.md) to modify and test this repository.
