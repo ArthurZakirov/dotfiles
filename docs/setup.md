@@ -22,15 +22,20 @@ The commands in the decision nodes are read-only. **Do not run `init --apply` on
 
 ## New Mac: one native chezmoi command
 
-On a **new** Mac, choose your GitHub account and run the [official chezmoi installer](https://www.chezmoi.io/install/):
+1. If this Mac already has a chezmoi configuration, **stop** and follow [Inspect your installation](#inspect-your-installation) first. To preserve an existing config before initializing, run:
 
-```sh
-export GITHUB_USERNAME="ArthurZakirov"
-sh -c "$(curl -fsLS https://get.chezmoi.io)" -- init --apply "$GITHUB_USERNAME"
-```
+   ```sh
+   config="$HOME/.config/chezmoi/chezmoi.toml"
+   if [[ -f "$config" ]]; then
+     cp -p "$config" "${config}.backup.$(date +%Y%m%d-%H%M%S)"
+   fi
+   ```
+2. Run the [official chezmoi installer](https://www.chezmoi.io/install/). Select **personal** or **professional** when prompted. Approve any expected macOS administrator or Command Line Tools prompts:
 
-1. If this Mac already has a chezmoi configuration, **stop** and follow [Inspect your installation](#inspect-your-installation) first. Back up `~/.config/chezmoi/chezmoi.toml` before initializing.
-2. Run the installer command above. Select **personal** or **professional** when prompted. Approve any expected macOS administrator or Command Line Tools prompts.
+   ```sh
+   export GITHUB_USERNAME="ArthurZakirov"
+   sh -c "$(curl -fsLS https://get.chezmoi.io)" -- init --apply "$GITHUB_USERNAME"
+   ```
 3. Open a new Terminal, then verify:
 
    ```sh
@@ -59,7 +64,17 @@ For the underlying provisioning sequence, see [Architecture](architecture.md).
    git -C "$(chezmoi source-path)" pull --ff-only
    ```
 
-3. If [`.chezmoi.toml.tmpl`](../home/.chezmoi.toml.tmpl) changed, back up `~/.config/chezmoi/chezmoi.toml`, then run `chezmoi init` (without `--apply`).
+3. If [`.chezmoi.toml.tmpl`](../home/.chezmoi.toml.tmpl) changed, save a timestamped copy of the current local config (if it exists), then regenerate it **without applying**:
+
+   ```sh
+   config="$HOME/.config/chezmoi/chezmoi.toml"
+   if [[ -f "$config" ]]; then
+     cp -p "$config" "${config}.backup.$(date +%Y%m%d-%H%M%S)"
+   fi
+   chezmoi init
+   ```
+
+   Check the generated file against the backup before continuing.
 4. Review the proposed changes:
 
    ```sh

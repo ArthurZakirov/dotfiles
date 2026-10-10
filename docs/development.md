@@ -114,9 +114,4 @@ git pull --ff-only
 
 ### Step 7 — Preview and apply on this Mac
 
-```sh
-chezmoi diff
-chezmoi apply
-```
-
-If [`.chezmoi.toml.tmpl`](../home/.chezmoi.toml.tmpl) changed, first back up the existing chezmoi configuration and run `chezmoi init` (without `--apply`). Review `chezmoi diff` and run `chezmoi apply` **only if you accept the changes**. See [Setup](setup.md#already-configured-mac-synchronize-safely) for another Mac.
+Follow [Already configured Mac: synchronize safely](setup.md#already-configured-mac-synchronize-safely).
