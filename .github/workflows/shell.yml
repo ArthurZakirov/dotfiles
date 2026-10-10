@@ -1,0 +1,40 @@
+name: Validate Mac shell profiles
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  profiles:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install shell dependencies for read-only tests
+        run: |
+          brew bundle install --no-upgrade --file=Brewfile
+          git clone https://github.com/ohmyzsh/ohmyzsh.git "$HOME/.oh-my-zsh"
+          revision=$(sed -n 's/^ohMyZshCommit = "\(.*\)"/\1/p' home/.chezmoidata.toml)
+          git -C "$HOME/.oh-my-zsh" checkout --detach "$revision"
+      - name: Run read-only test suite
+        run: ./tests/run.sh
+
+  fresh-home:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [personal, professional]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install chezmoi for integration test
+        run: brew install chezmoi
+      - name: Provision isolated temporary HOME
+        env:
+          DOTFILES_PROFILE: ${{ matrix.profile }}
+        run: bash ./tests/integration/run_fresh_home.sh

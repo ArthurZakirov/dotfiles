@@ -1,0 +1,7 @@
+#!/bin/bash
+set -euo pipefail
+
+DOTFILES_ROOT={{ .chezmoi.workingTree | quote }}
+DOTFILES_PROFILE={{ .profile | quote }}
+source "$DOTFILES_ROOT/src/shell-setup.sh"
+main "$@"

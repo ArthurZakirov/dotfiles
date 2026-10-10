@@ -1,24 +1,32 @@
-# Dotfiles
+# 🐚 Mac setup that survives the Mac
 
-Managed with [chezmoi](https://www.chezmoi.io/).
+## Motivation
 
-## Desktop Commander Remote on macOS
 
-This repository keeps the Desktop Commander Remote background service reproducible and inspectable:
 
-- [LaunchAgent template](private_Library/private_LaunchAgents/com.arthur.desktop-commander-remote.plist.tmpl) defines the macOS service.
-- [Install hook](run_before_10-install-desktop-commander.sh) ensures the pinned Desktop Commander package is installed.
-- [Launch hook](run_after_20-ensure-desktop-commander-launch-agent.sh) validates and loads the service, reloading it only when the rendered plist changes.
-- [.chezmoiignore.tmpl](.chezmoiignore.tmpl) keeps the macOS LaunchAgent out of non-macOS targets.
 
-Run `chezmoi diff` to preview changes and `chezmoi apply` to converge the machine to the repository state.
 
-Inspect the live service with:
+### The Problem ❌😩
 
-```sh
-launchctl print "gui/$(id -u)/com.arthur.desktop-commander-remote"
-```
+Losing access to a computer should not mean losing the tools and configurations you've spent hundreds of hours refining. 
 
-Authentication/session material is intentionally **not** stored in this repository. A fresh Mac therefore needs the Desktop Commander OAuth flow completed once; the persisted local session can then be reused by the LaunchAgent.
+- Your job can end unexpectedly or as planned
+- Your Mac can break, get stolen, or be forgotten somewhere. 
+- You might upgrade to a new machine. 
 
-The service's executable, environment, restart policy, and log destinations are canonical in the [LaunchAgent template](private_Library/private_LaunchAgents/com.arthur.desktop-commander-remote.plist.tmpl), rather than duplicated here.
+In each case, starting from scratch means reinstalling tools and rebuilding your workflow—potentially spending weeks or months recovering your former productivity.
+
+### The Solution ✅😊
+
+This repository saves and shares your macOS shell and editor setup across Macs. 
+  
+
+- Improvements on one Mac can be committed and applied to others
+- replacing a Mac means restoring your established setup rather than rebuilding it  
+
+Synchronization is explicit with Git and chezmoi, not automatic in the background. 
+## What do you want to do?
+
+1. **[Set up or synchronize a Mac](docs/setup.md)** — Install the configuration on a new Mac or bring another Mac up to date.
+2. **[Understand how the repository works](docs/architecture.md)** — Explore how templates, profiles, packages, and installation steps fit together.
+3. **[Develop this repository](docs/development.md)** — Make changes, run tests, and validate your work.

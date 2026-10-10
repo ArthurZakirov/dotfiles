@@ -1,0 +1,10 @@
+{
+  "files.associations": {
+    "Brewfile": "ruby",
+    "**/.chezmoi.toml.tmpl": "toml",
+    "**/*.toml.tmpl": "toml",
+    ".chezmoidata.toml": "toml",
+    "dot_zshrc.tmpl": "shellscript",
+    "run_*.sh.tmpl": "shellscript"
+  }
+}

@@ -1,0 +1,19 @@
+{{- $profile := promptChoiceOnce . "profile" "Mac profile" (list "personal" "professional") "personal" -}}
+{{- $githubUsername := promptStringOnce . "githubUsername" "GitHub username" (env "GITHUB_USERNAME") -}}
+{{- $account := "" -}}
+{{- if eq $profile "personal" -}}
+{{- $account = promptStringOnce . "bwsAccount" "Bitwarden Keychain account" "bws-macbook-air" -}}
+{{- end -}}
+sourceDir = {{ .chezmoi.workingTree | quote }}
+[data]
+profile = {{ $profile | quote }}
+githubUsername = {{ $githubUsername | quote }}
+bwsAccount = {{ $account | quote }}
+
+[diff]
+    command = "code"
+    args = ["--wait", "--diff"]
+
+[edit]
+    command = "code"
+    args = ["--wait"]

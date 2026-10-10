@@ -1,0 +1,7 @@
+brew "chezmoi"
+brew "git"
+brew "fzf"
+brew "zsh-autosuggestions"
+brew "zsh-syntax-highlighting"
+brew "python"
+brew "pytest"
