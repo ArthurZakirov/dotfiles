@@ -27,6 +27,6 @@ The local test runner is **read-only with respect to your Mac's setup**: it rend
 ./tests/run.sh
 ```
 
-The tests validate the provisioning sequence, render both profiles, ensure personal integrations are absent from the professional profile, and check interactive shell initialization without reading secrets. [GitHub Actions](../.github/workflows/shell.yml) additionally runs an isolated fresh-home provisioning integration test on an ephemeral macOS runner via [`tests/run_fresh_home.sh`](../tests/run_fresh_home.sh). That integration test refuses to run outside GitHub Actions. The hosted runner already has Homebrew; full bare-metal installation and permissions must still be verified separately if needed.
+The tests validate the provisioning sequence, render both profiles, ensure personal integrations are absent from the professional profile, and check interactive shell initialization without reading secrets. [GitHub Actions](../.github/workflows/shell.yml) additionally runs isolated fresh-home provisioning integration tests for both personal and professional profiles on ephemeral macOS runners via [`tests/run_fresh_home.sh`](../tests/run_fresh_home.sh). That integration test refuses to run outside GitHub Actions. The hosted runner already has Homebrew; full bare-metal installation and permissions must still be verified separately if needed.
 
 Review your Git diff and CI checks before merging the feature branch. Do not run a destructive first-time provisioning test on an existing Mac.

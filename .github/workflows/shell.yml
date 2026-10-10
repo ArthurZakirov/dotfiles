@@ -19,9 +19,15 @@ jobs:
 
   fresh-home:
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [personal, professional]
     steps:
       - uses: actions/checkout@v4
       - name: Install chezmoi for integration test
         run: brew install chezmoi
       - name: Provision isolated temporary HOME
+        env:
+          DOTFILES_PROFILE: ${{ matrix.profile }}
         run: bash ./tests/run_fresh_home.sh
