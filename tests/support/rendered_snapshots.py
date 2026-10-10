@@ -19,8 +19,6 @@ def rendered_outputs(rendered: RenderedProfile, repository: Path) -> dict[str, s
     outputs = {
         "chezmoi.toml": rendered.config.read_text(),
         "zshrc": rendered.zshrc.read_text(),
-        "install-shell.sh": rendered.installation_hook.read_text(),
-        "backup-shell.sh": rendered.backup_hook.read_text(),
     }
     for name, content in outputs.items():
         for original, replacement in replacements:
