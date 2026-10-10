@@ -10,7 +10,7 @@ install_homebrew_packages() {
   brew bundle install --no-upgrade --file="$DOTFILES_ROOT/Brewfile"
 }
 
-install_editor() {
+install_visual_studio_code() {
   local app
   if [[ ! -d "/Applications/Visual Studio Code.app" && ! -d "$HOME/Applications/Visual Studio Code.app" ]]; then
     brew install --cask visual-studio-code
@@ -21,6 +21,10 @@ install_editor() {
     mkdir -p "$HOME/.local/bin"
     ln -s "$app/Contents/Resources/app/bin/code" "$HOME/.local/bin/code"
   fi
+}
+
+install_editors() {
+  install_visual_studio_code
 }
 
 install_oh_my_zsh() {
@@ -43,10 +47,9 @@ install_oh_my_zsh() {
   fi
 }
 
-install_profile_tools() {
+install_bitwarden_secrets_manager() {
   local installer
-  [[ "$DOTFILES_PROFILE" == personal ]] || return 0
-  command -v bws >/dev/null 2>&1 && return
+  command -v bws >/dev/null 2>&1 && return 0
   installer="$(mktemp)"
   if ! curl -fsSL https://bws.bitwarden.com/install -o "$installer"; then
     rm -f "$installer"
@@ -59,15 +62,35 @@ install_profile_tools() {
   rm -f "$installer"
 }
 
+install_personal_profile() {
+  install_bitwarden_secrets_manager
+}
+
+install_professional_profile() {
+  : # No professional-only tools yet.
+}
+
+install_profile() {
+  case "$DOTFILES_PROFILE" in
+    personal) install_personal_profile ;;
+    professional) install_professional_profile ;;
+    *) echo "Unsupported Mac profile: $DOTFILES_PROFILE" >&2; return 2 ;;
+  esac
+}
+
 main() {
   [[ "$(uname -s)" == Darwin ]] || {
     echo "This dotfiles setup currently requires macOS." >&2
     return 1
   }
+  case "$DOTFILES_PROFILE" in
+    personal|professional) ;;
+    *) echo "Unsupported Mac profile: $DOTFILES_PROFILE" >&2; return 2 ;;
+  esac
   install_homebrew
   configure_homebrew
   install_homebrew_packages
-  install_editor
+  install_editors
   install_oh_my_zsh
-  install_profile_tools
+  install_profile
 }
