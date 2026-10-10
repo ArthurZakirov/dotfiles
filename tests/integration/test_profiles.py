@@ -3,6 +3,16 @@
 import pytest
 
 from tests.support.chezmoi_profile import ChezmoiProfileFixture, RenderedProfile
+from tests.support.rendered_snapshots import assert_snapshots_match
+
+
+def test_complete_render_matches_reviewed_snapshots(
+    rendered_profile: RenderedProfile, profile_factory: ChezmoiProfileFixture
+) -> None:
+    # GIVEN committed full renders of both machine profiles
+    # WHEN chezmoi renders the same files on this machine
+    # THEN every byte matches the reviewed, path-normalized snapshots
+    assert_snapshots_match(rendered_profile, profile_factory.repository)
 
 
 def test_chezmoi_uses_vscode_for_editing_and_diffs(rendered_profile: RenderedProfile) -> None:

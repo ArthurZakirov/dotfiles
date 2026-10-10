@@ -1,0 +1,15 @@
+sourceDir = "<DOTFILES_REPO>"
+
+[data]
+    profile = "personal"
+    githubUsername = "ArthurZakirov"
+    bwsAccount = "bws-macbook-air"
+
+[diff]
+    command = "code"
+    args = ["--wait", "--diff"]
+    exclude = ["scripts"]
+
+[edit]
+    command = "code"
+    args = ["--wait"]
