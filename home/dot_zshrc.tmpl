@@ -1,4 +1,6 @@
 # Managed by chezmoi. Edit the source, then run chezmoi diff and chezmoi apply.
+# PATHS
+# ------------------------------------------------------
 # Homebrew works on Apple Silicon and Intel Macs.
 if [[ -x /opt/homebrew/bin/brew ]]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
@@ -14,18 +16,24 @@ export THIRD_PARTY_REPOS_DIR="$REPOS_DIR/third-party"
 export PROFESSIONAL_REPOS_DIR="$REPOS_DIR/professional"
 export TICKETS_DIR="$HOME/Tickets"
 
+# ZSH CONFIGURATION
+# ------------------------------------------------------
 # One plugin manager for installation (Homebrew); Oh My Zsh loads Git helpers.
 ZSH_THEME=""
 plugins=(git)
 zstyle ':omz:update' mode disabled
 source "$ZSH/oh-my-zsh.sh"
 
+# HISTORY
+# ------------------------------------------------------
 HISTFILE="$HOME/.zsh_history"
 HISTSIZE=100000
 SAVEHIST=100000
 setopt APPEND_HISTORY INC_APPEND_HISTORY SHARE_HISTORY
 setopt HIST_IGNORE_DUPS HIST_IGNORE_ALL_DUPS HIST_REDUCE_BLANKS HIST_VERIFY
 
+# SEARCH & COMPLETION
+# ------------------------------------------------------
 if command -v fzf >/dev/null 2>&1; then
   eval "$(fzf --zsh)"
 fi
@@ -37,6 +45,8 @@ bindkey '^[[B' down-line-or-beginning-search
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'
 zstyle ':completion:*' menu select
 
+# PROMPT
+# ------------------------------------------------------
 # Folder name and Git branch; add a hook without replacing other precmd hooks.
 autoload -Uz vcs_info add-zsh-hook
 add-zsh-hook precmd vcs_info
@@ -44,9 +54,13 @@ zstyle ':vcs_info:git:*' formats ' (%b)'
 setopt PROMPT_SUBST
 PROMPT='%1~${vcs_info_msg_0_} %# '
 
+# CHEZMOI & EDITOR
+# ------------------------------------------------------
 export GITHUB_USERNAME="ArthurZakirov"
 export CHEZMOI_SOURCE_PATH={{ .chezmoi.sourceDir | quote }}
 export EDITOR="code --wait"
+# WORKFLOW COMMANDS & ALIASES
+# ------------------------------------------------------
 alias sync-systemsmith="npx --yes skills add ArthurZakirov/SystemSmith --global --agent codex --skill '*' --yes"
 alias sync-agents-md="curl -fsSL https://raw.githubusercontent.com/ArthurZakirov/AgentDesk/main/scripts/install-global-guidance.sh | sh"
 # Optional integrations become available when AgentDesk/Raycast are installed.
@@ -61,8 +75,12 @@ raycast-quicklinks() {
 {{ if eq .profile "personal" -}}
 {{ template "personal.zsh" . }}
 {{ end -}}
+# LOCAL CONFIGURATION
+# ------------------------------------------------------
 # Optional untracked additions; machine differences belong in chezmoi templates.
 [[ -r "$HOME/.zshrc.local" ]] && source "$HOME/.zshrc.local"
+# PLUGIN LOADING
+# ------------------------------------------------------
 # Plugins load once, from the same package source on every Mac.
 source "$HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
 # Highlighting must load after completion and custom widgets.

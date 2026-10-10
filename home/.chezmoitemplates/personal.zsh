@@ -1,6 +1,11 @@
 # Personal Mac only. Credentials stay in Keychain, outside this repository.
+# CONFIG ENV VARIABLES (PERSONAL MAC ONLY)
+# ------------------------------------------------------
 export LANGSMITH_TRACING=true
 export LANGSMITH_PROJECT="codex"
+
+# API KEYS (PERSONAL MAC ONLY)
+# ------------------------------------------------------
 bws() {
   local access_token
   access_token="$(security find-generic-password -a {{ .bwsAccount | quote }} -s BWS_ACCESS_TOKEN -w)" || return
