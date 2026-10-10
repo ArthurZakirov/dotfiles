@@ -4,21 +4,36 @@
 
 ## Which setup case applies?
 
+**Step 1 — Run this read-only diagnosis in Terminal (copy/paste):**
+
+```sh
+if ! command -v chezmoi >/dev/null 2>&1; then
+  echo 'NOT INSTALLED'
+elif ! source_dir="$(chezmoi source-path 2>/dev/null)" || [[ ! -d "$source_dir" ]]; then
+  echo 'NOT INITIALIZED'
+elif [[ -z "$(chezmoi managed 2>/dev/null)" ]]; then
+  echo 'NOT INITIALIZED'
+else
+  echo 'MANAGED'
+fi
+```
+
+**Step 2 — Follow the branch matching the printed result:**
+
 ```mermaid
 flowchart TD
-    A{"command -v chezmoi<br/>returns a path?"}
-    A -- No --> B{"New or unconfigured Mac?"}
+    A{"Diagnosis result?"}
+    A -- "NOT INSTALLED" --> B{"New / unconfigured Mac?"}
+    A -- "NOT INITIALIZED" --> INSPECT["Inspect your installation"]
+    A -- "MANAGED" --> SYNC["Already configured Mac: synchronize safely"]
     B -- Yes --> NEW["New Mac: one native chezmoi command"]
-    B -- No --> INSPECT["Inspect your installation"]
-    A -- Yes --> C{"chezmoi source-path exists<br/>and chezmoi managed lists files?"}
-    C -- Yes --> SYNC["Already configured Mac: synchronize safely"]
-    C -- No --> INSPECT
+    B -- No --> INSPECT
     click NEW "#new-mac-one-native-chezmoi-command" "New Mac: one native chezmoi command"
     click INSPECT "#inspect-your-installation" "Inspect your installation"
     click SYNC "#already-configured-mac-synchronize-safely" "Already configured Mac: synchronize safely"
 ```
 
-The commands in the decision nodes are read-only. **Do not run `init --apply` on an existing Mac until its configuration has been inspected and backed up.**
+**Do not run `init --apply` on an existing Mac until you have inspected and preserved its configuration.**
 
 ## New Mac: one native chezmoi command
 
