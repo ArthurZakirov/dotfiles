@@ -79,7 +79,7 @@ For repository structure and installer responsibilities, see [Architecture](arch
    ./tests/run.sh
    ```
 
-3. Fix failing tests. If a template change intentionally affects the rendered `.zshrc` or chezmoi TOML, regenerate the [snapshots](../tests/fixtures/rendered/), inspect their diff, and rerun the tests:
+3. Fix failing tests. If a change intentionally affects any snapshotted rendered file, regenerate the [snapshots](../tests/fixtures/rendered/), inspect their diff, and rerun the tests. When adding a new managed configuration file, add appropriate rendering tests and snapshots if useful:
 
    ```sh
    poetry run python -m tests.support.update_rendered_snapshots
