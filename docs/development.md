@@ -83,7 +83,7 @@ git push -u origin HEAD
 gh pr create --fill
 ```
 
-Review the diff, CodeRabbit feedback, and GitHub Actions results. Fix issues on the branch and merge the PR only when the checks pass.
+Wait for the pull request's required checks to pass, then merge it.
 
 ### Step 6 — Update your local checkout after merging
 
