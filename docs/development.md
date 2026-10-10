@@ -115,3 +115,29 @@ git pull --ff-only
 ### Step 7 — Preview and apply on this Mac
 
 Follow [Already configured Mac: synchronize safely](setup.md#already-configured-mac-synchronize-safely).
+
+### Professional Mac — Keep work-only shell settings local
+
+1. On the professional Mac, create or edit the unmanaged override file:
+
+   ```sh
+   touch "$HOME/.zshrc.local"
+   code "$HOME/.zshrc.local"
+   ```
+
+2. Add work-specific aliases, environment variables, or paths, for example:
+
+   ```zsh
+   export WORK_PROJECTS="$HOME/Repos/professional"
+   alias work='cd "$WORK_PROJECTS"'
+   ```
+
+3. Reload the shell to pick up the changes:
+
+   ```sh
+   exec zsh
+   ```
+
+4. To receive published shared changes, follow [Already configured Mac: synchronize safely](setup.md#already-configured-mac-synchronize-safely), or run `chezmoi update` **only when the chezmoi source checkout is clean and tracking the intended upstream branch**.
+
+Do **not** run `chezmoi add` or `chezmoi re-add` on `~/.zshrc.local`, and do not commit it. The managed [`home/dot_zshrc.tmpl`](../home/dot_zshrc.tmpl) already sources that file when readable; `chezmoi update` does not manage it.
