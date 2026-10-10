@@ -7,10 +7,11 @@ One command installs Homebrew (if needed), chezmoi, shell dependencies, Oh My Zs
 Run in Terminal on a personal Mac:
 
 ```sh
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/ArthurZakirov/dotfiles/HEAD/scripts/bootstrap.sh)" -- personal
+export GITHUB_USERNAME="ArthurZakirov"
+/bin/bash -c "$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_USERNAME}/dotfiles/HEAD/scripts/bootstrap.sh")" -- personal
 ```
 
-For a professional Mac, replace the final `personal` with `professional`. `HEAD` follows the repository's default branch. Fresh clones use the remote's HEAD too; no default branch name is hardcoded. To explicitly clone another branch, set `DOTFILES_BRANCH` before running the script.
+For a professional Mac, replace the final `personal` with `professional`. `GITHUB_USERNAME` is the only repository identity the script needs: chezmoi resolves it as GitHub's `<username>/dotfiles` convention. Fresh clones follow the remote's HEAD. To explicitly choose a branch, set `DOTFILES_BRANCH` before running the script.
 
 The download command becomes available once this setup is merged into the default branch. Until then, run the [local bootstrap script](scripts/bootstrap.sh) from a checkout containing this setup:
 

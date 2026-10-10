@@ -1,47 +1,123 @@
 #!/bin/bash
 set -euo pipefail
-[[ "$(uname -s)" == Darwin ]] || { echo "This setup requires macOS." >&2; exit 1; }
-profile="${1:-personal}"
-case "$profile" in personal|professional) ;; *) echo "Usage: bootstrap.sh [personal|professional]" >&2; exit 2;; esac
-branch="${DOTFILES_BRANCH:-HEAD}"
-source_dir="$HOME/Repos/personal/dotfiles"
 
-if [[ ! -x /opt/homebrew/bin/brew && ! -x /usr/local/bin/brew ]]; then
+# Inputs are injected through the environment so this script does not own a
+# repository URL, account name, or source-directory policy.
+profile=""
+github_username="${GITHUB_USERNAME:-}"
+source_dir="${DOTFILES_SOURCE_DIR:-$HOME/Repos/personal/dotfiles}"
+dotfiles_branch="${DOTFILES_BRANCH:-}"
+backup_dir=""
+
+usage() {
+  cat <<'EOF'
+Usage: GITHUB_USERNAME=<github-user> bootstrap.sh [personal|professional]
+
+Optional environment variables:
+  DOTFILES_SOURCE_DIR  Local checkout location.
+  DOTFILES_BRANCH      Git branch to use. Omit it to follow the remote HEAD.
+EOF
+}
+
+parse_arguments() {
+  profile="${1:-personal}"
+  case "$profile" in
+    personal|professional) ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+}
+
+validate_environment() {
+  [[ "$(uname -s)" == Darwin ]] || {
+    echo "This setup requires macOS." >&2
+    exit 1
+  }
+  [[ -n "$github_username" ]] || {
+    echo "Set GITHUB_USERNAME to the GitHub account that owns the dotfiles repository." >&2
+    exit 2
+  }
+}
+
+install_homebrew() {
+  local installer
+  if [[ -x /opt/homebrew/bin/brew || -x /usr/local/bin/brew ]]; then
+    return
+  fi
   installer="$(mktemp)"
   trap 'rm -f "$installer"' EXIT
   curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o "$installer"
   /bin/bash "$installer"
-fi
-if [[ -x /opt/homebrew/bin/brew ]]; then
-  eval "$(/opt/homebrew/bin/brew shellenv)"
-else
-  eval "$(/usr/local/bin/brew shellenv)"
-fi
-command -v chezmoi >/dev/null 2>&1 || brew install chezmoi
-command -v git >/dev/null 2>&1 || brew install git
-if [[ ! -e "$source_dir" ]]; then
-  mkdir -p "$(dirname "$source_dir")"
-  if [[ "$branch" == HEAD ]]; then
-    git clone https://github.com/ArthurZakirov/dotfiles.git "$source_dir"
+}
+
+configure_homebrew() {
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [[ -x /usr/local/bin/brew ]]; then
+    eval "$(/usr/local/bin/brew shellenv)"
   else
-    git clone --branch "$branch" https://github.com/ArthurZakirov/dotfiles.git "$source_dir"
+    echo "Homebrew was installed but its executable could not be found." >&2
+    exit 1
   fi
-else
-  [[ -f "$source_dir/.chezmoiroot" && -f "$source_dir/home/dot_zshrc.tmpl" ]] || {
-    echo "Existing source directory has no shell setup. Update it manually, preserving local changes." >&2; exit 1;
-  }
-fi
-# Preserve the old configuration before changing the managed shell.
-backup_dir="$HOME/Library/Application Support/dotfiles/backups/$(date +%Y%m%d-%H%M%S)-$$"
-mkdir -p "$backup_dir"
-[[ ! -e "$HOME/.zshrc" ]] || cp -p "$HOME/.zshrc" "$backup_dir/zshrc"
-config="$HOME/.config/chezmoi/chezmoi.toml"
-[[ ! -e "$config" ]] || cp -p "$config" "$backup_dir/chezmoi.toml"
-# Update the legacy default link only if it is the known broken link.
-if [[ -L "$HOME/.local/share/chezmoi" && ! -e "$HOME/.local/share/chezmoi" && "$(readlink "$HOME/.local/share/chezmoi")" == "$HOME/Repos/dotfiles" ]]; then
-  ln -sfn "$source_dir" "$HOME/.local/share/chezmoi"
-fi
-chezmoi init --source "$source_dir" --prompt --promptChoice "Mac profile=$profile" --promptString 'Bitwarden Keychain account=bws-macbook-air'
-chezmoi apply --force
-/bin/zsh -n "$HOME/.zshrc"
-echo "Shell setup complete ($profile). Backup: $backup_dir. Open a new terminal."
+}
+
+install_bootstrap_tools() {
+  local formula
+  local bootstrap_formulae=(chezmoi git)
+  for formula in "${bootstrap_formulae[@]}"; do
+    command -v "$formula" >/dev/null 2>&1 || brew install "$formula"
+  done
+}
+
+initialize_chezmoi() {
+  local init_args=(
+    init
+    --source "$source_dir"
+    --prompt
+    --promptChoice "Mac profile=$profile"
+    --promptString "GitHub username=$github_username"
+    --promptString 'Bitwarden Keychain account=bws-macbook-air'
+  )
+  if [[ -e "$source_dir" ]]; then
+    [[ -f "$source_dir/.chezmoiroot" && -f "$source_dir/home/dot_zshrc.tmpl" ]] || {
+      echo "Existing source directory is not this shell setup: $source_dir" >&2
+      exit 1
+    }
+  else
+    mkdir -p "$(dirname "$source_dir")"
+    [[ -z "$dotfiles_branch" ]] || init_args+=(--branch "$dotfiles_branch")
+    init_args+=("$github_username")
+  fi
+  chezmoi "${init_args[@]}"
+}
+
+backup_existing_configuration() {
+  local chezmoi_config="$HOME/.config/chezmoi/chezmoi.toml"
+  backup_dir="$HOME/Library/Application Support/dotfiles/backups/$(date +%Y%m%d-%H%M%S)-$$"
+  mkdir -p "$backup_dir"
+  [[ ! -e "$HOME/.zshrc" ]] || cp -p "$HOME/.zshrc" "$backup_dir/zshrc"
+  [[ ! -e "$chezmoi_config" ]] || cp -p "$chezmoi_config" "$backup_dir/chezmoi.toml"
+}
+
+apply_dotfiles() {
+  chezmoi apply --force
+}
+
+validate_shell() {
+  /bin/zsh -n "$HOME/.zshrc"
+}
+
+main() {
+  parse_arguments "$@"
+  validate_environment
+  install_homebrew
+  configure_homebrew
+  install_bootstrap_tools
+  backup_existing_configuration
+  initialize_chezmoi
+  apply_dotfiles
+  validate_shell
+  echo "Shell setup complete ($profile). Backup: $backup_dir. Open a new terminal."
+}
+
+main "$@"

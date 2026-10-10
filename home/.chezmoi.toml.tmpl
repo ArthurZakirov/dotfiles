@@ -1,4 +1,5 @@
 {{- $profile := promptChoiceOnce . "profile" "Mac profile" (list "personal" "professional") "personal" -}}
+{{- $githubUsername := promptStringOnce . "githubUsername" "GitHub username" (env "GITHUB_USERNAME") -}}
 {{- $account := "" -}}
 {{- if eq $profile "personal" -}}
 {{- $account = promptStringOnce . "bwsAccount" "Bitwarden Keychain account" "bws-macbook-air" -}}
@@ -6,4 +7,5 @@
 sourceDir = {{ .chezmoi.workingTree | quote }}
 [data]
 profile = {{ $profile | quote }}
+githubUsername = {{ $githubUsername | quote }}
 bwsAccount = {{ $account | quote }}

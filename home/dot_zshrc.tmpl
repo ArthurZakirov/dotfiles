@@ -56,7 +56,7 @@ PROMPT='%1~${vcs_info_msg_0_} %# '
 
 # CHEZMOI & EDITOR
 # ------------------------------------------------------
-export GITHUB_USERNAME="ArthurZakirov"
+export GITHUB_USERNAME={{ .githubUsername | quote }}
 export CHEZMOI_SOURCE_PATH={{ .chezmoi.sourceDir | quote }}
 export EDITOR="code --wait"
 # WORKFLOW COMMANDS & ALIASES

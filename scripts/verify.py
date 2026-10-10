@@ -17,6 +17,7 @@ with tempfile.TemporaryDirectory() as temporary:
         config = work / f"{profile}.toml"
         base = ["chezmoi", "--source", str(ROOT), "--config", str(config)]
         run(*base, "init", "--promptChoice", f"Mac profile={profile}",
+            "--promptString", "GitHub username=ArthurZakirov",
             "--promptString", "Bitwarden Keychain account=bws-macbook-air")
         shell = work / f"{profile}.zsh"
         shell.write_text(run(*base, "cat", str(Path.home() / ".zshrc")).stdout)
