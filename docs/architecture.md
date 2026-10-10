@@ -53,7 +53,7 @@ Application paths are checked under `/Applications` and `$HOME/Applications`; DD
 
 ### Personal-only applications
 
-The personal profile also installs missing Bitwarden Desktop (`bitwarden`), Telegram (`telegram`), WhatsApp (`whatsapp`), Todoist (`todoist-app`), Notion (`notion`), xurl (`xdevplatform/tap/xurl`), and LangSmith CLI (`langchain-ai/tap/langsmith-cli`). Node.js is shared: the installer verifies `node`, `npm`, and `npx` exist after installing Node.
+The personal profile also installs missing Bitwarden Desktop (`bitwarden`), Telegram (`telegram`), WhatsApp (`whatsapp`), Todoist (`todoist-app`), Notion (`notion`), xurl (`xdevplatform/tap/xurl`), LangSmith CLI (`langchain-ai/tap/langsmith-cli`), and Desktop Commander (`npm install --global @wonderwhy-er/desktop-commander`). The Desktop Commander installer skips npm when `desktop-commander` is already on `PATH`. Node.js is shared: the installer verifies `node`, `npm`, and `npx` exist after installing Node.
 
 **Not yet automated:** Bitdefender Antivirus does not have a verified Homebrew cask; Desktop Commander Device (`~/.desktop-commander-device`) is a device pairing/configuration directory, **not** the `@wonderwhy-er/desktop-commander` CLI. Do not copy pairing credentials between devices. Codex Computer Use is not a separate `code` CLI to install; its setup requires confirming the appropriate product/application capability.
 

@@ -74,6 +74,19 @@ install_personal_apps() {
   install_missing_cask notion 'Notion.app'
   install_missing_cli_cask xurl xdevplatform/tap/xurl
   install_missing_formula langsmith langchain-ai/tap/langsmith-cli
+  install_desktop_commander_cli
+}
+
+install_desktop_commander_cli() {
+  if command -v desktop-commander >/dev/null 2>&1; then
+    echo 'Already installed: desktop-commander'
+    return 0
+  fi
+  command -v npm >/dev/null 2>&1 || {
+    echo 'npm is required to install Desktop Commander.' >&2
+    return 1
+  }
+  npm install --global @wonderwhy-er/desktop-commander
 }
 
 verify_node_toolchain() {
