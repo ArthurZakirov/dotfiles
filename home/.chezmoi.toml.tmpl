@@ -9,3 +9,11 @@ sourceDir = {{ .chezmoi.workingTree | quote }}
 profile = {{ $profile | quote }}
 githubUsername = {{ $githubUsername | quote }}
 bwsAccount = {{ $account | quote }}
+
+[diff]
+    command = "code"
+    args = ["--wait", "--diff"]
+
+[edit]
+    command = "code"
+    args = ["--wait"]
