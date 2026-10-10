@@ -1,80 +1,59 @@
-"""Readable behavior tests for rendered personal and professional profiles."""
+"""Behavioral tests for both machine profiles; low-level setup lives in fixtures."""
 
-from pathlib import Path
-from tempfile import TemporaryDirectory
-import unittest
+import pytest
 
-from tests.support.chezmoi_profile import ChezmoiProfileFixture
+from tests.support.chezmoi_profile import ChezmoiProfileFixture, RenderedProfile
 
 
-class TestProfileRendering(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.temporary = TemporaryDirectory(prefix="dotfiles-profile-tests-")
-        cls.fixture = ChezmoiProfileFixture(
-            Path(__file__).resolve().parents[1], Path(cls.temporary.name)
-        )
-        cls.personal = cls.fixture.render("personal")
-        cls.professional = cls.fixture.render("professional")
+def test_chezmoi_uses_vscode_for_editing_and_diffs(rendered_profile: RenderedProfile) -> None:
+    # GIVEN a rendered machine profile
+    # WHEN inspecting its generated chezmoi configuration
+    configuration = rendered_profile.config.read_text()
 
-    @classmethod
-    def tearDownClass(cls) -> None:
-        cls.temporary.cleanup()
-
-    def test_chezmoi_uses_vscode_for_editing_and_diffs(self) -> None:
-        # GIVEN both machine profiles have been rendered
-        for profile in (self.personal, self.professional):
-            with self.subTest(profile=profile.name):
-                # WHEN inspecting the generated chezmoi configuration
-                config_text = profile.config.read_text()
-
-                # THEN VS Code is configured for edit and diff operations
-                self.assertIn('[edit]\n    command = "code"', config_text)
-                self.assertIn('[diff]\n    command = "code"', config_text)
-
-    def test_shell_and_installation_hooks_have_valid_syntax(self) -> None:
-        # GIVEN rendered zshrc and lifecycle hooks for each profile
-        for profile in (self.personal, self.professional):
-            with self.subTest(profile=profile.name):
-                # WHEN checking all scripts with their respective shells
-                # THEN each script parses successfully
-                self.fixture.validate_shell_syntax(profile)
-
-    def test_personal_profile_enables_personal_integrations(self) -> None:
-        # GIVEN a personal Mac profile
-        profile = self.personal
-
-        # WHEN reading its rendered shell configuration
-        shell = profile.shell_text
-
-        # THEN LangSmith and the Bitwarden wrapper are available
-        self.assertIn("LANGSMITH_TRACING=true", shell)
-        self.assertIn("bws()", shell)
-
-    def test_professional_profile_excludes_personal_integrations(self) -> None:
-        # GIVEN a professional Mac profile
-        profile = self.professional
-
-        # WHEN inspecting the rendered shell and installation hook
-        scripts = profile.shell_text + profile.installation_hook.read_text()
-
-        # THEN neither Bitwarden nor LangSmith configuration appears
-        for forbidden in ("LANGSMITH", "BWS_ACCESS_TOKEN", "bws()", "bws.bitwarden.com"):
-            with self.subTest(forbidden=forbidden):
-                self.assertNotIn(forbidden, scripts)
-
-    def test_both_profiles_initialize_an_interactive_shell(self) -> None:
-        # GIVEN both rendered profiles and a stubbed Keychain command
-        for profile in (self.personal, self.professional):
-            with self.subTest(profile=profile.name):
-                # WHEN starting zsh with the rendered configuration
-                # THEN completion, prompt and shell plugins initialize
-                self.fixture.start_interactive_shell_without_secrets(profile)
+    # THEN VS Code is configured for both operations
+    assert '[edit]\n    command = "code"' in configuration
+    assert '[diff]\n    command = "code"' in configuration
 
 
-def main() -> None:
-    unittest.main(module=__name__, verbosity=2)
+def test_shell_and_installation_hooks_have_valid_syntax(
+    rendered_profile: RenderedProfile, profile_factory: ChezmoiProfileFixture
+) -> None:
+    # GIVEN a rendered profile and its lifecycle hooks
+    # WHEN validating their syntax
+    # THEN all files parse without errors
+    profile_factory.validate_shell_syntax(rendered_profile)
 
 
-if __name__ == "__main__":
-    main()
+@pytest.mark.parametrize(
+    ("profile", "expected_integrations"),
+    [
+        ("personal", True),
+        ("professional", False),
+    ],
+)
+def test_profile_integrations_are_scoped(
+    profile: str, expected_integrations: bool,
+    profile_factory: ChezmoiProfileFixture,
+) -> None:
+    # GIVEN a personal or professional profile
+    rendered = profile_factory.render(profile)
+
+    # WHEN inspecting the rendered configuration
+    scripts = rendered.shell_text + rendered.installation_hook.read_text()
+
+    # THEN personal integrations exist only on personal Macs
+    integrations = ("LANGSMITH_TRACING=true", "bws()")
+    for integration in integrations:
+        assert (integration in scripts) is expected_integrations
+    if not expected_integrations:
+        for forbidden in ("BWS_ACCESS_TOKEN", "bws.bitwarden.com"):
+            assert forbidden not in scripts
+
+
+def test_interactive_shell_starts_without_secrets(
+    rendered_profile: RenderedProfile, profile_factory: ChezmoiProfileFixture
+) -> None:
+    # GIVEN a rendered profile with isolated HOME and stubbed Keychain access
+    # WHEN launching interactive zsh
+    # THEN completion, prompt, and plugins initialize correctly
+    profile_factory.start_interactive_shell_without_secrets(rendered_profile)

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Entry point for non-destructive chezmoi profile behavior tests."""
+"""Compatibility entry point for pytest-based profile checks."""
 
 from pathlib import Path
-import sys
+import subprocess
 
-# Allow running this file directly from anywhere, including CI.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tests.test_profiles import main
+def main() -> int:
+    tests = Path(__file__).resolve().parents[1] / "tests" / "test_profiles.py"
+    return subprocess.call(["pytest", "-q", str(tests)])
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

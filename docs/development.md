@@ -21,7 +21,7 @@ Reusable implementation belongs in [`src/`](../src/shell-setup.sh); lifecycle en
 
 ## Tests
 
-The local test runner is **read-only with respect to your Mac's setup**: it renders templates, validates syntax, and stubs installation functions rather than running the installers.
+The local test runner is **read-only with respect to your Mac's setup**: it renders templates, validates syntax, and stubs installation functions rather than running the installers. Python behavior tests use **pytest** (declared in the root [Brewfile](../Brewfile)); parameterized fixtures exercise both machine profiles.
 
 ```sh
 ./tests/run.sh
@@ -32,7 +32,7 @@ The local test runner is **read-only with respect to your Mac's setup**: it rend
 Each test describes **Given / When / Then** and has a descriptive name, so a reader can skim the behavior without following subprocess arguments or setup logic.
 
 - [Shell orchestration tests](../tests/test_shell_setup_module.sh) verify editor and profile factory dispatch. Their [fixture](../tests/support/shell_setup_fixture.sh) replaces concrete installers with in-memory spies.
-- [Profile rendering tests](../tests/test_profiles.py) verify generated config, both zsh profiles, hook syntax, and interactive startup. Their [chezmoi fixture](../tests/support/chezmoi_profile.py) handles temporary files and subprocesses. [`scripts/verify.py`](../scripts/verify.py) is just a compatibility entry point.
+- [Profile rendering tests](../tests/test_profiles.py) verify generated config, both zsh profiles, hook syntax, and interactive startup. Their [chezmoi fixture](../tests/support/chezmoi_profile.py) handles temporary files and subprocesses. [`scripts/verify.py`](../scripts/verify.py) remains a compatibility entry point.
 - [Fresh-home integration test](../tests/run_fresh_home.sh) describes a clean-machine scenario; its [fixture](../tests/support/fresh_home_fixture.sh) isolates the macOS home directory and performs real provisioning. Shared shell assertions live in [`tests/support/assertions.sh`](../tests/support/assertions.sh).
 
 The [test runner](../tests/run.sh) orchestrates syntax, behavior, and whitespace checks. [GitHub Actions](../.github/workflows/shell.yml) runs isolated fresh-home provisioning for both personal and professional profiles on ephemeral macOS runners. That integration test refuses to run outside GitHub Actions. The hosted runner already has Homebrew; full bare-metal installation and permissions must still be verified separately if needed.

@@ -11,7 +11,7 @@ run_shell_syntax_checks() {
 
 run_unit_tests() {
   bash "$repo_root/tests/test_shell_setup_module.sh"
-  python3 -B "$repo_root/scripts/verify.py"
+  PYTHONDONTWRITEBYTECODE=1 pytest -q "$repo_root/tests/test_profiles.py"
 }
 
 run_quality_checks() {
