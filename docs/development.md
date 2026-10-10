@@ -27,6 +27,14 @@ The local test runner is **read-only with respect to your Mac's setup**: it rend
 ./tests/run.sh
 ```
 
-The tests validate provisioning order and profile-specific installer dispatch, render both profiles, ensure personal integrations are absent from the professional profile, and check interactive shell initialization without reading secrets. [GitHub Actions](../.github/workflows/shell.yml) additionally runs isolated fresh-home provisioning integration tests for both personal and professional profiles on ephemeral macOS runners via [`tests/run_fresh_home.sh`](../tests/run_fresh_home.sh). That integration test refuses to run outside GitHub Actions. The hosted runner already has Homebrew; full bare-metal installation and permissions must still be verified separately if needed.
+### Finding and extending tests
+
+Each test describes **Given / When / Then** and has a descriptive name, so a reader can skim the behavior without following subprocess arguments or setup logic.
+
+- [Shell orchestration tests](../tests/test_shell_setup_module.sh) verify editor and profile factory dispatch. Their [fixture](../tests/support/shell_setup_fixture.sh) replaces concrete installers with in-memory spies.
+- [Profile rendering tests](../tests/test_profiles.py) verify generated config, both zsh profiles, hook syntax, and interactive startup. Their [chezmoi fixture](../tests/support/chezmoi_profile.py) handles temporary files and subprocesses. [`scripts/verify.py`](../scripts/verify.py) is just a compatibility entry point.
+- [Fresh-home integration test](../tests/run_fresh_home.sh) describes a clean-machine scenario; its [fixture](../tests/support/fresh_home_fixture.sh) isolates the macOS home directory and performs real provisioning. Shared shell assertions live in [`tests/support/assertions.sh`](../tests/support/assertions.sh).
+
+The [test runner](../tests/run.sh) orchestrates syntax, behavior, and whitespace checks. [GitHub Actions](../.github/workflows/shell.yml) runs isolated fresh-home provisioning for both personal and professional profiles on ephemeral macOS runners. That integration test refuses to run outside GitHub Actions. The hosted runner already has Homebrew; full bare-metal installation and permissions must still be verified separately if needed.
 
 Review your Git diff and CI checks before merging the feature branch. Do not run a destructive first-time provisioning test on an existing Mac.
