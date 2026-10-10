@@ -6,7 +6,7 @@ import subprocess
 
 
 def main() -> int:
-    tests = Path(__file__).resolve().parents[1] / "tests" / "test_profiles.py"
+    tests = Path(__file__).resolve().parents[1] / "tests" / "integration" / "test_profiles.py"
     return subprocess.call(["pytest", "-q", str(tests)])
 
 

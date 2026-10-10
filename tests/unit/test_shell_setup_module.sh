@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/shell_setup_fixture.sh"
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/../support/shell_setup_fixture.sh"
 
 test_professional_profile_installs_shared_tools_only() {
   # GIVEN a professional Mac with stubbed concrete installers

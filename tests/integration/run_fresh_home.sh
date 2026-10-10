@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/support/fresh_home_fixture.sh"
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/../support/fresh_home_fixture.sh"
 
 test_fresh_mac_provisioning() {
   # GIVEN an ephemeral CI runner, the selected profile and a clean HOME

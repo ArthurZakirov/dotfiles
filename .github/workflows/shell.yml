@@ -30,4 +30,4 @@ jobs:
       - name: Provision isolated temporary HOME
         env:
           DOTFILES_PROFILE: ${{ matrix.profile }}
-        run: bash ./tests/run_fresh_home.sh
+        run: bash ./tests/integration/run_fresh_home.sh

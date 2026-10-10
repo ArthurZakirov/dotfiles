@@ -9,7 +9,7 @@ from tests.support.chezmoi_profile import ChezmoiProfileFixture, RenderedProfile
 
 @pytest.fixture(scope="session")
 def profile_factory(tmp_path_factory: pytest.TempPathFactory) -> ChezmoiProfileFixture:
-    repository = Path(__file__).resolve().parents[1]
+    repository = Path(__file__).resolve().parents[2]
     scratch = tmp_path_factory.mktemp("chezmoi-profiles")
     return ChezmoiProfileFixture(repository, scratch)
 
