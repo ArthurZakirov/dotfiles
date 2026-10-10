@@ -8,15 +8,15 @@ Run in Terminal on a personal Mac:
 
 ```sh
 export GITHUB_USERNAME="ArthurZakirov"
-/bin/bash -c "$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_USERNAME}/dotfiles/HEAD/scripts/bootstrap.sh")" -- personal
+/bin/bash -c "$(curl -fsSL "https://raw.githubusercontent.com/${GITHUB_USERNAME}/dotfiles/HEAD/scripts/run_bootstrap.sh")" -- personal
 ```
 
 For a professional Mac, replace the final `personal` with `professional`. `GITHUB_USERNAME` is the only repository identity the script needs: chezmoi resolves it as GitHub's `<username>/dotfiles` convention. Fresh clones follow the remote's HEAD. To explicitly choose a branch, set `DOTFILES_BRANCH` before running the script.
 
-The download command becomes available once this setup is merged into the default branch. Until then, run the [local bootstrap script](scripts/bootstrap.sh) from a checkout containing this setup:
+The download command becomes available once this setup is merged into the default branch. Until then, run the [local bootstrap script](scripts/run_bootstrap.sh) from a checkout containing this setup:
 
 ```sh
-/bin/bash scripts/bootstrap.sh personal
+/bin/bash scripts/run_bootstrap.sh personal
 ```
 
 macOS may request your administrator password or approval to install Command Line Tools. Bitwarden authentication is a separate, one-time step on personal Macs; the shell starts normally before the Keychain entry exists. The installer preserves existing zsh/config files in a timestamped backup and prints its location. Open a new terminal after installation.

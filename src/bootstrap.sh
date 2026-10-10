@@ -1,5 +1,8 @@
 #!/bin/bash
 
+module_dir="${DOTFILES_MODULE_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
+source "$module_dir/homebrew.sh"
+
 profile=""
 github_username=""
 dotfiles_source_dir=""
@@ -8,7 +11,7 @@ backup_dir=""
 
 usage() {
   cat <<'EOF'
-Usage: GITHUB_USERNAME=<github-user> bootstrap.sh [personal|professional]
+Usage: GITHUB_USERNAME=<github-user> run_bootstrap.sh [personal|professional]
 
 Optional environment variables:
   DOTFILES_SOURCE_DIR  Local checkout location.
@@ -53,23 +56,8 @@ install_homebrew() {
   /bin/bash "$installer"
 }
 
-configure_homebrew() {
-  if [[ -x /opt/homebrew/bin/brew ]]; then
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-  elif [[ -x /usr/local/bin/brew ]]; then
-    eval "$(/usr/local/bin/brew shellenv)"
-  else
-    echo "Homebrew was installed but its executable could not be found." >&2
-    exit 1
-  fi
-}
-
 install_bootstrap_tools() {
-  local formula
-  local bootstrap_formulae=(chezmoi git)
-  for formula in "${bootstrap_formulae[@]}"; do
-    command -v "$formula" >/dev/null 2>&1 || brew install "$formula"
-  done
+  install_formulae chezmoi git
 }
 
 backup_existing_configuration() {

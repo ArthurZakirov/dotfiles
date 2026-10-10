@@ -2,20 +2,11 @@
 
 : "${DOTFILES_ROOT:?DOTFILES_ROOT must point to the dotfiles checkout}"
 : "${DOTFILES_PROFILE:?DOTFILES_PROFILE must be personal or professional}"
-
-configure_homebrew() {
-  if [[ -x /opt/homebrew/bin/brew ]]; then
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-  elif [[ -x /usr/local/bin/brew ]]; then
-    eval "$(/usr/local/bin/brew shellenv)"
-  else
-    echo "Run scripts/bootstrap.sh to install Homebrew first." >&2
-    exit 1
-  fi
-  export PATH="$HOME/.local/bin:$PATH"
-}
+module_dir="${DOTFILES_MODULE_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)}"
+source "$module_dir/homebrew.sh"
 
 install_homebrew_packages() {
+  export PATH="$HOME/.local/bin:$PATH"
   brew bundle install --no-upgrade --file="$DOTFILES_ROOT/Brewfile"
 }
 
