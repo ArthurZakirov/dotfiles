@@ -83,7 +83,12 @@ class ChezmoiProfileFixture:
         fake_bin = self.scratch_directory / "fake-bin"
         fake_bin.mkdir(exist_ok=True)
         fake_bws = fake_bin / "bws"
-        fake_bws.write_text('#!/bin/sh\necho \'TEST_BWS_EXPORT="synthetic-value"\'\n')
+        fake_bws.write_text(
+            '#!/bin/sh\n'
+            'printf \'%s\\n\' \'[{"key":"TEST_BWS_EXPORT",'
+            '"value":"synthetic-value"},'
+            '{"key":"TEST_BWS_LITERAL","value":"$(echo exploited)"}]\'\n'
+        )
         fake_bws.chmod(0o755)
 
         environment = os.environ.copy()
@@ -97,8 +102,9 @@ class ChezmoiProfileFixture:
 security() { return 0; }
 source "$1"
 [[ "$TEST_BWS_EXPORT" == synthetic-value ]] || exit 20
-[[ ! -o allexport ]] || exit 21
-/bin/zsh -fc '[[ "$TEST_BWS_EXPORT" == synthetic-value ]]' || exit 22
+[[ "$TEST_BWS_LITERAL" == '$(echo exploited)' ]] || exit 21
+[[ ! -o allexport ]] || exit 22
+/bin/zsh -fc '[[ "$TEST_BWS_EXPORT" == synthetic-value && "$TEST_BWS_LITERAL" == '\''$(echo exploited)'\'' ]]' || exit 23
 """
         self.run("/bin/zsh", "-fc", shell_check, "verify", str(rendered.zshrc),
                  env=environment)

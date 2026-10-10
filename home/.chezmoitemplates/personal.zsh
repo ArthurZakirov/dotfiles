@@ -13,17 +13,15 @@ bws() {
 }
 # A new Mac works before secret provisioning; only load after the entry exists.
 if command -v bws >/dev/null 2>&1 && security find-generic-password -a {{ .bwsAccount | quote }} -s BWS_ACCESS_TOKEN >/dev/null 2>&1; then
-  if _bws_env="$(bws secret list --output env)"; then
-    # BWS emits assignments without export; make them visible to child processes.
-    if [[ -o allexport ]]; then
-      eval "$_bws_env"
-    else
-      setopt allexport
-      eval "$_bws_env"
-      unsetopt allexport
-    fi
+  if _bws_json="$(bws secret list --output json)"; then
+    # Interpret secret values as data, never shell code (including $(...) values).
+    # NUL-delimited pairs preserve spaces, quotes, and newlines.
+    while IFS= read -r -d '' _bws_key && IFS= read -r -d '' _bws_value; do
+      typeset -gx "$_bws_key=$_bws_value"
+    done < <(python3 {{ printf "%s/src/bws_env.py" .chezmoi.workingTree | quote }} <<< "$_bws_json")
+    unset _bws_key _bws_value
   else
     print -u2 'Bitwarden secrets could not be loaded; check authentication.'
   fi
-  unset _bws_env
+  unset _bws_json
 fi

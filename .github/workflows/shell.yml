@@ -3,11 +3,16 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   profiles:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Install shell dependencies for read-only tests
         run: |
           brew bundle install --no-upgrade --file=Brewfile
@@ -25,6 +30,8 @@ jobs:
         profile: [personal, professional]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Install chezmoi for integration test
         run: brew install chezmoi
       - name: Provision isolated temporary HOME
