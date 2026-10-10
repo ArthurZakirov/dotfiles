@@ -4,18 +4,13 @@
 
 ## Which setup case applies?
 
-Run these read-only checks in Terminal:
-
-```sh
-command -v chezmoi
-chezmoi source-path
-chezmoi managed
-```
-
-- **`command -v chezmoi` prints nothing:** Chezmoi is not available on your PATH. For a new Mac, follow [New Mac: one native chezmoi command](#new-mac-one-native-chezmoi-command).
-- **Chezmoi is installed, but `source-path` is missing or `managed` lists no files:** Chezmoi may not yet be initialized. See [New Mac: one native chezmoi command](#new-mac-one-native-chezmoi-command), but do not use `init --apply` on an existing configured Mac without inspecting and backing up its settings first.
-- **`source-path` exists and `managed` lists files such as `.zshrc`:** Follow [Already configured Mac: synchronize safely](#already-configured-mac-synchronize-safely).
-- **Unsure which repository or profile is active?** Follow [Inspect your installation](#inspect-your-installation) before making changes.
+| Check (read-only) | Result | Action |
+|---|---|---|
+| `command -v chezmoi` | No output; new/unconfigured Mac | [New Mac setup](#new-mac-one-native-chezmoi-command) |
+| `command -v chezmoi` | No output; existing Mac with custom configuration | [New Mac setup](#new-mac-one-native-chezmoi-command) — review backup precautions before installing |
+| `chezmoi source-path` and `chezmoi managed` | Source missing or no managed files | [Inspect your installation](#inspect-your-installation) first; preserve existing configuration before any `init --apply` |
+| `chezmoi source-path` and `chezmoi managed` | Source exists and managed files are listed | [Synchronize an already configured Mac](#already-configured-mac-synchronize-safely) |
+| `chezmoi execute-template '{{ .profile }}'` | Profile or repository unclear | [Inspect your installation](#inspect-your-installation) |
 
 ## New Mac: one native chezmoi command
 
