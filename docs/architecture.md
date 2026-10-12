@@ -4,12 +4,6 @@
 
 **Chezmoi** is the native entry point. It discovers `<GitHub username>/dotfiles`, clones the repository, generates a machine-local configuration, and applies the declared files. **Git** carries updates between Macs, while **Homebrew** installs dependencies. The supported operating system is macOS.
 
-## 🧩 Shared features
-
-See the [feature catalog](features/README.md) for the shared Zsh configuration,
-application provisioning, and Git review commands. Each feature has its own
-usage and managed-file documentation under `docs/features/`.
-
 ## Components and order
 
 | File | Description |
