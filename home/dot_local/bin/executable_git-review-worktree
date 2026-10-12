@@ -57,6 +57,16 @@ def default_base(cwd: Path) -> str:
         raise SystemExit(f"Cannot determine {remote}'s default branch.") from exc
 
 
+def review_workspace(review: Path, git_dir: Path, repo_name: str, target_sha: str) -> Path:
+    """Name the editor window while keeping the workspace outside the diff."""
+    name = f"{repo_name} · review · {target_sha[:7]}"
+    workspace = git_dir / f"{name}.code-workspace"
+    workspace.write_text(json.dumps({
+        "folders": [{"name": f"{repo_name} · review", "path": str(review)}],
+    }, indent=2) + "\n")
+    return workspace
+
+
 def open_vscode(path: Path) -> None:
     code = shutil.which("code")
     if code:
@@ -100,7 +110,7 @@ def create_review(cwd: Path, base: str, target: str, mode: str) -> Path:
         }
         review_git_dir = Path(git("rev-parse", "--path-format=absolute", "--git-dir", cwd=review))
         (review_git_dir / "GIT_REVIEW.json").write_text(json.dumps(metadata, indent=2) + "\n")
-        open_vscode(review)
+        open_vscode(review_workspace(review, review_git_dir, source.name, target_sha))
         print(review)
         return review
     except BaseException:

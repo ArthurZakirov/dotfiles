@@ -6,6 +6,7 @@ Only the VS Code launcher is replaced to prevent opening editor windows in CI.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import shutil
@@ -95,6 +96,17 @@ def assert_review(source, home, git, review, base, expected_files):
     assert f"worktree {review}\n" in listed
     assert git("status", "--porcelain", cwd=review).stdout.strip()
     assert (source / ".git").is_dir()
+    # The title is derived from the source repository and target commit, not
+    # the random temporary review directory. It does not pollute Git status.
+    git_dir = Path(git("rev-parse", "--path-format=absolute", "--git-dir", cwd=review).stdout.strip())
+    target = json.loads((git_dir / "GIT_REVIEW.json").read_text())["target"]
+    workspace = git_dir / f"{source.name} · review · {target[:7]}.code-workspace"
+    assert workspace.is_file()
+    assert json.loads(workspace.read_text()) == {
+        "folders": [{"name": f"{source.name} · review", "path": str(review)}],
+    }
+    assert workspace.parent != review
+    assert workspace.name not in git("status", "--porcelain", cwd=review).stdout
 
 
 def assert_cleanup(source, git, review):
@@ -147,7 +159,9 @@ def test_complex_commit_round_trip_uses_real_aliases(sandbox, command):
     assert git("rev-parse", "HEAD").stdout.strip() == target
     assert (source / "modified.txt").read_text() == "uncommitted source edit\n"
     assert (source / "scratch.txt").read_text() == "untracked\n"
-    assert (Path(env["REVIEW_CODE_LOG"]).read_text().splitlines()) == ["-r", str(review)]
+    git_dir = Path(git("rev-parse", "--path-format=absolute", "--git-dir", cwd=review).stdout.strip())
+    workspace = git_dir / f"{source.name} · review · {target[:7]}.code-workspace"
+    assert Path(env["REVIEW_CODE_LOG"]).read_text().splitlines() == ["-r", str(workspace)]
 
     # From the review, return to the original checkout without losing source edits.
     git("unreview", cwd=review)
@@ -155,7 +169,7 @@ def test_complex_commit_round_trip_uses_real_aliases(sandbox, command):
     assert str(review) not in git("worktree", "list").stdout
     assert git("status", "--porcelain").stdout == before
     assert Path(env["REVIEW_CODE_LOG"]).read_text().splitlines() == [
-        "-r", str(review), "-r", str(source)
+        "-r", str(workspace), "-r", str(source)
     ]
 
 

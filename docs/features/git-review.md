@@ -13,7 +13,10 @@ source branch, commits, and uncommitted edits remain untouched.
 | `git unreview` | Return to the source folder and remove the disposable review |
 
 The `code` CLI opens the review in VS Code when available; otherwise the command
-prints the review folder. Reviews use detached worktrees under
+prints the review folder. VS Code displays a named workspace such as
+`provisioning · review · d5a4611` (including the repository and target commit),
+while the reviewed files stay inside the disposable Git worktree.
+Reviews use detached worktrees under
 `~/.local/share/git-review/`. Closing a review discards edits made inside that
 disposable worktree. Run `git unreview` from the review folder, or from the source
 folder when exactly one review exists.
@@ -38,7 +41,8 @@ there. This lets personal and professional Macs use different Git identities
 without copying either into the shared repository.
 
 Review metadata is stored as `GIT_REVIEW.json` in the disposable worktree's Git
-metadata directory, so it does not appear among the reviewed changes.
+metadata directory, so it does not appear among the reviewed changes. The
+VS Code workspace file is stored there as well and is deleted by `git unreview`.
 
 ## Testing
 
