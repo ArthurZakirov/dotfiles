@@ -100,18 +100,25 @@ def assert_review(source, home, git, review, base, expected_files):
     # the random temporary review directory. It does not pollute Git status.
     git_dir = Path(git("rev-parse", "--path-format=absolute", "--git-dir", cwd=review).stdout.strip())
     target = json.loads((git_dir / "GIT_REVIEW.json").read_text())["target"]
-    workspace = git_dir / f"{source.name} · review · {target[:7]}.code-workspace"
+    workspace = review.parent / "workspaces" / review.name / f"{source.name} · review · {target[:7]}.code-workspace"
     assert workspace.is_file()
     assert json.loads(workspace.read_text()) == {
         "folders": [{"name": f"{source.name} · review", "path": str(review)}],
     }
     assert workspace.parent != review
+    assert not workspace.is_relative_to(source)
+    assert not workspace.is_relative_to(source / ".git")
+    assert not workspace.is_relative_to(review)
+    # VS Code must not find the original repo by searching upward from the
+    # workspace file. This was the cause of duplicate Source Control entries.
+    assert git("rev-parse", "--show-toplevel", cwd=workspace.parent, check=False).returncode != 0
     assert workspace.name not in git("status", "--porcelain", cwd=review).stdout
 
 
 def assert_cleanup(source, git, review):
     git("unreview", cwd=review)
     assert not review.exists()
+    assert not (review.parent / "workspaces" / review.name).exists()
     assert str(review) not in git("worktree", "list").stdout
     assert git("status", "--porcelain").stdout == ""
 
@@ -160,12 +167,13 @@ def test_complex_commit_round_trip_uses_real_aliases(sandbox, command):
     assert (source / "modified.txt").read_text() == "uncommitted source edit\n"
     assert (source / "scratch.txt").read_text() == "untracked\n"
     git_dir = Path(git("rev-parse", "--path-format=absolute", "--git-dir", cwd=review).stdout.strip())
-    workspace = git_dir / f"{source.name} · review · {target[:7]}.code-workspace"
+    workspace = review.parent / "workspaces" / review.name / f"{source.name} · review · {target[:7]}.code-workspace"
     assert Path(env["REVIEW_CODE_LOG"]).read_text().splitlines() == ["-r", str(workspace)]
 
     # From the review, return to the original checkout without losing source edits.
     git("unreview", cwd=review)
     assert not review.exists()
+    assert not (review.parent / "workspaces" / review.name).exists()
     assert str(review) not in git("worktree", "list").stdout
     assert git("status", "--porcelain").stdout == before
     assert Path(env["REVIEW_CODE_LOG"]).read_text().splitlines() == [
@@ -267,6 +275,7 @@ def test_launcher_failure_cleans_up_worktree(sandbox):
     assert len(git("worktree", "list").stdout.strip().splitlines()) == 1
     review_root = home / ".local/share/git-review"
     assert not list(review_root.glob("*/review-*"))
+    assert not list(review_root.glob("*/workspaces/review-*"))
 
 
 def test_unreview_refuses_to_guess_when_multiple_reviews_exist(sandbox):
@@ -281,6 +290,10 @@ def test_unreview_refuses_to_guess_when_multiple_reviews_exist(sandbox):
     assert result.returncode != 0
     assert "Multiple review worktrees" in result.stderr
     assert first.is_dir() and second.is_dir()
+    assert (first.parent / "workspaces" / first.name).is_dir()
+    assert (second.parent / "workspaces" / second.name).is_dir()
     git("unreview", cwd=first)
+    assert not (first.parent / "workspaces" / first.name).exists()
+    assert (second.parent / "workspaces" / second.name).is_dir()
     git("unreview", cwd=second)
     assert len(git("worktree", "list").stdout.strip().splitlines()) == 1

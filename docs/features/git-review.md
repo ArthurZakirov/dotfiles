@@ -42,7 +42,11 @@ without copying either into the shared repository.
 
 Review metadata is stored as `GIT_REVIEW.json` in the disposable worktree's Git
 metadata directory, so it does not appear among the reviewed changes. The
-VS Code workspace file is stored there as well and is deleted by `git unreview`.
+VS Code workspace file is instead stored outside both the review worktree
+and the source repository (`~/.local/share/git-review/.../workspaces/`).
+Keeping the workspace file outside `.git/worktrees/` prevents VS Code from
+wrongly discovering the source checkout as extra Git repositories. It is
+removed by `git unreview`.
 
 ## Testing
 

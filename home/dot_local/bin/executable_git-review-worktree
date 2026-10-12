@@ -57,10 +57,18 @@ def default_base(cwd: Path) -> str:
         raise SystemExit(f"Cannot determine {remote}'s default branch.") from exc
 
 
-def review_workspace(review: Path, git_dir: Path, repo_name: str, target_sha: str) -> Path:
-    """Name the editor window while keeping the workspace outside the diff."""
+def workspace_directory(review: Path) -> Path:
+    # VS Code can discover the SOURCE checkout when the workspace file lives
+    # inside its .git/worktrees directory. Keep it outside all Git trees.
+    return review.parent / "workspaces" / review.name
+
+
+def review_workspace(review: Path, repo_name: str, target_sha: str) -> Path:
+    """Name the editor window without exposing the source checkout to Git scanning."""
     name = f"{repo_name} · review · {target_sha[:7]}"
-    workspace = git_dir / f"{name}.code-workspace"
+    directory = workspace_directory(review)
+    directory.mkdir(parents=True, exist_ok=True)
+    workspace = directory / f"{name}.code-workspace"
     workspace.write_text(json.dumps({
         "folders": [{"name": f"{repo_name} · review", "path": str(review)}],
     }, indent=2) + "\n")
@@ -110,10 +118,11 @@ def create_review(cwd: Path, base: str, target: str, mode: str) -> Path:
         }
         review_git_dir = Path(git("rev-parse", "--path-format=absolute", "--git-dir", cwd=review))
         (review_git_dir / "GIT_REVIEW.json").write_text(json.dumps(metadata, indent=2) + "\n")
-        open_vscode(review_workspace(review, review_git_dir, source.name, target_sha))
+        open_vscode(review_workspace(review, source.name, target_sha))
         print(review)
         return review
     except BaseException:
+        shutil.rmtree(workspace_directory(review), ignore_errors=True)
         try:
             if is_registered_worktree(source, review):
                 subprocess.run(
@@ -165,6 +174,7 @@ def unreview(cwd: Path) -> None:
     source = Path(data["source_worktree"])
     open_vscode(source)
     git("worktree", "remove", "--force", str(review), cwd=source, capture=False)
+    shutil.rmtree(workspace_directory(review), ignore_errors=True)
     print(source)
 
 

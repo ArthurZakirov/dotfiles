@@ -56,6 +56,8 @@ def test_unreview_without_active_editor(tmp_path, from_source, review_mode):
     expected_title = f"{source.name} · review · {source_head[:7]}.code-workspace"
     assert len(opened) == 2
     assert Path(opened[0]).name == expected_title
+    assert Path(opened[0]).parent == review.parent / "workspaces" / review.name
+    assert not Path(opened[0]).parent.exists()
     assert opened[1] == str(source)
     assert file.read_text() == 'uncommitted source edit\n'
     assert git('status', '--porcelain') == source_status
