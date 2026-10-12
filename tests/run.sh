@@ -5,19 +5,12 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 run_shell_syntax_checks() {
   local script
-  for script in \
-    "$repo_root/src/homebrew.sh" \
-    "$repo_root/src/apps.sh" \
-    "$repo_root/src/shell-setup.sh" \
-    "$repo_root/tests/unit/test_shell_setup_module.sh" \
-    "$repo_root/tests/unit/test_apps.sh" \
-    "$repo_root/tests/integration/test_vscode_cli.sh" \
-    "$repo_root/tests/support/shell_setup_fixture.sh" \
-    "$repo_root/tests/integration/run_fresh_home.sh" \
-    "$repo_root/tests/support/fresh_home_fixture.sh" \
-    "$repo_root/tests/support/assertions.sh"; do
+  while IFS= read -r -d '' script; do
     bash -n "$script"
-  done
+  done < <(
+    find "$repo_root/home" "$repo_root/src" "$repo_root/tests" \
+      -type f -name '*.sh' -print0
+  )
 }
 
 run_unit_tests() {
@@ -28,7 +21,7 @@ run_unit_tests() {
 
 run_integration_tests() {
   # Real chezmoi rendering and shell startup, without provisioning this Mac.
-  PYTHONDONTWRITEBYTECODE=1 "$repo_root/.venv/bin/pytest" -q "$repo_root/tests/integration/test_profiles.py"
+  PYTHONDONTWRITEBYTECODE=1 "$repo_root/.venv/bin/pytest" -q "$repo_root/tests/integration"
 }
 
 run_quality_checks() {

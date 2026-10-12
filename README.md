@@ -30,3 +30,9 @@ Synchronization is explicit with Git and chezmoi, not automatic in the backgroun
 1. **[Set up or synchronize a Mac](docs/setup.md)** — Install the configuration on a new Mac or bring another Mac up to date.
 2. **[Understand how the repository works](docs/architecture.md)** — Explore how templates, profiles, packages, and installation steps fit together.
 3. **[Develop this repository](docs/development.md)** — Make changes, run tests, and validate your work.
+
+## 🧩 Shared features
+
+See the [feature catalog](docs/features/README.md) for the shared Zsh configuration,
+application provisioning, and Git review commands. Each feature has its own
+usage and managed-file documentation under `docs/features/`.

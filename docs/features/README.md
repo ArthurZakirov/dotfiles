@@ -1,0 +1,15 @@
+# 🧩 Shared features
+
+[← How it works](../architecture.md)
+
+These capabilities are installed and synchronized through the same
+[setup workflow](../setup.md). Feature pages describe what each capability does,
+how to use it, and which files manage it.
+
+| Feature | What it provides |
+| --- | --- |
+| [Zsh configuration](zsh.md) | A shared prompt, history, completion, search, and shell plugins |
+| [Application provisioning](applications.md) | Missing applications and CLI tools installed for each profile |
+| [Git review](git-review.md) | Commit and branch diffs in disposable review folders |
+
+To change or add a feature, follow the [development workflow](../development.md).

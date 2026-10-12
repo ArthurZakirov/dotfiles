@@ -4,6 +4,7 @@
     "**/.chezmoi.toml.tmpl": "go",
     "**/*.toml.tmpl": "go",
     ".chezmoidata.toml": "toml",
+    "dot_gitconfig": "properties",
     "dot_zshrc.tmpl": "shellscript",
     "run_*.sh.tmpl": "shellscript"
   }
