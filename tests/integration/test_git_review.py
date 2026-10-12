@@ -52,7 +52,11 @@ def test_unreview_without_active_editor(tmp_path, from_source, review_mode):
                             env=env, check=True, capture_output=True, text=True)
     assert result.stdout.strip() == str(source)
     assert not review.exists()
-    assert (tmp_path / 'opened-folders').read_text().splitlines() == [str(review), str(source)]
+    opened = (tmp_path / 'opened-folders').read_text().splitlines()
+    expected_title = f"{source.name} · review · {source_head[:7]}.code-workspace"
+    assert len(opened) == 2
+    assert Path(opened[0]).name == expected_title
+    assert opened[1] == str(source)
     assert file.read_text() == 'uncommitted source edit\n'
     assert git('status', '--porcelain') == source_status
     assert git('rev-parse', 'HEAD') == source_head
