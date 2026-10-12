@@ -1,0 +1,15 @@
+[alias]
+	# Open one commit as editable changes in an isolated disposable review worktree.
+	review = "!git-review-worktree commit"
+
+	# Open the cumulative branch/PR diff in an isolated disposable review worktree.
+	# With no arguments, compare HEAD with the fetched upstream default branch.
+	review-range = "!git-review-worktree range"
+
+	# Leave an isolated review worktree and return VS Code to its source worktree.
+	unreview = "!git-review-worktree unreview"
+
+# Local identity, signing, credentials, and employer-specific settings override
+# shared settings. The setup script creates this file when it is absent.
+[include]
+	path = ~/.gitconfig.local

@@ -6,6 +6,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 run_shell_syntax_checks() {
   local script
   for script in \
+    "$repo_root/home/run_once_before_15-migrate-git-config.sh" \
     "$repo_root/src/homebrew.sh" \
     "$repo_root/src/apps.sh" \
     "$repo_root/src/shell-setup.sh" \
@@ -28,7 +29,7 @@ run_unit_tests() {
 
 run_integration_tests() {
   # Real chezmoi rendering and shell startup, without provisioning this Mac.
-  PYTHONDONTWRITEBYTECODE=1 "$repo_root/.venv/bin/pytest" -q "$repo_root/tests/integration/test_profiles.py"
+  PYTHONDONTWRITEBYTECODE=1 "$repo_root/.venv/bin/pytest" -q "$repo_root/tests/integration"
 }
 
 run_quality_checks() {
