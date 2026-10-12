@@ -85,12 +85,12 @@ def create_review(cwd: Path, base: str, target: str, mode: str) -> Path:
     review = Path(tempfile.mkdtemp(prefix="review-", dir=root))
     try:
         git("worktree", "add", "--detach", str(review), material_base, cwd=source, capture=False)
-        patch = subprocess.run(
-            ["git", "diff", "--binary", material_base, target_sha],
-            cwd=source, check=True, stdout=subprocess.PIPE,
-        ).stdout
-        subprocess.run(["git", "apply", "--index"], cwd=review, input=patch, check=True)
-        git("reset", cwd=review, capture=False)
+        # Materialize the exact target tree, then return HEAD/index to the
+        # review base while preserving the target files as unstaged changes.
+        # Applying a patch with --index is fragile when checkout filters or
+        # line-ending conversion make worktree bytes differ from index blobs.
+        git("reset", "--hard", target_sha, cwd=review, capture=False)
+        git("reset", "--mixed", material_base, cwd=review, capture=False)
         metadata = {
             "git_review": True,
             "source_worktree": str(source),

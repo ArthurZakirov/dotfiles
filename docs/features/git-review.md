@@ -39,3 +39,13 @@ without copying either into the shared repository.
 
 Review metadata is stored as `GIT_REVIEW.json` in the disposable worktree's Git
 metadata directory, so it does not appear among the reviewed changes.
+
+## Testing
+
+[End-to-end tests](../../tests/integration/test_git_review_e2e.py) execute the
+real Git aliases in isolated temporary repositories, including a regression for
+checkout filters that previously caused `git apply --index` to fail. They check
+review contents, isolation from the source checkout, and cleanup. Only the
+VS Code launcher is stubbed so tests cannot replace an open editor window.
+The [CI workflow](../../.github/workflows/shell.yml) runs these tests on both
+macOS and Linux.
