@@ -118,6 +118,29 @@ For repository structure and installer responsibilities, see [Architecture](arch
 
 For testing architecture and CI coverage, see [Architecture](architecture.md#testing-and-validation).
 
+### Repository-wide lifecycle contract
+
+[`tests/integration/test_chezmoi_lifecycle.py`](../tests/integration/test_chezmoi_lifecycle.py)
+executes the **real** `chezmoi managed`, `diff`, and `apply` for both profiles
+against disposable homes. It discovers managed files dynamically, tests a
+fresh home, idempotent re-apply, drift detection, and recovery. The VS Code
+launcher is stubbed so every diff is validated without opening a GUI window.
+All installation hooks are excluded **only in this cross-feature test**:
+separate feature-specific tests must cover each hook and its external effects.
+
+For each feature change, reason explicitly about:
+
+- New Mac: missing directories, binaries, permissions, service registrations.
+- Existing Mac: pre-existing files, conflicting settings, missing/moved executables.
+- Upgrade: old managed state, local drift, changed templates, profile transitions.
+- Failure and retry: partial installation, interrupted hook, stale marker, rollback.
+- Security: secrets, remote services, actual vs mocked dependencies.
+
+Add the cases that the generic tests cannot infer. Never treat a stubbed
+`launchctl`, npm, or editor as evidence of real OS integration. The macOS
+fresh-home CI jobs exercise actual provisioning; they must remain restricted
+to ephemeral CI machines. Inspect actual CI outcomes for both profiles.
+
 ### Step 5 — Review and open a pull request
 
 ```sh
@@ -129,7 +152,12 @@ git push -u origin HEAD
 gh pr create --fill
 ```
 
-Wait for the pull request's required checks to pass, then merge it.
+After opening the PR, inspect both inline review threads and general comments.
+For each actionable finding, verify it against the current code, add a
+regression test, implement the fix, run the full checks, and push it to the
+same branch. Mark a review thread resolved **only after** its fix is committed
+and pushed; explain explicitly when a suggestion is not applicable.
+Wait for required checks to pass. Merge only when the user requests it.
 
 ### Step 6 — Update your local checkout after merging
 
