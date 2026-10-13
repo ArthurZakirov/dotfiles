@@ -17,9 +17,8 @@ current_hash="$(shasum -a 256 "$plist" | awk '{print $1}')"
 previous_hash="$(cat "$marker" 2>/dev/null || true)"
 
 if launchctl print "$service" >/dev/null 2>&1; then
-  # On the first managed apply, adopt an already running service in place.
-  # A subsequent plist change triggers a reload.
-  if [ -n "$previous_hash" ] && [ "$previous_hash" != "$current_hash" ]; then
+  # A missing marker means active configuration is unknown: reconcile it.
+  if [ "$previous_hash" != "$current_hash" ]; then
     launchctl bootout "$domain" "$plist"
     launchctl bootstrap "$domain" "$plist"
   fi
@@ -28,8 +27,20 @@ else
 fi
 
 mkdir -p "$(dirname "$marker")"
-printf '%s\n' "$current_hash" > "$marker"
+tmp_marker="$(mktemp "$marker.XXXXXX")"
+printf '%s\n' "$current_hash" > "$tmp_marker"
+mv "$tmp_marker" "$marker"
 {{ else -}}
-# Professional Macs do not install the personal Desktop Commander remote service.
+# Only remove a previously managed personal agent (marker proves ownership).
+label='com.arthur.desktop-commander-remote'
+plist="$HOME/Library/LaunchAgents/$label.plist"
+marker="$HOME/Library/Caches/chezmoi/$label.sha256"
+if [ -f "$marker" ]; then
+  domain="gui/$(id -u)"
+  if launchctl print "$domain/$label" >/dev/null 2>&1; then
+    launchctl bootout "$domain" "$plist"
+  fi
+  rm -f "$plist" "$marker"
+fi
 exit 0
 {{ end -}}

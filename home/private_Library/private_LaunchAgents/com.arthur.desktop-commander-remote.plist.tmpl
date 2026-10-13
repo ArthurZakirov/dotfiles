@@ -6,7 +6,7 @@
   <string>com.arthur.desktop-commander-remote</string>
   <key>ProgramArguments</key>
   <array>
-    <string>{{ if eq .chezmoi.arch "arm64" }}/opt/homebrew/bin/desktop-commander{{ else }}/usr/local/bin/desktop-commander{{ end }}</string>
+    <string>{{ .chezmoi.homeDir }}/.local/bin/desktop-commander-remote</string>
     <string>remote</string>
   </array>
   <key>EnvironmentVariables</key>

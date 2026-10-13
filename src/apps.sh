@@ -78,15 +78,29 @@ install_personal_apps() {
 }
 
 install_desktop_commander_cli() {
-  if command -v desktop-commander >/dev/null 2>&1; then
-    echo 'Already installed: desktop-commander'
-    return 0
+  local cli target
+  if ! command -v desktop-commander >/dev/null 2>&1; then
+    command -v npm >/dev/null 2>&1 || {
+      echo 'npm is required to install Desktop Commander.' >&2
+      return 1
+    }
+    npm install --global @wonderwhy-er/desktop-commander || return 1
   fi
-  command -v npm >/dev/null 2>&1 || {
-    echo 'npm is required to install Desktop Commander.' >&2
+  cli="$(command -v desktop-commander 2>/dev/null || true)"
+  if [[ -z "$cli" ]] && command -v npm >/dev/null 2>&1; then
+    cli="$(npm prefix --global)/bin/desktop-commander"
+  fi
+  if [[ -z "$cli" || ! -x "$cli" ]]; then
+    echo 'Desktop Commander binary not found after npm installation.' >&2
     return 1
-  }
-  npm install --global @wonderwhy-er/desktop-commander
+  fi
+  target="$HOME/.local/bin/desktop-commander-remote"
+  mkdir -p "$(dirname "$target")"
+  if [[ -e "$target" && ! -L "$target" ]]; then
+    echo "Refusing to overwrite $target" >&2
+    return 1
+  fi
+  ln -sfn "$cli" "$target"
 }
 
 verify_node_toolchain() {

@@ -93,12 +93,13 @@ def test_repeated_apply_does_not_restart_service(agent):
     assert not any(c.startswith('bootout ') for c in calls())
 
 
-def test_existing_unmanaged_agent_is_adopted_without_interruption(agent):
+def test_untracked_service_is_reconciled_on_first_apply(agent):
     home, _, running, apply, calls = agent
     running.touch()
     apply()
     assert running.exists()
-    assert not any(c.startswith(('bootout ', 'bootstrap ')) for c in calls())
+    assert sum(c.startswith('bootout ') for c in calls()) == 1
+    assert sum(c.startswith('bootstrap ') for c in calls()) == 1
     assert (home / 'Library/Caches/chezmoi' / f'{LABEL}.sha256').exists()
 
 
@@ -148,19 +149,22 @@ def test_npm_installer_handles_missing_and_existing_cli(tmp_path, preinstalled):
     fake_bin = tmp_path / 'bin'
     fake_bin.mkdir()
     npm = fake_bin / 'npm'
-    npm.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$TEST_NPM_CALLS"\n')
+    npm.write_text("#!/bin/sh\n" "printf '%s\\n' \"$*\" >> \"$TEST_NPM_CALLS\"\n" "printf '#!/bin/sh\\nexit 0\\n' > \"$(dirname \"$0\")/desktop-commander\"\n" "chmod +x \"$(dirname \"$0\")/desktop-commander\"\n")
     npm.chmod(0o755)
     if preinstalled:
         cli = fake_bin / 'desktop-commander'
         cli.write_text('#!/bin/sh\nexit 0\n')
         cli.chmod(0o755)
-    env = {**os.environ, 'PATH': f"{fake_bin}:{os.environ['PATH']}",
+    env = {**os.environ, 'HOME': str(tmp_path), 'PATH': f"{fake_bin}:/usr/bin:/bin",
            'TEST_NPM_CALLS': str(tmp_path / 'npm-calls')}
     result = subprocess.run([
         '/bin/bash', '-c',
-        'source "$1"; if [ "$2" = missing ]; then command() { if [ "$1" = -v ] && [ "$2" = desktop-commander ]; then return 1; fi; builtin command "$@"; }; fi; install_desktop_commander_cli', 'test', str(root / 'src/apps.sh'), 'present' if preinstalled else 'missing'
+        'source "$1"; install_desktop_commander_cli', 'test', str(root / 'src/apps.sh'), 'present' if preinstalled else 'missing'
     ], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+    link = tmp_path / '.local/bin/desktop-commander-remote'
+    assert link.is_symlink()
+    assert link.resolve() == (fake_bin / 'desktop-commander').resolve()
     log = tmp_path / 'npm-calls'
     if preinstalled:
         assert not log.exists()
@@ -199,3 +203,55 @@ def test_fresh_home_chezmoi_apply_creates_plist_before_launch(profile, tmp_path,
     else:
         assert not plist.exists()
     assert not (home / 'Library/Caches/chezmoi').exists()
+
+
+def test_professional_transition_stops_only_previously_managed_service(agent, profile_factory):
+    home, plist, running, apply, calls = agent
+    apply()
+    professional = profile_factory.render('professional')
+    script = profile_factory.render_hook(
+        professional.config, 'professional',
+        'run_after_20-ensure-desktop-commander-launch-agent.sh.tmpl', 'transition'
+    )
+    # Use the same fake launchctl state as the personal-profile fixture.
+    fake_bin = next(home.parent.glob('bin'))
+    env = {**os.environ, 'HOME': str(home),
+           'PATH': str(fake_bin) + os.pathsep + os.environ['PATH'],
+           'TEST_CALLS': str(home.parent / 'calls'),
+           'TEST_RUNNING': str(home.parent / 'running')}
+    subprocess.run(['/bin/sh', str(script)], env=env, check=True)
+    assert not running.exists()
+    assert not plist.exists()
+    assert not (home / 'Library/Caches/chezmoi' / f'{LABEL}.sha256').exists()
+    before = calls()
+    subprocess.run(['/bin/sh', str(script)], env=env, check=True)
+    assert calls() == before
+
+
+def test_professional_transition_preserves_unmanaged_service(agent, profile_factory):
+    home, plist, running, _, calls = agent
+    running.touch()
+    professional = profile_factory.render('professional')
+    script = profile_factory.render_hook(
+        professional.config, 'professional',
+        'run_after_20-ensure-desktop-commander-launch-agent.sh.tmpl', 'transition-unmanaged'
+    )
+    env = {**os.environ, 'HOME': str(home),
+           'PATH': str(home.parent / 'bin') + os.pathsep + os.environ['PATH'],
+           'TEST_CALLS': str(home.parent / 'calls'),
+           'TEST_RUNNING': str(home.parent / 'running')}
+    subprocess.run(['/bin/sh', str(script)], env=env, check=True)
+    assert running.exists() and plist.exists()
+    assert calls() == []
+
+
+def test_lost_marker_reconciles_loaded_agent(agent):
+    home, _, running, apply, calls = agent
+    apply()
+    marker = home / 'Library/Caches/chezmoi' / f'{LABEL}.sha256'
+    marker.unlink()
+    apply()
+    assert running.exists()
+    assert sum(c.startswith('bootout ') for c in calls()) == 1
+    assert sum(c.startswith('bootstrap ') for c in calls()) == 2
+    assert len(marker.read_text().strip()) == 64
