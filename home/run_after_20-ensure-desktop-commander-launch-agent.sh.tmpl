@@ -12,6 +12,13 @@ domain="gui/$(id -u)"
 service="$domain/$label"
 marker="$HOME/Library/Caches/chezmoi/$label.sha256"
 
+# Never replace a working remote connection with a broken executable.
+cli="$HOME/.local/bin/desktop-commander-remote"
+if [ ! -x "$cli" ]; then
+  echo "Desktop Commander executable unavailable: $cli (run the personal installer first)." >&2
+  exit 1
+fi
+
 plutil -lint "$plist" >/dev/null
 current_hash="$(shasum -a 256 "$plist" | awk '{print $1}')"
 previous_hash="$(cat "$marker" 2>/dev/null || true)"

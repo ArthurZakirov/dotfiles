@@ -1,0 +1,39 @@
+#!/bin/bash
+set -euo pipefail
+
+if [[ $# -ne 2 ]]; then
+  echo 'Usage: chezmoi-code-diff ORIGINAL TARGET' >&2
+  exit 2
+fi
+original="$1"
+target="$2"
+
+# Directories need a text diff; VS Code's --diff accepts files only.
+if [[ -d "$original" || -d "$target" ]]; then
+  if [[ "$original" == /dev/null || "$target" == /dev/null ]]; then
+    temp_dir="$(mktemp -d)"
+    trap 'rm -rf "$temp_dir"' EXIT
+    [[ "$original" != /dev/null ]] || original="$temp_dir/empty-directory"
+    [[ "$target" != /dev/null ]] || target="$temp_dir/empty-directory"
+    mkdir -p "$temp_dir/empty-directory"
+  fi
+  diff -ruN "$original" "$target" || [[ $? -eq 1 ]]
+  exit
+fi
+
+# Chezmoi compares newly managed files against /dev/null; VS Code cannot
+# open that special device as a regular diff editor document.
+if [[ "$original" == /dev/null || "$target" == /dev/null ]]; then
+  temp_dir="$(mktemp -d)"
+  trap 'rm -rf "$temp_dir"' EXIT
+  if [[ "$original" == /dev/null ]]; then
+    original="$temp_dir/empty"
+    : > "$original"
+  fi
+  if [[ "$target" == /dev/null ]]; then
+    target="$temp_dir/empty"
+    : > "$target"
+  fi
+fi
+
+code --wait --diff "$original" "$target"

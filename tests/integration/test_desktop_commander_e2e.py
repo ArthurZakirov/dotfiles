@@ -41,6 +41,10 @@ def agent(tmp_path, profile_factory):
     ], capture_output=True, text=True)
     assert provision.returncode == 0, provision.stderr
     assert plist.exists()
+    cli = home / '.local/bin/desktop-commander-remote'
+    cli.parent.mkdir(parents=True, exist_ok=True)
+    cli.write_text('#!/bin/sh\nexit 0\n')
+    cli.chmod(0o755)
     script = profile_factory.render_hook(
         rendered.config, 'personal', 'run_after_20-ensure-desktop-commander-launch-agent.sh.tmpl', 'agent'
     )
@@ -255,3 +259,15 @@ def test_lost_marker_reconciles_loaded_agent(agent):
     assert sum(c.startswith('bootout ') for c in calls()) == 1
     assert sum(c.startswith('bootstrap ') for c in calls()) == 2
     assert len(marker.read_text().strip()) == 64
+
+
+def test_missing_cli_keeps_existing_remote_service_intact(agent):
+    """A botched first apply cannot bootout the only live remote connection."""
+    home, _, running, apply, calls = agent
+    running.touch()
+    (home / '.local/bin/desktop-commander-remote').unlink()
+    result = apply(check=False)
+    assert result.returncode != 0
+    assert 'executable unavailable' in result.stderr
+    assert running.exists()
+    assert not calls()

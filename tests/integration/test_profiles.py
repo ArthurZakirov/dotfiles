@@ -22,7 +22,8 @@ def test_chezmoi_uses_vscode_for_editing_and_diffs(rendered_profile: RenderedPro
 
     # THEN VS Code is configured for both operations
     assert '[edit]\n    command = "code"' in configuration
-    assert '[diff]\n    command = "code"' in configuration
+    assert '[diff]\n    command = "/bin/bash"' in configuration
+    assert 'executable_chezmoi-code-diff' in configuration
 
 
 def test_shell_and_installation_hooks_have_valid_syntax(

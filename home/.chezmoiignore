@@ -1,0 +1,5 @@
+# Python bytecode is an implementation artifact, not a managed dotfile.
+**/__pycache__
+**/__pycache__/**
+**/*.pyc
+**/*.pyo
