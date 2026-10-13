@@ -1,7 +1,7 @@
 """End-to-end check of the real VS Code Git extension, not a launcher stub.
 
-Opt in via RUN_VSCODE_GUI_E2E=1. CI runs it under Xvfb; macOS developers can
-run it with their real VS Code installation. Profiles are always isolated.
+Run only in an isolated CI runner with Xvfb. A separate VS Code profile on
+a personal Mac is NOT a sufficient process or keychain isolation boundary.
 """
 
 from __future__ import annotations
@@ -21,8 +21,9 @@ HELPER = ROOT / "home/dot_local/bin/executable_git-review-worktree"
 GITCONFIG = ROOT / "home/dot_gitconfig"
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("RUN_VSCODE_GUI_E2E") != "1",
-    reason="Requires an actual GUI VS Code installation; set RUN_VSCODE_GUI_E2E=1",
+    not (os.environ.get("RUN_VSCODE_GUI_E2E") == "1" and os.environ.get("CI") == "true"
+         and os.name == "posix" and __import__("sys").platform.startswith("linux")),
+    reason="Real VS Code GUI test is restricted to isolated Linux CI runners",
 )
 
 
@@ -51,9 +52,26 @@ def wait_for_git_scan(profile: Path, expected_repo: Path, timeout: float = 65) -
     raise AssertionError(f"VS Code did not complete its Git scan in {timeout}s:\n{latest[-6000:]}")
 
 
-def stop_isolated_vscode(profile: Path) -> None:
-    """Terminate only processes belonging to the disposable VS Code profile."""
+def wait_for_source_reopen(profile: Path, source: Path, timeout: float = 45) -> None:
+    """Require a fresh Git extension open event for the original checkout."""
+    end = time.monotonic() + timeout
+    latest = ""
+    while time.monotonic() < end:
+        logs = sorted(profile.glob("logs/**/vscode.git/Git.log"))
+        latest = "\n".join(p.read_text(errors="replace") for p in logs)
+        opened = re.findall(r"\[Model\]\[openRepository\] Opened repository \(path\): (.+)", latest)
+        if opened and Path(opened[-1]).resolve() == source.resolve():
+            return
+        time.sleep(0.5)
+    raise AssertionError(
+        f"VS Code did not return to original repository after unreview:\n{latest[-6000:]}"
+    )
+
+
+def vscode_pids(profile: Path) -> list[int]:
+    """Find only VS Code processes using this test's unique temporary profile."""
     result = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True, check=True)
+    matches = []
     for line in result.stdout.splitlines():
         parts = line.strip().split(maxsplit=1)
         if len(parts) != 2:
@@ -64,10 +82,25 @@ def stop_isolated_vscode(profile: Path) -> None:
             and ("Visual Studio Code.app" in cmd or "/code" in cmd or "/Code" in cmd)
             and int(pid) != os.getpid()
         ):
+            matches.append(int(pid))
+    return matches
+
+
+def stop_isolated_vscode(profile: Path) -> None:
+    """Terminate only disposable CI profile processes; never operate on a Mac."""
+    assert os.environ.get("CI") == "true" and __import__("sys").platform.startswith("linux")
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        for pid in vscode_pids(profile):
             try:
-                os.kill(int(pid), signal.SIGTERM)
+                os.kill(pid, sig)
             except ProcessLookupError:
                 pass
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            if not vscode_pids(profile):
+                return
+            time.sleep(0.2)
+    assert not vscode_pids(profile), "Isolated VS Code processes were not terminated"
 
 
 def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
@@ -165,6 +198,7 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
 
         # Return through the real alias. Source must remain untouched.
         git("unreview", cwd=review)
+        wait_for_source_reopen(profile, source)
         assert not review.exists()
         assert git("status", "--porcelain").stdout == before_status
         assert (source / "scratch.txt").read_text() == "irreplaceable work\n"
@@ -172,3 +206,11 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
         assert len(git("worktree", "list", "--porcelain").stdout.split("worktree ")) == 2
     finally:
         stop_isolated_vscode(profile)
+        # The source is a throwaway repository created by this test. If any
+        # assertion fails, leave neither a registered worktree nor a VS Code
+        # process behind. Never touch an existing user repository.
+        if review is not None and review.exists():
+            # Only the throwaway source repository created above is eligible.
+            if source.is_relative_to(tmp_path) and review.is_relative_to(home):
+                git("worktree", "remove", "--force", str(review), check=False)
+                shutil.rmtree(review.parent / "workspaces" / review.name, ignore_errors=True)
