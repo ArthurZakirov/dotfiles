@@ -94,7 +94,7 @@ exports.deactivate = () => {};
     process = subprocess.Popen([
         'chezmoi', '--source', str(source), '--destination', str(home),
         '--config', str(config), 'diff',
-    ], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    ], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)
     try:
         deadline = time.monotonic() + 75
         last = None
@@ -104,8 +104,7 @@ exports.deactivate = () => {};
                 if last.get('right') == 'expected managed content\n':
                     break
             if process.poll() is not None:
-                stdout, stderr = process.communicate()
-                raise AssertionError(f'chezmoi diff ended before editor state: {stdout} {stderr} {last}')
+                raise AssertionError(f'chezmoi diff ended before editor state: exit={process.returncode}, state={last}')
             time.sleep(0.4)
         else:
             raise AssertionError(f'No valid VS Code diff editor opened: {last}')
@@ -121,7 +120,7 @@ exports.deactivate = () => {};
         if process.poll() is None:
             process.terminate()
         try:
-            process.communicate(timeout=8)
+            process.wait(timeout=8)
         except subprocess.TimeoutExpired:
             process.kill()
-            process.communicate(timeout=5)
+            process.wait(timeout=5)
