@@ -44,6 +44,8 @@ code .
 
 ### Step 3 — Edit or add dotfiles
 
+Before changing anything, **inspect the actual Mac read-only**. Identify existing managed files, installed executables and their paths, active services/LaunchAgents, current profile, and local modifications relevant to the feature. Compare this state with the proposed change: what could be overwritten, restarted, disconnected, or removed? Preserve existing user state; never probe by restarting a live service or applying changes. If the target Mac is inaccessible, state which risks remain unverified and test them in isolation before proceeding.
+
 Use the sharing scope selected in [Step 0](#step-0--decide-the-sharing-scope).
 
 **Local-only shell overrides** (on whichever Mac needs them):
@@ -96,7 +98,11 @@ For repository structure and installer responsibilities, see [Architecture](arch
 
 ### Step 4 — Write tests and run them
 
-1. Add or adjust [unit tests](../tests/unit/test_shell_setup_module.sh) for installer logic and [integration tests](../tests/integration/test_profiles.py) for rendered behavior.
+First define the **observable user outcome** (CLI result, editor state, or running service). Choose the highest safe test fidelity needed to verify it. A stubbed call does not prove real GUI or OS behavior; use ephemeral CI for actual VS Code or launchd tests, never the active Mac.
+
+For every feature, consider fresh install, existing files, upgrade, repeated apply, partial failure, and recovery. Add feature-specific regression tests for risks the shared lifecycle test cannot verify, including executable paths and application state. Document any remaining unverified real-world behavior.
+
+1. Add feature-specific [unit tests](../tests/unit/test_shell_setup_module.sh), [profile tests](../tests/integration/test_profiles.py), and higher-fidelity tests where needed. The [shared lifecycle test](../tests/integration/test_chezmoi_lifecycle.py) automatically exercises all managed files through real `chezmoi diff` and `apply` in an isolated HOME, with install hooks and the GUI stubbed. Verify those separately when relevant.
 2. Install Poetry separately as a development tool. Set up the project-local environment and run the tests:
 
    ```sh
@@ -129,7 +135,12 @@ git push -u origin HEAD
 gh pr create --fill
 ```
 
-Wait for the pull request's required checks to pass, then merge it.
+After opening the PR, inspect both inline review threads and general comments.
+For each actionable finding, verify it against the current code, add a
+regression test, implement the fix, run the full checks, and push it to the
+same branch. Mark a review thread resolved **only after** its fix is committed
+and pushed; explain explicitly when a suggestion is not applicable.
+Wait for required checks to pass. Merge only when the user requests it.
 
 ### Step 6 — Update your local checkout after merging
 
