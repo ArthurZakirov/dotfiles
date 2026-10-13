@@ -14,6 +14,7 @@ SCRIPT = ROOT / "home/dot_local/bin/executable_pysetup"
 
 @pytest.mark.parametrize("profile", ["personal", "professional"])
 def test_chezmoi_renders_executable_pysetup(profile, profile_factory):
+    """Verify both chezmoi profiles render the same executable."""
     rendered = profile_factory.render(profile)
     output = profile_factory.chezmoi(rendered.config, "cat", str(Path.home() / ".local/bin/pysetup"))
     assert output == SCRIPT.read_text()
@@ -25,11 +26,16 @@ def test_pysetup_real_uv_setup_reuse_and_lock_cache(tmp_path):
     uv = shutil.which("uv")
     if not uv:
         pytest.skip("uv is not installed on this host")
+    series = f"{sys.version_info.major}.{sys.version_info.minor}"
+    available = subprocess.run([uv, "python", "find", "--no-python-downloads", series],
+                               capture_output=True)
+    if available.returncode:
+        pytest.skip(f"Python {series} is not installed for uv")
     project = tmp_path / "checkout"
     project.mkdir()
     (project / "pyproject.toml").write_text(
         '[tool.poetry]\npackage-mode = false\n'
-        '[tool.poetry.dependencies]\npython = ">=3.11,<4.0"\n'
+        f'[tool.poetry.dependencies]\npython = ">={series},<4.0"\n'
     )
     (project / "poetry.lock").write_text("synthetic lock for intercepted export\n")
     (project / ".gitignore").write_text(".venv/\n")
@@ -52,6 +58,7 @@ def test_pysetup_real_uv_setup_reuse_and_lock_cache(tmp_path):
         '  esac\n'
         '  exit 2\n'
         'fi\n'
+        'if [ "$1" = "venv" ]; then exec "' + uv + '" "$@" --no-python-downloads; fi\n'
         'exec "' + uv + '" "$@"\n'
     )
     fake_uv.chmod(0o755)
@@ -76,6 +83,7 @@ def test_pysetup_real_uv_setup_reuse_and_lock_cache(tmp_path):
 
 
 def test_pysetup_preserves_invalid_existing_venv(tmp_path):
+    """Reject damaged existing environments without modifying them."""
     project = tmp_path / "project"
     project.mkdir()
     (project / "pyproject.toml").write_text('[tool.poetry.dependencies]\npython = "^3.11"\n')
@@ -94,8 +102,14 @@ def test_pysetup_preserves_invalid_existing_venv(tmp_path):
         + (project / "poetry.lock").read_bytes()
     ).hexdigest()
     (cache / (key + ".requirements.txt")).write_text("")
+    stub_dir = tmp_path / "stub-bin"
+    stub_dir.mkdir()
+    uv_stub = stub_dir / "uv"
+    uv_stub.write_text('#!/bin/sh\nexit 99\n')
+    uv_stub.chmod(0o755)
     result = subprocess.run([sys.executable, str(SCRIPT), str(project)],
-                            env={**os.environ, "HOME": str(home)},
+                            env={**os.environ, "HOME": str(home),
+                                 "PATH": str(stub_dir) + os.pathsep + os.environ["PATH"]},
                             capture_output=True, text=True, timeout=15)
     assert result.returncode != 0
     assert "Existing .venv is not a usable Python environment" in result.stderr

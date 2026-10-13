@@ -22,6 +22,7 @@ class SetupError(Exception):
 
 
 def run(args, label, cwd, report=True):
+    """Execute a subprocess without printing potentially sensitive diagnostics."""
     if args[0] == "uv":
         args = [UV, *args[1:]]
     start = time.monotonic()
@@ -86,13 +87,31 @@ def safe_export(path):
 
 
 def create_environment(spec, environment, root):
+    """Create a checkout-local environment, preferring a specific minor series."""
     bounds = re.findall(r"(?:>=|>|==|~=)(\d+)\.(\d+)", spec)
     lower = max((tuple(map(int, bound)) for bound in bounds), default=None)
+    # A major-only constraint such as ^3 must not become ==3.0.*.
+    lower = lower if lower and lower[1] > 0 else None
     preferred = spec + ",==" + ".".join(map(str, lower)) + ".*" if lower else spec
     run(["uv", "venv", "--no-project", "--python", preferred, str(environment)], "Environment creation", root)
 
 
+def verify_environment(interpreter, environment, root):
+    """Reject non-venv interpreters before any potentially destructive sync."""
+    if not (environment / "pyvenv.cfg").is_file() or not interpreter.is_file():
+        raise SetupError("Existing .venv is not a usable Python environment; it was preserved.")
+    output = run([str(interpreter), "-I", "-c",
+                  "import json,sys; print(json.dumps([sys.prefix,sys.base_prefix, '.'.join(map(str,sys.version_info[:3]))]))"],
+                 "Interpreter check", root, False)
+    import json
+    prefix, base_prefix, version = json.loads(output)
+    if Path(prefix).resolve() != environment.resolve() or Path(prefix).resolve() == Path(base_prefix).resolve():
+        raise SetupError("Existing .venv is not isolated at the expected path; it was preserved.")
+    return version
+
+
 def main():
+    """Validate the lock and synchronize only a verified checkout environment."""
     start = time.monotonic()
     root = Path(sys.argv[1]).absolute() if len(sys.argv) == 2 else Path.cwd()
     if len(sys.argv) > 2:
@@ -105,7 +124,7 @@ def main():
     manifest_bytes, lock_bytes = manifest.read_bytes(), lock.read_bytes()
     metadata = tomllib.loads(manifest_bytes.decode())
     poetry = metadata.get("tool", {}).get("poetry", {})
-    requirement = metadata.get("project", {}).get("requires-python") or poetry.get("dependencies", {}).get("python")
+    requirement = poetry.get("dependencies", {}).get("python") or metadata.get("project", {}).get("requires-python")
     if requirement is None:
         raise SetupError("Declare a Python requirement before setting up this environment.")
     spec = python_spec(requirement)
@@ -131,13 +150,13 @@ def main():
     environment = root / ".venv"
     interpreter = environment / "bin/python"
     if environment.exists():
-        if not interpreter.is_file():
-            raise SetupError("Existing .venv is not a usable Python environment; it was preserved.")
-        version = run([str(interpreter), "-I", "-c", "import sys; print('.'.join(map(str, sys.version_info[:3])))"], "Interpreter check", root, False).decode().strip()
+        version = verify_environment(interpreter, environment, root)
         run(["uv", "python", "find", "--no-project", "--no-python-downloads", spec + ",==" + version], "Python compatibility", root, False)
         print("Environment: reused", flush=True)
     else:
         create_environment(spec, environment, root)
+    # Verify even freshly created environments before invoking a destructive sync.
+    verify_environment(interpreter, environment, root)
     run(["uv", "pip", "sync", "--python", str(interpreter), "--require-hashes", str(requirements)], "Locked dependency sync", root)
     if poetry.get("package-mode", True):
         run(["uv", "pip", "install", "--python", str(interpreter), "--no-deps", "--editable", str(root)], "Editable project install", root)
