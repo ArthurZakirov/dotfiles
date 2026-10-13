@@ -44,6 +44,8 @@ code .
 
 ### Step 3 — Edit or add dotfiles
 
+Before changing anything, **inspect the actual Mac read-only**. Identify existing managed files, installed executables and their paths, active services/LaunchAgents, current profile, and local modifications relevant to the feature. Compare this state with the proposed change: what could be overwritten, restarted, disconnected, or removed? Preserve existing user state; never probe by restarting a live service or applying changes. If the target Mac is inaccessible, state which risks remain unverified and test them in isolation before proceeding.
+
 Use the sharing scope selected in [Step 0](#step-0--decide-the-sharing-scope).
 
 **Local-only shell overrides** (on whichever Mac needs them):
