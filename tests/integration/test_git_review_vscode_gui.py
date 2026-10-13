@@ -31,6 +31,7 @@ def wait_for_git_scan(profile: Path, expected_repo: Path, timeout: float = 65) -
     """Require the real Git extension to open only the expected worktree."""
     end = time.monotonic() + timeout
     latest = ""
+    settle_until = None
     while time.monotonic() < end:
         logs = sorted(profile.glob("logs/**/vscode.git/Git.log"))
         latest = "\n".join(p.read_text(errors="replace") for p in logs)
@@ -47,9 +48,13 @@ def wait_for_git_scan(profile: Path, expected_repo: Path, timeout: float = 65) -
             assert all(n == "1" and closed == "0" and parent == "0" for n, closed, parent in scans), (
                 f"VS Code detected multiple or parent repositories: {scans}\n{latest[-5000:]}"
             )
-            return latest
+            # Repository discovery can continue after the initial scan.
+            if settle_until is None:
+                settle_until = time.monotonic() + 4
+            if time.monotonic() >= settle_until:
+                return latest
         time.sleep(0.5)
-    raise AssertionError(f"VS Code did not complete its Git scan in {timeout}s:\n{latest[-6000:]}")
+    raise AssertionError(f"VS Code did not finish a stable Git scan in {timeout}s:\n{latest[-6000:]}")
 
 
 def wait_for_source_reopen(profile: Path, source: Path, timeout: float = 45) -> None:
