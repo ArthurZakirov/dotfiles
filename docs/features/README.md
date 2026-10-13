@@ -10,6 +10,7 @@ how to use it, and which files manage it.
 | --- | --- |
 | [Zsh configuration](zsh.md) | A shared prompt, history, completion, search, and shell plugins |
 | [Application provisioning](applications.md) | Missing applications and CLI tools installed for each profile |
+| [Desktop Commander remote](desktop-commander.md) | Personal Mac remote access via npm CLI and managed LaunchAgent |
 | [Git review](git-review.md) | Commit and branch diffs in disposable review folders |
 
 To change or add a feature, follow the [development workflow](../development.md).

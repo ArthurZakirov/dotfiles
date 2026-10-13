@@ -78,3 +78,20 @@ def test_interactive_shell_starts_without_secrets(
     # WHEN launching interactive zsh
     # THEN completion, prompt, and plugins initialize correctly
     profile_factory.start_interactive_shell_without_secrets(rendered_profile)
+
+
+def test_desktop_commander_launch_agent_is_personal_only(
+    profile_factory: ChezmoiProfileFixture,
+) -> None:
+    """The plist must not be managed on professional machines."""
+    for profile, expected in (("personal", True), ("professional", False)):
+        rendered = profile_factory.render(profile)
+        entries = profile_factory.chezmoi(rendered.config, "managed", "--include", "files")
+        assert ("Library/LaunchAgents/com.arthur.desktop-commander-remote.plist" in entries) is expected
+        hook = profile_factory.render_hook(
+            rendered.config, profile,
+            "run_after_20-ensure-desktop-commander-launch-agent.sh.tmpl",
+            "desktop-commander",
+        )
+        profile_factory.run("/bin/sh", "-n", str(hook))
+        assert ("launchctl bootstrap" in hook.read_text()) is expected

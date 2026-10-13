@@ -1,0 +1,35 @@
+#!/bin/sh
+set -eu
+
+{{ if eq .profile "personal" -}}
+if [ "$(uname -s)" != Darwin ] || [ "${DOTFILES_SKIP_OPTIONAL_APPS:-}" = 1 ]; then
+  exit 0
+fi
+
+label='com.arthur.desktop-commander-remote'
+plist="$HOME/Library/LaunchAgents/$label.plist"
+domain="gui/$(id -u)"
+service="$domain/$label"
+marker="$HOME/Library/Caches/chezmoi/$label.sha256"
+
+plutil -lint "$plist" >/dev/null
+current_hash="$(shasum -a 256 "$plist" | awk '{print $1}')"
+previous_hash="$(cat "$marker" 2>/dev/null || true)"
+
+if launchctl print "$service" >/dev/null 2>&1; then
+  # On the first managed apply, adopt an already running service in place.
+  # A subsequent plist change triggers a reload.
+  if [ -n "$previous_hash" ] && [ "$previous_hash" != "$current_hash" ]; then
+    launchctl bootout "$domain" "$plist"
+    launchctl bootstrap "$domain" "$plist"
+  fi
+else
+  launchctl bootstrap "$domain" "$plist"
+fi
+
+mkdir -p "$(dirname "$marker")"
+printf '%s\n' "$current_hash" > "$marker"
+{{ else -}}
+# Professional Macs do not install the personal Desktop Commander remote service.
+exit 0
+{{ end -}}
