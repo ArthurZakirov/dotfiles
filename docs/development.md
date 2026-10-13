@@ -141,6 +141,38 @@ Add the cases that the generic tests cannot infer. Never treat a stubbed
 fresh-home CI jobs exercise actual provisioning; they must remain restricted
 to ephemeral CI machines. Inspect actual CI outcomes for both profiles.
 
+### Test fidelity: verify the actual user experience
+
+Before implementing a feature, define the **user-visible acceptance outcome**:
+what does the person execute or click, and what must the real application or OS
+show or do? Pick the highest safely executable verification layer, rather than
+stopping at the first passing integration test:
+
+| Layer | What it proves | What it does **not** prove |
+| --- | --- | --- |
+| Unit / stubbed dependencies | Local logic and expected calls | External program or OS works |
+| Real CLI integration | Actual CLI parsing and file/command behavior | GUI/editor or background service outcome |
+| Real system/provisioning E2E | Installation, state and repeatability in disposable HOME/runner | UI is usable and displaying correct state |
+| Real application / GUI E2E | Actual editor window/tab/document, or application-visible state | Every different physical Mac configuration |
+| Real macOS service E2E | `launchctl` registration, executable start and service health on isolated macOS runner | Safe behavior under every pre-existing production state |
+
+These are **capability-specific** levels, not a single universal ranking:
+choose the layer(s) where the user would actually observe success or failure.
+For VS Code integrations, CLI arguments and VS Code logs alone are insufficient;
+where feasible inspect real editor/tab/document state through its API, as in
+[`test_chezmoi_vscode_gui.py`](../tests/integration/test_chezmoi_vscode_gui.py).
+For remote LaunchAgents, check actual service and executable health on an
+isolated macOS runner when feasible. Use logs as additional diagnostics, not
+as the sole proof of success.
+
+**Mandatory pre-PR review:** For each changed feature, state (1) the real user
+interaction and expected observable outcome; (2) which layers have been
+executed, including actual binaries versus stubs; (3) the highest feasible
+safe layer and why; (4) realistic failure modes still untested; and (5) any
+new regression tests needed. Implement feasible high-fidelity tests instead of
+merely documenting their absence. Never run destructive provisioning, a GUI
+harness, or service restarts on the user's active Mac to satisfy this rule.
+
 ### Step 5 — Review and open a pull request
 
 ```sh
