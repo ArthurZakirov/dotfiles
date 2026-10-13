@@ -34,5 +34,5 @@ Synchronization is explicit with Git and chezmoi, not automatic in the backgroun
 ## 🧩 Shared features
 
 See the [feature catalog](docs/features/README.md) for the shared Zsh configuration,
-application provisioning, and Git review commands. Each feature has its own
+application provisioning, Desktop Commander remote access, and Git review commands. Each feature has its own
 usage and managed-file documentation under `docs/features/`.
