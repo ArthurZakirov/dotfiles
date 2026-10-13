@@ -30,11 +30,17 @@ def test_personal_plist_renders_expected_service(profile_factory):
 def agent(tmp_path, profile_factory):
     rendered = profile_factory.render('personal')
     home = tmp_path / 'home'
-    (home / 'Library/LaunchAgents').mkdir(parents=True)
+    home.mkdir()
     plist = home / 'Library/LaunchAgents' / f'{LABEL}.plist'
-    plist.write_text(profile_factory.chezmoi(
-        rendered.config, 'cat', str(Path.home() / 'Library/LaunchAgents' / f'{LABEL}.plist')
-    ))
+    assert not plist.exists()
+    assert not (home / 'Library').exists()
+    provision = subprocess.run([
+        'chezmoi', '--source', str(profile_factory.repository / 'home'),
+        '--config', str(rendered.config), '--destination', str(home),
+        'apply', '--exclude', 'scripts', '--force',
+    ], capture_output=True, text=True)
+    assert provision.returncode == 0, provision.stderr
+    assert plist.exists()
     script = profile_factory.render_hook(
         rendered.config, 'personal', 'run_after_20-ensure-desktop-commander-launch-agent.sh.tmpl', 'agent'
     )
@@ -162,3 +168,34 @@ def test_npm_installer_handles_missing_and_existing_cli(tmp_path, preinstalled):
         assert log.read_text().splitlines() == [
             'install --global @wonderwhy-er/desktop-commander'
         ]
+
+
+@pytest.mark.parametrize('profile', ['personal', 'professional'])
+def test_fresh_home_chezmoi_apply_creates_plist_before_launch(profile, tmp_path, profile_factory):
+    """Start with no Library or plist; apply actual chezmoi-managed files.
+
+    Skip installer hooks on a developer Mac: lifecycle execution is covered
+    separately with isolated launchctl, and full provisioning belongs to CI.
+    """
+    rendered = profile_factory.render(profile)
+    home = tmp_path / 'fresh-home'
+    home.mkdir()
+    plist = home / 'Library/LaunchAgents' / f'{LABEL}.plist'
+    assert not (home / 'Library').exists()
+    assert not plist.exists()
+    assert not (home / 'Library/Caches/chezmoi').exists()
+    assert not (home / '.local/bin/desktop-commander').exists()
+
+    result = subprocess.run([
+        'chezmoi', '--source', str(profile_factory.repository / 'home'),
+        '--config', str(rendered.config), '--destination', str(home),
+        'apply', '--exclude', 'scripts', '--force',
+    ], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    if profile == 'personal':
+        assert plist.is_file()
+        assert subprocess.run(['plutil', '-lint', str(plist)], capture_output=True).returncode == 0
+        assert '<string>remote</string>' in plist.read_text()
+    else:
+        assert not plist.exists()
+    assert not (home / 'Library/Caches/chezmoi').exists()
