@@ -58,7 +58,10 @@ def test_full_managed_tree_diff_apply_and_upgrade(profile, tmp_path, profile_fac
 
     command("apply", "--exclude", "scripts", "--force")
     for path in managed:
-        assert (home / path).exists(), path
+        installed = home / path
+        assert installed.exists(), path
+        if path.startswith('.local/bin/'):
+            assert installed.is_file() and os.access(installed, os.X_OK), (path, 'CLI is not executable')
     command("diff", "--exclude", "scripts")
     assert len(log.read_text().splitlines()) == initial_calls
     command("apply", "--exclude", "scripts", "--force")
