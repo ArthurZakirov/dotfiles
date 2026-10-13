@@ -42,7 +42,15 @@ without copying either into the shared repository.
 
 Review metadata is stored as `GIT_REVIEW.json` in the disposable worktree's Git
 metadata directory, so it does not appear among the reviewed changes. The
-VS Code workspace file is stored there as well and is deleted by `git unreview`.
+VS Code workspace file is instead stored outside both the review worktree
+and the source repository (`~/.local/share/git-review/.../workspaces/`).
+Keeping the workspace file outside `.git/worktrees/` prevents VS Code from
+wrongly discovering the source checkout as extra Git repositories. It is
+removed by `git unreview`. The helper also clears repository-local Git environment
+variables inherited from Git shell aliases (such as `GIT_DIR` and
+`GIT_WORK_TREE`) before launching VS Code or running Git subprocesses.
+Otherwise VS Code may report multiple apparent repositories with the same
+source branch.
 
 ## Testing
 
@@ -52,4 +60,10 @@ checkout filters that previously caused `git apply --index` to fail. They check
 review contents, isolation from the source checkout, and cleanup. Only the
 VS Code launcher is stubbed so tests cannot replace an open editor window.
 The [CI workflow](../../.github/workflows/shell.yml) runs these tests on both
-macOS and Linux.
+macOS and Linux. It additionally installs actual VS Code on Ubuntu under Xvfb,
+then executes the [real-editor GUI integration test](../../tests/integration/test_git_review_vscode_gui.py),
+which verifies that the Git extension discovers exactly one review worktree
+when the launcher inherits adversarial Git environment variables. The GUI test
+uses a disposable VS Code profile and extensions directory, never the regular
+VS Code user data. On macOS with the `code` CLI installed, run the same test via
+`RUN_VSCODE_GUI_E2E=1 .venv/bin/pytest -q tests/integration/test_git_review_vscode_gui.py`.

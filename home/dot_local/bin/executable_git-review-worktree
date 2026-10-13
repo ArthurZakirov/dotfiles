@@ -30,8 +30,19 @@ def source_root(cwd: Path) -> Path:
     return Path(git("rev-parse", "--show-toplevel", cwd=cwd))
 
 
+def repository_name(common: Path) -> str:
+    """Derive the stable repository label from its common Git directory."""
+    return common.parent.name if common.name == ".git" else common.name
+
+
+def bounded_name(name: str, max_bytes: int) -> str:
+    """Truncate on UTF-8 boundaries to respect filesystem component limits."""
+    return name.encode("utf-8")[:max_bytes].decode("utf-8", "ignore")
+
+
 def state_root(common: Path) -> Path:
-    repo_name = common.parent.name if common.name == ".git" else common.name
+    # The digest ensures identity even when very long names are abbreviated.
+    repo_name = bounded_name(repository_name(common), 96)
     digest = hashlib.sha256(str(common).encode()).hexdigest()[:10]
     return Path.home() / ".local" / "share" / "git-review" / f"{repo_name}-{digest}"
 
@@ -57,10 +68,18 @@ def default_base(cwd: Path) -> str:
         raise SystemExit(f"Cannot determine {remote}'s default branch.") from exc
 
 
-def review_workspace(review: Path, git_dir: Path, repo_name: str, target_sha: str) -> Path:
-    """Name the editor window while keeping the workspace outside the diff."""
-    name = f"{repo_name} · review · {target_sha[:7]}"
-    workspace = git_dir / f"{name}.code-workspace"
+def workspace_directory(review: Path) -> Path:
+    # VS Code can discover the SOURCE checkout when the workspace file lives
+    # inside its .git/worktrees directory. Keep it outside all Git trees.
+    return review.parent / "workspaces" / review.name
+
+
+def review_workspace(review: Path, repo_name: str, target_sha: str) -> Path:
+    """Name the editor window without exposing the source checkout to Git scanning."""
+    name = f"{bounded_name(repo_name, 96)} · review · {target_sha[:7]}"
+    directory = workspace_directory(review)
+    directory.mkdir(parents=True, exist_ok=True)
+    workspace = directory / f"{name}.code-workspace"
     workspace.write_text(json.dumps({
         "folders": [{"name": f"{repo_name} · review", "path": str(review)}],
     }, indent=2) + "\n")
@@ -70,7 +89,15 @@ def review_workspace(review: Path, git_dir: Path, repo_name: str, target_sha: st
 def open_vscode(path: Path) -> None:
     code = shutil.which("code")
     if code:
-        subprocess.run([code, "-r", str(path)], check=True)
+        # Shell-based Git aliases can export GIT_DIR, GIT_WORK_TREE, GIT_PREFIX
+        # and other repository-local variables. Passing them to VS Code makes
+        # its Git extension treat unrelated folders as the source repository.
+        # Use Git's authoritative list instead of manually maintaining one.
+        env = os.environ.copy()
+        local_vars = git("rev-parse", "--local-env-vars").splitlines()
+        for name in local_vars:
+            env.pop(name, None)
+        subprocess.run([code, "-r", str(path)], check=True, env=env)
     else:
         print(f"Review worktree ready: {path}")
 
@@ -95,6 +122,14 @@ def create_review(cwd: Path, base: str, target: str, mode: str) -> Path:
     review = Path(tempfile.mkdtemp(prefix="review-", dir=root))
     try:
         git("worktree", "add", "--detach", str(review), material_base, cwd=source, capture=False)
+        # Defense in depth before destructive resets: a polluted environment
+        # must never redirect them to the original checkout (or another repo).
+        if (
+            source_root(review).resolve() != review.resolve()
+            or common_dir(review).resolve() != common.resolve()
+            or not is_registered_worktree(source, review)
+        ):
+            raise RuntimeError("Refusing to reset: disposable Git review worktree is not verified")
         # Materialize the exact target tree, then return HEAD/index to the
         # review base while preserving the target files as unstaged changes.
         # Applying a patch with --index is fragile when checkout filters or
@@ -110,10 +145,11 @@ def create_review(cwd: Path, base: str, target: str, mode: str) -> Path:
         }
         review_git_dir = Path(git("rev-parse", "--path-format=absolute", "--git-dir", cwd=review))
         (review_git_dir / "GIT_REVIEW.json").write_text(json.dumps(metadata, indent=2) + "\n")
-        open_vscode(review_workspace(review, review_git_dir, source.name, target_sha))
+        open_vscode(review_workspace(review, repository_name(common), target_sha))
         print(review)
         return review
     except BaseException:
+        shutil.rmtree(workspace_directory(review), ignore_errors=True)
         try:
             if is_registered_worktree(source, review):
                 subprocess.run(
@@ -164,11 +200,23 @@ def unreview(cwd: Path) -> None:
         raise SystemExit("Invalid Git review metadata.")
     source = Path(data["source_worktree"])
     open_vscode(source)
+    # Remove the independent workspace first. If deletion fails or the process
+    # is interrupted, the review is still registered and unreview is retryable.
+    # No silent ignore_errors: expose failure rather than stranding metadata.
+    directory = workspace_directory(review)
+    if directory.exists():
+        shutil.rmtree(directory)
     git("worktree", "remove", "--force", str(review), cwd=source, capture=False)
     print(source)
 
 
 def main() -> None:
+    # Git shell aliases pass repository-specific environment into this helper.
+    # Our subprocesses must discover the repository from their own cwd, and
+    # VS Code must not inherit the caller's GIT_DIR/GIT_WORK_TREE/etc.
+    for name in git("rev-parse", "--local-env-vars").splitlines():
+        os.environ.pop(name, None)
+
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
     one = sub.add_parser("commit")
