@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Prepare a checkout-local environment from an existing, fresh Poetry lock."""
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -103,8 +104,12 @@ def verify_environment(interpreter, environment, root):
     output = run([str(interpreter), "-I", "-c",
                   "import json,sys; print(json.dumps([sys.prefix,sys.base_prefix, '.'.join(map(str,sys.version_info[:3]))]))"],
                  "Interpreter check", root, False)
-    import json
-    prefix, base_prefix, version = json.loads(output)
+    try:
+        prefix, base_prefix, version = json.loads(output)
+        if not all(isinstance(value, str) for value in (prefix, base_prefix, version)):
+            raise ValueError("Interpreter metadata is not a list of strings")
+    except (ValueError, TypeError):
+        raise SetupError("Existing .venv returned invalid interpreter metadata; it was preserved.") from None
     if Path(prefix).resolve() != environment.resolve() or Path(prefix).resolve() == Path(base_prefix).resolve():
         raise SetupError("Existing .venv is not isolated at the expected path; it was preserved.")
     return version

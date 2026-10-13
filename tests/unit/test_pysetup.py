@@ -91,6 +91,7 @@ def test_major_only_constraint_does_not_pin_python_3_0(monkeypatch, tmp_path):
     monkeypatch.setattr(pysetup, "run", lambda args, *rest: calls.append(args))
     pysetup.create_environment(pysetup.python_spec("^3"), tmp_path / ".venv", tmp_path)
     assert calls[0][4] == ">=3.0.0,<4.0.0"
+    assert "==3.0.*" not in calls[0][4]
 
 
 def test_poetry_python_range_takes_precedence(tmp_path, monkeypatch):
@@ -132,3 +133,20 @@ def test_fake_venv_interpreter_rejected_before_sync(tmp_path, monkeypatch):
     monkeypatch.setattr(pysetup, "run", lambda *a, **k: b'["/base", "/base", "3.11.1"]')
     with pytest.raises(pysetup.SetupError, match="not isolated"):
         pysetup.verify_environment(environment / "bin/python", environment, tmp_path)
+
+
+@pytest.mark.parametrize("invalid_output", [b"not json", b"{}", b"[]", b"[1, 2, 3]", b"null"])
+def test_invalid_interpreter_metadata_is_reported_without_sync(monkeypatch, tmp_path, invalid_output):
+    """Malformed interpreter output cannot proceed to dependency synchronization."""
+    environment = tmp_path / ".venv"
+    (environment / "bin").mkdir(parents=True)
+    (environment / "pyvenv.cfg").write_text("home = /base\n")
+    (environment / "bin/python").symlink_to(sys.executable)
+    calls = []
+    def fake_run(args, label, cwd, report=True):
+        calls.append(label)
+        return invalid_output
+    monkeypatch.setattr(pysetup, "run", fake_run)
+    with pytest.raises(pysetup.SetupError, match="invalid interpreter metadata.*preserved"):
+        pysetup.verify_environment(environment / "bin/python", environment, tmp_path)
+    assert calls == ["Interpreter check"]
