@@ -96,7 +96,11 @@ For repository structure and installer responsibilities, see [Architecture](arch
 
 ### Step 4 — Write tests and run them
 
-1. Add or adjust [unit tests](../tests/unit/test_shell_setup_module.sh) for installer logic and [integration tests](../tests/integration/test_profiles.py) for rendered behavior.
+First define the **observable user outcome** (CLI result, editor state, or running service). Choose the highest safe test fidelity needed to verify it. A stubbed call does not prove real GUI or OS behavior; use ephemeral CI for actual VS Code or launchd tests, never the active Mac.
+
+For every feature, consider fresh install, existing files, upgrade, repeated apply, partial failure, and recovery. Add feature-specific regression tests for risks the shared lifecycle test cannot verify, including executable paths and application state. Document any remaining unverified real-world behavior.
+
+1. Add feature-specific [unit tests](../tests/unit/test_shell_setup_module.sh), [profile tests](../tests/integration/test_profiles.py), and higher-fidelity tests where needed. The [shared lifecycle test](../tests/integration/test_chezmoi_lifecycle.py) automatically exercises all managed files through real `chezmoi diff` and `apply` in an isolated HOME, with install hooks and the GUI stubbed. Verify those separately when relevant.
 2. Install Poetry separately as a development tool. Set up the project-local environment and run the tests:
 
    ```sh
@@ -117,61 +121,6 @@ For repository structure and installer responsibilities, see [Architecture](arch
 4. After opening the PR in Step 5, check the [GitHub Actions workflow](../.github/workflows/shell.yml). Confirm both profile jobs and fresh-home jobs pass. Do **not** run the fresh-home provisioning tests on an existing Mac.
 
 For testing architecture and CI coverage, see [Architecture](architecture.md#testing-and-validation).
-
-### Repository-wide lifecycle contract
-
-[`tests/integration/test_chezmoi_lifecycle.py`](../tests/integration/test_chezmoi_lifecycle.py)
-executes the **real** `chezmoi managed`, `diff`, and `apply` for both profiles
-against disposable homes. It discovers managed files dynamically, tests a
-fresh home, idempotent re-apply, drift detection, and recovery. The VS Code
-launcher is stubbed so every diff is validated without opening a GUI window.
-All installation hooks are excluded **only in this cross-feature test**:
-separate feature-specific tests must cover each hook and its external effects.
-
-For each feature change, reason explicitly about:
-
-- New Mac: missing directories, binaries, permissions, service registrations.
-- Existing Mac: pre-existing files, conflicting settings, missing/moved executables.
-- Upgrade: old managed state, local drift, changed templates, profile transitions.
-- Failure and retry: partial installation, interrupted hook, stale marker, rollback.
-- Security: secrets, remote services, actual vs mocked dependencies.
-
-Add the cases that the generic tests cannot infer. Never treat a stubbed
-`launchctl`, npm, or editor as evidence of real OS integration. The macOS
-fresh-home CI jobs exercise actual provisioning; they must remain restricted
-to ephemeral CI machines. Inspect actual CI outcomes for both profiles.
-
-### Test fidelity: verify the actual user experience
-
-Before implementing a feature, define the **user-visible acceptance outcome**:
-what does the person execute or click, and what must the real application or OS
-show or do? Pick the highest safely executable verification layer, rather than
-stopping at the first passing integration test:
-
-| Layer | What it proves | What it does **not** prove |
-| --- | --- | --- |
-| Unit / stubbed dependencies | Local logic and expected calls | External program or OS works |
-| Real CLI integration | Actual CLI parsing and file/command behavior | GUI/editor or background service outcome |
-| Real system/provisioning E2E | Installation, state and repeatability in disposable HOME/runner | UI is usable and displaying correct state |
-| Real application / GUI E2E | Actual editor window/tab/document, or application-visible state | Every different physical Mac configuration |
-| Real macOS service E2E | `launchctl` registration, executable start and service health on isolated macOS runner | Safe behavior under every pre-existing production state |
-
-These are **capability-specific** levels, not a single universal ranking:
-choose the layer(s) where the user would actually observe success or failure.
-For VS Code integrations, CLI arguments and VS Code logs alone are insufficient;
-where feasible inspect real editor/tab/document state through its API, as in
-[`test_chezmoi_vscode_gui.py`](../tests/integration/test_chezmoi_vscode_gui.py).
-For remote LaunchAgents, check actual service and executable health on an
-isolated macOS runner when feasible. Use logs as additional diagnostics, not
-as the sole proof of success.
-
-**Mandatory pre-PR review:** For each changed feature, state (1) the real user
-interaction and expected observable outcome; (2) which layers have been
-executed, including actual binaries versus stubs; (3) the highest feasible
-safe layer and why; (4) realistic failure modes still untested; and (5) any
-new regression tests needed. Implement feasible high-fidelity tests instead of
-merely documenting their absence. Never run destructive provisioning, a GUI
-harness, or service restarts on the user's active Mac to satisfy this rule.
 
 ### Step 5 — Review and open a pull request
 
