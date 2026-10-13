@@ -6,8 +6,8 @@ sourceDir = "<DOTFILES_REPO>"
     bwsAccount = ""
 
 [diff]
-    command = "code"
-    args = ["--wait", "--diff"]
+    command = "/bin/bash"
+    args = ["<DOTFILES_REPO>/home/dot_local/bin/executable_chezmoi-code-diff"]
     exclude = ["scripts"]
 
 [edit]

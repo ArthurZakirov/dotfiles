@@ -13,8 +13,8 @@ sourceDir = {{ .chezmoi.workingTree | quote }}
     bwsAccount = {{ $account | quote }}
 
 [diff]
-    command = "code"
-    args = ["--wait", "--diff"]
+    command = "/bin/bash"
+    args = [{{ (printf "%s/home/dot_local/bin/executable_chezmoi-code-diff" .chezmoi.workingTree) | quote }}]
     exclude = ["scripts"]
 
 [edit]
