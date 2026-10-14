@@ -124,6 +124,11 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
     helper = helperdir / "git-review-worktree"
     shutil.copy2(HELPER, helper)
     helper.chmod(0o755)
+    # Check actual VS Code task invocation without resolving dependencies in CI.
+    task_log = tmp_path / "pysetup-task.log"
+    pysetup = helperdir / "pysetup"
+    pysetup.write_text('#!/bin/sh\nprintf "%s\\n" "$1" > "$REVIEW_TASK_LOG"\n')
+    pysetup.chmod(0o755)
 
     profile = tmp_path / "vscode-profile"
     settings = profile / "User/settings.json"
@@ -131,7 +136,8 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
     settings.write_text(
         '{"workbench.startupEditor":"none","git.autofetch":false,'
         '"git.detectWorktrees":true,"git.autoRepositoryDetection":true,'
-        '"window.restoreWindows":"none","telemetry.telemetryLevel":"off"}\n'
+        '"window.restoreWindows":"none","telemetry.telemetryLevel":"off",'
+        '"task.allowAutomaticTasks":"on"}\n'
     )
     extensions = tmp_path / "vscode-extensions"
     extensions.mkdir()
@@ -152,6 +158,7 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
             "GIT_PREFIX", "GIT_CONFIG_PARAMETERS", "GIT_CEILING_DIRECTORIES",
         )},
         "HOME": str(home),
+        "REVIEW_TASK_LOG": str(task_log),
         "GIT_CONFIG_GLOBAL": str(home / ".gitconfig"),
         "GIT_CONFIG_NOSYSTEM": "1",
         "PATH": f"{bindir}{os.pathsep}{helperdir}{os.pathsep}{os.environ['PATH']}",
@@ -175,6 +182,10 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
             folder = source / name
             folder.mkdir()
             (folder / "file.txt").write_text("before\n")
+        (source / "pyproject.toml").write_text(
+            '[tool.poetry]\nname = "sample"\nversion = "0.1.0"\n'
+        )
+        (source / "poetry.lock").write_text("# test lockfile\n")
         git("add", "-A")
         git("commit", "-m", "base", "-q")
         base = git("rev-parse", "HEAD").stdout.strip()
@@ -200,6 +211,13 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
         log = wait_for_git_scan(profile, review)
         assert "[Model][openRepository] Opened repository (kind): worktree" in log
         assert "Initial repository scan completed - repositories (1)" in log
+
+        # Assert the editor really launches the generated folder-open task.
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline and not task_log.exists():
+            time.sleep(0.5)
+        assert task_log.exists(), "VS Code did not execute the folder-open task"
+        assert task_log.read_text().strip() == str(review)
 
         # Return through the real alias. Source must remain untouched.
         git("unreview", cwd=review)

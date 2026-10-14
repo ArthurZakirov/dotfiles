@@ -18,8 +18,38 @@ prints the review folder. VS Code displays a named workspace such as
 while the reviewed files stay inside the disposable Git worktree.
 Reviews use detached worktrees under
 `~/.local/share/git-review/`. Closing a review discards edits made inside that
-disposable worktree. Run `git unreview` from the review folder, or from the source
-folder when exactly one review exists.
+disposable worktree, including its `.venv`. Run `git unreview` from the review
+folder, or from the source folder when exactly one review exists. Successful
+cleanup unregisters and deletes the worktree, deletes its VS Code workspace,
+and removes its now-empty cache directories without touching other reviews.
+
+## Automatic Python setup in VS Code
+
+For reviews containing **both `pyproject.toml` and `poetry.lock`**, the generated
+`.code-workspace` includes an automatic VS Code folder-open task that invokes
+the shared `~/.local/bin/pysetup` against the **review** checkout. It uses the
+usual Poetry lock validation and dependency synchronization. Other repositories
+open without this task. The editor opens first; setup executes in its terminal
+without blocking `git review`.
+
+The same temporary workspace sets `python.defaultInterpreterPath` to
+`${workspaceFolder}/.venv/bin/python`, so a fresh VS Code Python workspace can
+use the checkout-local interpreter once it exists. This is a default, not a
+forced `Python: Select Interpreter` command: VS Code's Python extension can
+retain a previously selected interpreter, and environment detection may need a
+refresh if it initialized before setup completed. Neither setting modifies the
+reviewed repository or the user's global VS Code configuration.
+
+Automatic tasks require VS Code to allow folder-open tasks and to trust the
+workspace. An explicit trust prompt or a local `task.allowAutomaticTasks`
+restriction takes precedence. **Only open and trust review worktrees whose
+Python dependency/build scripts you intend to execute.** Git review does not
+run `pysetup` outside VS Code or bypass VS Code's task security decisions.
+
+The `code` CLI cannot select the Source Control sidebar or independently
+collapse GitLens Graph while expanding Changes. VS Code restores its own view
+state. Review creation does not alter the active editor window by scripting
+macOS keyboard focus.
 
 ## 🧰 Installation and managed files
 

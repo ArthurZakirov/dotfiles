@@ -214,6 +214,45 @@ def test_vscode_does_not_inherit_git_alias_repository_environment(sandbox):
     assert_cleanup(source, git, review)
 
 
+def test_poetry_review_configures_automatic_task_and_interpreter(sandbox):
+    source, home, env, git = sandbox
+    (source / "pyproject.toml").write_text(
+        '[tool.poetry]\nname = "sample"\nversion = "0.1.0"\npackage-mode = false\n'
+        '[tool.poetry.dependencies]\npython = "^3.12"\n'
+    )
+    (source / "poetry.lock").write_text("# locked dependencies\n")
+    (source / "module.py").write_text("old = 1\n")
+    commit(git, "base")
+    (source / "module.py").write_text("new = 2\n")
+    target = commit(git, "target")
+
+    review = review_path(git("review", target))
+    workspace = next((review.parent / "workspaces" / review.name).glob("*.code-workspace"))
+    configuration = json.loads(workspace.read_text())
+    assert configuration["settings"] == {
+        "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+    }
+    task = configuration["tasks"]["tasks"][0]
+    assert configuration["tasks"]["version"] == "2.0.0"
+    assert task["type"] == "process"
+    assert task["command"] == str(home / ".local/bin/pysetup")
+    assert task["args"] == ["${workspaceFolder}"]
+    assert task["runOptions"]["runOn"] == "folderOpen"
+    assert task["options"]["cwd"] == "${workspaceFolder}"
+    assert git("status", "--porcelain", cwd=review).stdout == " M module.py\n"
+
+    # Simulate a local Python environment with untracked files: force removal
+    # must dispose of it as well as Git's registration and workspace metadata.
+    environment = review / ".venv"
+    environment.mkdir()
+    (environment / "pyvenv.cfg").write_text("home = test\n")
+    git("unreview", cwd=review)
+    assert not review.exists()
+    assert not review.parent.exists(), "No empty review cache directories should remain"
+    assert str(review) not in git("worktree", "list").stdout
+    assert not (source / ".venv").exists()
+
+
 def test_checkout_filter_and_crlf_do_not_break_review(sandbox):
     """A smudge filter makes index blobs differ from checkout bytes.
 
