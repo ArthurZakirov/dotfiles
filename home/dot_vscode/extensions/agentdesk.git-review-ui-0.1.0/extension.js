@@ -6,7 +6,9 @@ async function activate() {
         return;
     }
     await vscode.commands.executeCommand('workbench.view.scm');
-    console.log('git-review-ui: source control opened');
+    if (process.env.GIT_REVIEW_GUI_TEST_MARKER) {
+        require('fs').writeFileSync(process.env.GIT_REVIEW_GUI_TEST_MARKER, 'scm-opened\n');
+    }
 }
 
 function deactivate() {}

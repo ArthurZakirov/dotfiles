@@ -162,6 +162,7 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
         "HOME": str(home),
         "REVIEW_TASK_LOG": str(task_log),
         "REVIEW_BOOTSTRAP_LOG": str(tmp_path / "pysetup-bootstrap.log"),
+        "GIT_REVIEW_GUI_TEST_MARKER": str(tmp_path / "source-control-opened.log"),
         "GIT_CONFIG_GLOBAL": str(home / ".gitconfig"),
         "GIT_CONFIG_NOSYSTEM": "1",
         "PATH": f"{bindir}{os.pathsep}{helperdir}{os.pathsep}{os.environ['PATH']}",
@@ -224,19 +225,13 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
         assert task_log.exists(), "VS Code did not execute the folder-open task"
         assert task_log.read_text().strip() == str(review)
 
-        # The actual editor must run the small installed UI extension.
+        # The real extension confirms that VS Code executed the SCM command.
+        marker = Path(env["GIT_REVIEW_GUI_TEST_MARKER"])
         deadline = time.monotonic() + 30
-        ui_logs = ""
-        while time.monotonic() < deadline:
-            ui_logs = "\n".join(
-                p.read_text(errors="replace")
-                for p in profile.glob("logs/**/*.log")
-                if "exthost" in str(p).lower()
-            )
-            if "git-review-ui: source control opened" in ui_logs:
-                break
+        while time.monotonic() < deadline and not marker.exists():
             time.sleep(0.5)
-        assert "git-review-ui: source control opened" in ui_logs, ui_logs[-4000:]
+        assert marker.exists(), "Review UI extension did not acknowledge opening SCM"
+        assert marker.read_text().strip() == "scm-opened"
 
         # Return through the real alias. Source must remain untouched.
         git("unreview", cwd=review)
