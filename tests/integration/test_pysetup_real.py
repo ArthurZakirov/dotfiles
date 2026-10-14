@@ -75,4 +75,4 @@ def test_real_pysetup_prepares_interpreter_then_syncs_lock(tmp_path):
     again = command([sys.executable, PYSETUP, repo], repo, home)
     assert "Environment: reused" in again.stdout
     assert "Lock export: cached" in again.stdout
-    assert ".venv/" in (repo / ".git/info/exclude").read_text()
+    assert command(["git", "check-ignore", "-q", ".venv/"], repo, home).returncode == 0
