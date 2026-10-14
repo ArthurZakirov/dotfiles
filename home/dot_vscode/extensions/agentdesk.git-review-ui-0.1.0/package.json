@@ -1,0 +1,27 @@
+{
+  "name": "git-review-ui",
+  "displayName": "Git Review UI",
+  "publisher": "agentdesk",
+  "version": "0.1.0",
+  "description": "Automatically show Source Control for disposable Git review workspaces",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "configuration": {
+      "title": "Git Review UI",
+      "properties": {
+        "gitReview.showSourceControl": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "description": "Open the Source Control sidebar for this workspace."
+        }
+      }
+    }
+  }
+}
