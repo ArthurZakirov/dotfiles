@@ -30,6 +30,11 @@ def sandbox(tmp_path):
     binary.mkdir(parents=True)
     shutil.copy2(HELPER, binary / "git-review-worktree")
     (binary / "git-review-worktree").chmod(0o755)
+    # CI substitutes only interpreter creation; the pysetup integration test
+    # exercises the real binary including its dependency synchronization.
+    bootstrap = binary / "pysetup"
+    bootstrap.write_text("#!/usr/bin/env python3\nimport os\nfrom pathlib import Path\nimport subprocess\nimport sys\nimport venv\n\nassert sys.argv[1] == \"--prepare-interpreter\"\nroot = Path(sys.argv[2])\nvenv.EnvBuilder(with_pip=False).create(root / \".venv\")\ngit_path = subprocess.check_output(\n    [\"git\", \"rev-parse\", \"--git-path\", \"info/exclude\"], cwd=root, text=True\n).strip()\nexclude = Path(git_path)\nif not exclude.is_absolute():\n    exclude = root / exclude\nwith exclude.open(\"a\") as output:\n    output.write(\"\\n.venv/\\n\")\nwith open(os.environ[\"REVIEW_BOOTSTRAP_LOG\"], \"a\") as output:\n    output.write(str(root) + \"\\n\")\n")
+    bootstrap.chmod(0o755)
     launcher = tmp_path / "bin"
     launcher.mkdir()
     code = launcher / "code"
@@ -50,6 +55,7 @@ def sandbox(tmp_path):
         "GIT_CONFIG_GLOBAL": str(home / ".gitconfig"),
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_CONFIG_COUNT": "0",
+        "REVIEW_BOOTSTRAP_LOG": str(tmp_path / "bootstrap.log"),
         "REVIEW_CODE_LOG": str(tmp_path / "code.log"),
         "REVIEW_CODE_ENV_LOG": str(tmp_path / "code-env.log"),
         "PATH": f"{launcher}{os.pathsep}{binary}{os.pathsep}{os.environ['PATH']}",
@@ -110,6 +116,7 @@ def assert_review(source, home, git, review, base, expected_files):
     assert workspace.is_file()
     assert json.loads(workspace.read_text()) == {
         "folders": [{"name": f"{source.name} · review", "path": str(review)}],
+        "settings": {"gitReview.showSourceControl": True},
     }
     assert workspace.parent != review
     assert not workspace.is_relative_to(source)
@@ -212,6 +219,47 @@ def test_vscode_does_not_inherit_git_alias_repository_environment(sandbox):
     assert Path(env["REVIEW_CODE_ENV_LOG"]).read_text() == ""
     assert git("rev-parse", "HEAD", cwd=review).stdout.strip() != target
     assert_cleanup(source, git, review)
+
+
+def test_poetry_review_configures_automatic_task_and_interpreter(sandbox):
+    source, home, env, git = sandbox
+    (source / "pyproject.toml").write_text(
+        '[tool.poetry]\nname = "sample"\nversion = "0.1.0"\npackage-mode = false\n'
+        '[tool.poetry.dependencies]\npython = "^3.12"\n'
+    )
+    (source / "poetry.lock").write_text("# locked dependencies\n")
+    (source / "module.py").write_text("old = 1\n")
+    commit(git, "base")
+    (source / "module.py").write_text("new = 2\n")
+    target = commit(git, "target")
+
+    review = review_path(git("review", target))
+    workspace = next((review.parent / "workspaces" / review.name).glob("*.code-workspace"))
+    configuration = json.loads(workspace.read_text())
+    assert configuration["settings"] == {
+        "gitReview.showSourceControl": True,
+        "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+    }
+    task = configuration["tasks"]["tasks"][0]
+    assert configuration["tasks"]["version"] == "2.0.0"
+    assert task["type"] == "process"
+    assert task["command"] == str(home / ".local/bin/pysetup")
+    assert task["args"] == ["${workspaceFolder}"]
+    assert task["runOptions"]["runOn"] == "folderOpen"
+    assert task["options"]["cwd"] == "${workspaceFolder}"
+    assert git("status", "--porcelain", cwd=review).stdout == " M module.py\n"
+
+    # The bootstrap must finish before VS Code is launched.
+    environment = review / ".venv"
+    assert (environment / "bin/python").exists()
+    assert (environment / "pyvenv.cfg").is_file()
+    assert Path(env["REVIEW_BOOTSTRAP_LOG"]).read_text().strip() == str(review)
+    (environment / "extra-file").write_text("delete with worktree\n")
+    git("unreview", cwd=review)
+    assert not review.exists()
+    assert not review.parent.exists(), "No empty review cache directories should remain"
+    assert str(review) not in git("worktree", "list").stdout
+    assert not (source / ".venv").exists()
 
 
 def test_checkout_filter_and_crlf_do_not_break_review(sandbox):

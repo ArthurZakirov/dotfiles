@@ -124,6 +124,11 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
     helper = helperdir / "git-review-worktree"
     shutil.copy2(HELPER, helper)
     helper.chmod(0o755)
+    # Check actual VS Code task invocation without resolving dependencies in CI.
+    task_log = tmp_path / "pysetup-task.log"
+    pysetup = helperdir / "pysetup"
+    pysetup.write_text("#!/usr/bin/env python3\nimport os\nfrom pathlib import Path\nimport subprocess\nimport sys\nimport venv\nif sys.argv[1] == \"--prepare-interpreter\":\n    root = Path(sys.argv[2])\n    venv.EnvBuilder(with_pip=False).create(root / \".venv\")\n    git_path = subprocess.check_output(\n        [\"git\", \"rev-parse\", \"--git-path\", \"info/exclude\"], cwd=root, text=True\n    ).strip()\n    exclude = Path(git_path)\n    if not exclude.is_absolute():\n        exclude = root / exclude\n    with exclude.open(\"a\") as output:\n        output.write(\"\\n.venv/\\n\")\n    Path(os.environ[\"REVIEW_BOOTSTRAP_LOG\"]).write_text(str(root) + \"\\n\")\nelse:\n    Path(os.environ[\"REVIEW_TASK_LOG\"]).write_text(sys.argv[1] + \"\\n\")\n")
+    pysetup.chmod(0o755)
 
     profile = tmp_path / "vscode-profile"
     settings = profile / "User/settings.json"
@@ -131,15 +136,18 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
     settings.write_text(
         '{"workbench.startupEditor":"none","git.autofetch":false,'
         '"git.detectWorktrees":true,"git.autoRepositoryDetection":true,'
-        '"window.restoreWindows":"none","telemetry.telemetryLevel":"off"}\n'
+        '"window.restoreWindows":"none","telemetry.telemetryLevel":"off",'
+        '"task.allowAutomaticTasks":"on"}\n'
     )
     extensions = tmp_path / "vscode-extensions"
     extensions.mkdir()
+    review_extension = ROOT / "home/dot_vscode/extensions/agentdesk.git-review-ui-0.1.0"
+    shutil.copytree(review_extension, extensions / review_extension.name)
     # Only modify this private wrapper, NEVER the user's installed VS Code CLI.
     code = bindir / "code"
     code.write_text(
         "#!/bin/sh\n"
-        f'exec "{real_code}" --disable-extensions --disable-gpu '
+        f'exec "{real_code}" --disable-gpu '
         f'--disable-workspace-trust --user-data-dir "{profile}" '
         f'--extensions-dir "{extensions}" "$@"\n'
     )
@@ -152,6 +160,9 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
             "GIT_PREFIX", "GIT_CONFIG_PARAMETERS", "GIT_CEILING_DIRECTORIES",
         )},
         "HOME": str(home),
+        "REVIEW_TASK_LOG": str(task_log),
+        "REVIEW_BOOTSTRAP_LOG": str(tmp_path / "pysetup-bootstrap.log"),
+        "GIT_REVIEW_GUI_TEST_MARKER": str(tmp_path / "source-control-opened.log"),
         "GIT_CONFIG_GLOBAL": str(home / ".gitconfig"),
         "GIT_CONFIG_NOSYSTEM": "1",
         "PATH": f"{bindir}{os.pathsep}{helperdir}{os.pathsep}{os.environ['PATH']}",
@@ -175,6 +186,10 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
             folder = source / name
             folder.mkdir()
             (folder / "file.txt").write_text("before\n")
+        (source / "pyproject.toml").write_text(
+            '[tool.poetry]\nname = "sample"\nversion = "0.1.0"\n'
+        )
+        (source / "poetry.lock").write_text("# test lockfile\n")
         git("add", "-A")
         git("commit", "-m", "base", "-q")
         base = git("rev-parse", "HEAD").stdout.strip()
@@ -197,9 +212,26 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
         assert git("rev-parse", "HEAD", cwd=review).stdout.strip() == base
         assert git("status", "--porcelain").stdout == before_status
 
+        assert (review / ".venv/bin/python").exists()
+        assert Path(env["REVIEW_BOOTSTRAP_LOG"]).read_text().strip() == str(review)
         log = wait_for_git_scan(profile, review)
         assert "[Model][openRepository] Opened repository (kind): worktree" in log
         assert "Initial repository scan completed - repositories (1)" in log
+
+        # Assert the editor really launches the generated folder-open task.
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline and not task_log.exists():
+            time.sleep(0.5)
+        assert task_log.exists(), "VS Code did not execute the folder-open task"
+        assert task_log.read_text().strip() == str(review)
+
+        # The real extension confirms that VS Code executed the SCM command.
+        marker = Path(env["GIT_REVIEW_GUI_TEST_MARKER"])
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not marker.exists():
+            time.sleep(0.5)
+        assert marker.exists(), "Review UI extension did not acknowledge opening SCM"
+        assert marker.read_text().strip() == "scm-opened"
 
         # Return through the real alias. Source must remain untouched.
         git("unreview", cwd=review)

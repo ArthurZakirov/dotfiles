@@ -80,9 +80,28 @@ def review_workspace(review: Path, repo_name: str, target_sha: str) -> Path:
     directory = workspace_directory(review)
     directory.mkdir(parents=True, exist_ok=True)
     workspace = directory / f"{name}.code-workspace"
-    workspace.write_text(json.dumps({
+    configuration = {
         "folders": [{"name": f"{repo_name} · review", "path": str(review)}],
-    }, indent=2) + "\n")
+    }
+    configuration["settings"] = {"gitReview.showSourceControl": True}
+    if (review / "pyproject.toml").is_file() and (review / "poetry.lock").is_file():
+        # Keep editor integration outside the reviewed Git tree. VS Code runs
+        # the task on folder open, subject to its normal workspace trust rules.
+        configuration["settings"]["python.defaultInterpreterPath"] = "${workspaceFolder}/.venv/bin/python"
+        configuration["tasks"] = {
+            "version": "2.0.0",
+            "tasks": [{
+                "label": "Prepare review Python environment",
+                "type": "process",
+                "command": str(Path.home() / ".local/bin/pysetup"),
+                "args": ["${workspaceFolder}"],
+                "options": {"cwd": "${workspaceFolder}"},
+                "runOptions": {"runOn": "folderOpen"},
+                "presentation": {"reveal": "silent", "panel": "dedicated", "close": True},
+                "problemMatcher": [],
+            }],
+        }
+    workspace.write_text(json.dumps(configuration, indent=2) + "\n")
     return workspace
 
 
@@ -145,7 +164,20 @@ def create_review(cwd: Path, base: str, target: str, mode: str) -> Path:
         }
         review_git_dir = Path(git("rev-parse", "--path-format=absolute", "--git-dir", cwd=review))
         (review_git_dir / "GIT_REVIEW.json").write_text(json.dumps(metadata, indent=2) + "\n")
-        open_vscode(review_workspace(review, repository_name(common), target_sha))
+        workspace = review_workspace(review, repository_name(common), target_sha)
+        if (
+            shutil.which("code")
+            and (review / "pyproject.toml").is_file()
+            and (review / "poetry.lock").is_file()
+        ):
+            # Bootstrap the interpreter before VS Code scans the workspace.
+            # pysetup's preflight phase never installs project dependencies.
+            subprocess.run(
+                [str(Path.home() / ".local/bin/pysetup"),
+                 "--prepare-interpreter", str(review)],
+                cwd=review, check=True,
+            )
+        open_vscode(workspace)
         print(review)
         return review
     except BaseException:
@@ -207,6 +239,14 @@ def unreview(cwd: Path) -> None:
     if directory.exists():
         shutil.rmtree(directory)
     git("worktree", "remove", "--force", str(review), cwd=source, capture=False)
+    # Git removes the review itself, but its out-of-tree workspace parent and
+    # per-repository cache directory would otherwise remain indefinitely.
+    # rmdir only touches empty directories, preserving other open reviews.
+    for empty_directory in (directory.parent, review.parent):
+        try:
+            empty_directory.rmdir()
+        except OSError:
+            pass
     print(source)
 
 

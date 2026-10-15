@@ -18,8 +18,49 @@ prints the review folder. VS Code displays a named workspace such as
 while the reviewed files stay inside the disposable Git worktree.
 Reviews use detached worktrees under
 `~/.local/share/git-review/`. Closing a review discards edits made inside that
-disposable worktree. Run `git unreview` from the review folder, or from the source
-folder when exactly one review exists.
+disposable worktree, including its `.venv`. Run `git unreview` from the review
+folder, or from the source folder when exactly one review exists. Successful
+cleanup unregisters and deletes the worktree, deletes its VS Code workspace,
+and removes its now-empty cache directories without touching other reviews.
+
+## Automatic Python setup in VS Code
+
+For reviews containing **both `pyproject.toml` and `poetry.lock`**, the generated
+`.code-workspace` includes an automatic VS Code folder-open task that invokes
+the shared `~/.local/bin/pysetup` against the **review** checkout. It uses the
+usual Poetry lock validation and dependency synchronization. Other repositories
+open without this task. The editor opens first; setup executes in its terminal
+without blocking `git review`.
+
+Before VS Code opens, the helper calls
+`pysetup --prepare-interpreter <review-folder>`. This phase creates a matching
+checkout-local virtual environment with `uv venv` **without installing packages
+or running project build hooks**. The interpreter therefore exists during VS
+Code's initial environment discovery. The folder-open task subsequently
+validates the Poetry lock and synchronizes dependencies under VS Code's
+workspace trust and task-permission rules. This safe bootstrap can delay the
+initial editor launch.
+
+The same temporary workspace sets `python.defaultInterpreterPath` to
+`${workspaceFolder}/.venv/bin/python`, so a fresh VS Code Python workspace can
+use the checkout-local interpreter once it exists. This is a default, not a
+forced `Python: Select Interpreter` command: VS Code's Python extension can
+retain a previously selected interpreter, and environment detection may need a
+refresh if it initialized before setup completed. Neither setting modifies the
+reviewed repository or the user's global VS Code configuration.
+
+Automatic tasks require VS Code to allow folder-open tasks and to trust the
+workspace. An explicit trust prompt or a local `task.allowAutomaticTasks`
+restriction takes precedence. **Only open and trust review worktrees whose
+Python dependency/build scripts you intend to execute.** Git review does not
+run `pysetup` outside VS Code or bypass VS Code's task security decisions.
+
+The normal `code` CLI cannot select the Source Control sidebar. A small
+managed extension at `~/.vscode/extensions/agentdesk.git-review-ui-0.1.0`
+calls VS Code's `workbench.view.scm` command when a disposable review workspace
+sets `gitReview.showSourceControl`. It has no effect in regular workspaces.
+VS Code may need to be restarted once after the extension is installed via
+chezmoi. Neither GitLens nor macOS keyboard focus is manipulated.
 
 ## 🧰 Installation and managed files
 

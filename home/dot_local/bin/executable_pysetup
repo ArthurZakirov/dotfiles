@@ -115,12 +115,30 @@ def verify_environment(interpreter, environment, root):
     return version
 
 
+def ignore_environment(root):
+    """Exclude the venv in Git metadata, not in reviewed source files."""
+    ignored = subprocess.run(["git", "check-ignore", "-q", ".venv/"], cwd=root, capture_output=True)
+    if ignored.returncode:
+        result = subprocess.run(["git", "rev-parse", "--git-path", "info/exclude"], cwd=root, capture_output=True)
+        if result.returncode == 0:
+            exclude = Path(result.stdout.decode().strip())
+            if not exclude.is_absolute():
+                exclude = root / exclude
+            exclude.parent.mkdir(parents=True, exist_ok=True)
+            with exclude.open("a") as stream:
+                stream.write("\n.venv/\n")
+
+
 def main():
-    """Validate the lock and synchronize only a verified checkout environment."""
+    """Prepare the interpreter independently of the dependency-install phase."""
     start = time.monotonic()
-    root = Path(sys.argv[1]).absolute() if len(sys.argv) == 2 else Path.cwd()
-    if len(sys.argv) > 2:
-        raise SetupError("Usage: pysetup [checkout-directory]")
+    argv = sys.argv[1:]
+    prepare_only = bool(argv and argv[0] == "--prepare-interpreter")
+    if prepare_only:
+        argv = argv[1:]
+    if len(argv) > 1:
+        raise SetupError("Usage: pysetup [--prepare-interpreter] [checkout-directory]")
+    root = Path(argv[0]).absolute() if argv else Path.cwd()
     manifest, lock = root / "pyproject.toml", root / "poetry.lock"
     if not manifest.is_file() or not lock.is_file():
         raise SetupError("This folder needs both pyproject.toml and poetry.lock. Nothing changed.")
@@ -133,6 +151,21 @@ def main():
     if requirement is None:
         raise SetupError("Declare a Python requirement before setting up this environment.")
     spec = python_spec(requirement)
+    environment = root / ".venv"
+    interpreter = environment / "bin/python"
+    if prepare_only:
+        # Safe preflight: create a Python environment, but never install
+        # dependencies or run scripts from the reviewed repository.
+        if environment.exists():
+            version = verify_environment(interpreter, environment, root)
+            run(["uv", "python", "find", "--no-project", "--no-python-downloads",
+                 spec + ",==" + version], "Python compatibility", root, False)
+        else:
+            create_environment(spec, environment, root)
+            verify_environment(interpreter, environment, root)
+        ignore_environment(root)
+        print(f"Interpreter ready: {interpreter}", flush=True)
+        return
     key = hashlib.sha256(CACHE_VERSION + b"\0" + manifest_bytes + b"\0" + lock_bytes).hexdigest()
     cache = Path.home() / "Library/Caches/pysetup"
     cache.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -152,8 +185,6 @@ def main():
             staged_path.replace(requirements)
     if manifest.read_bytes() != manifest_bytes or lock.read_bytes() != lock_bytes:
         raise SetupError("Dependency files changed during setup; retry before installing.")
-    environment = root / ".venv"
-    interpreter = environment / "bin/python"
     if environment.exists():
         version = verify_environment(interpreter, environment, root)
         run(["uv", "python", "find", "--no-project", "--no-python-downloads", spec + ",==" + version], "Python compatibility", root, False)
@@ -166,16 +197,7 @@ def main():
     if poetry.get("package-mode", True):
         run(["uv", "pip", "install", "--python", str(interpreter), "--no-deps", "--editable", str(root)], "Editable project install", root)
     run(["uv", "pip", "check", "--python", str(interpreter)], "Dependency verification", root)
-    ignored = subprocess.run(["git", "check-ignore", "-q", ".venv/"], cwd=root, capture_output=True)
-    if ignored.returncode:
-        result = subprocess.run(["git", "rev-parse", "--git-path", "info/exclude"], cwd=root, capture_output=True)
-        if result.returncode == 0:
-            exclude = Path(result.stdout.decode().strip())
-            if not exclude.is_absolute():
-                exclude = root / exclude
-            exclude.parent.mkdir(parents=True, exist_ok=True)
-            with exclude.open("a") as stream:
-                stream.write("\n.venv/\n")
+    ignore_environment(root)
     print(f"Ready: {interpreter}\nTotal: {time.monotonic() - start:.2f}s", flush=True)
 
 

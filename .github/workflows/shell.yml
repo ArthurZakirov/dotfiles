@@ -67,6 +67,25 @@ jobs:
       - name: Execute real Git review workflows
         run: python -m pytest -q tests/integration/test_git_review_e2e.py
 
+  pysetup-real:
+    name: Real Python environment setup (Ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+      - name: Install test runner
+        run: python -m pip install 'pytest>=8.4,<9'
+      - name: Run real Poetry and uv environment integration
+        env:
+          CI: 'true'
+        run: python -m pytest -q -s tests/integration/test_pysetup_real.py
+
   git-review-vscode:
     name: Real VS Code Git extension (Ubuntu Xvfb)
     runs-on: ubuntu-latest
