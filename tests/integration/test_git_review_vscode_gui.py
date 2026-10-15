@@ -6,6 +6,7 @@ a personal Mac is NOT a sufficient process or keychain isolation boundary.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import re
@@ -163,6 +164,7 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
         "REVIEW_TASK_LOG": str(task_log),
         "REVIEW_BOOTSTRAP_LOG": str(tmp_path / "pysetup-bootstrap.log"),
         "GIT_REVIEW_GUI_TEST_MARKER": str(tmp_path / "source-control-opened.log"),
+        "GIT_REVIEW_DIFF_TEST_MARKER": str(tmp_path / "opened-diff-tabs.json"),
         "GIT_CONFIG_GLOBAL": str(home / ".gitconfig"),
         "GIT_CONFIG_NOSYSTEM": "1",
         "PATH": f"{bindir}{os.pathsep}{helperdir}{os.pathsep}{os.environ['PATH']}",
@@ -190,11 +192,14 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
             '[tool.poetry]\nname = "sample"\nversion = "0.1.0"\n'
         )
         (source / "poetry.lock").write_text("# test lockfile\n")
+        (source / "deleted.txt").write_text("deleted before\n")
         git("add", "-A")
         git("commit", "-m", "base", "-q")
         base = git("rev-parse", "HEAD").stdout.strip()
         for name in (".vscode", "events", "konux", "predeploy", "tests"):
             (source / name / "file.txt").write_text("after\n")
+        (source / "deleted.txt").unlink()
+        (source / "added.txt").write_text("added after\n")
         git("add", "-A")
         git("commit", "-m", "target", "-q")
         target = git("rev-parse", "HEAD").stdout.strip()
@@ -232,6 +237,37 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
             time.sleep(0.5)
         assert marker.exists(), "Review UI extension did not acknowledge opening SCM"
         assert marker.read_text().strip() == "scm-opened"
+
+        # Inspect actual VS Code TabInputTextDiff tabs and their document
+        # content, not just commands dispatched by a stub.
+        diff_marker = Path(env["GIT_REVIEW_DIFF_TEST_MARKER"])
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline and not diff_marker.exists():
+            time.sleep(0.5)
+        assert diff_marker.exists(), "VS Code did not open the review diff editors"
+        diff_result = json.loads(diff_marker.read_text())
+        assert diff_result["expected"] == 7
+        tabs = diff_result["tabs"]
+        assert len(tabs) == 7, tabs
+        assert len({tab["modified"] for tab in tabs}) == 7
+        assert all(not tab["preview"] for tab in tabs)
+        modified = {tab["label"]: tab for tab in tabs}
+        for name in (".vscode", "events", "konux", "predeploy", "tests"):
+            tab = modified[f"{name}/file.txt"]
+            assert tab["originalText"] == "before\n"
+            assert tab["modifiedText"] == "after\n"
+            assert tab["original"].startswith("git:")
+            assert tab["modified"].startswith("file:")
+        added = modified["added.txt"]
+        assert added["originalText"] == ""
+        assert added["modifiedText"] == "added after\n"
+        assert added["original"].startswith("git-review-empty:")
+        assert added["modified"].startswith("file:")
+        deleted = modified["deleted.txt"]
+        assert deleted["originalText"] == "deleted before\n"
+        assert deleted["modifiedText"] == ""
+        assert deleted["original"].startswith("git:")
+        assert deleted["modified"].startswith("git-review-empty:")
 
         # Return through the real alias. Source must remain untouched.
         git("unreview", cwd=review)

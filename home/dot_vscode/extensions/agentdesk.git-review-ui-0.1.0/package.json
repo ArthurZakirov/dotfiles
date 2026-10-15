@@ -20,6 +20,12 @@
           "default": false,
           "scope": "window",
           "description": "Open the Source Control sidebar for this workspace."
+        },
+        "gitReview.openDiffTabs": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "description": "Open each changed file as a separate persistent diff editor in review workspaces."
         }
       }
     }

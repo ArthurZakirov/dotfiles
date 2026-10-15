@@ -62,6 +62,28 @@ sets `gitReview.showSourceControl`. It has no effect in regular workspaces.
 VS Code may need to be restarted once after the extension is installed via
 chezmoi. Neither GitLens nor macOS keyboard focus is manipulated.
 
+## Automatic per-file diff tabs
+
+The review workspace also enables `gitReview.openDiffTabs`. After the built-in
+Git extension discovers the isolated review repository, the same lightweight
+extension opens **one persistent `vscode.diff` tab for each changed file**, not
+a multi-file diff editor. Each right-hand document remains the actual review
+worktree file, supporting ordinary editing and code navigation. Tabs are sorted
+by relative path and opened with `preview: false`, so Ctrl+Tab can traverse them.
+The extension does not open diff tabs in normal workspaces.
+
+New files are compared against a read-only empty virtual document, making every
+added line a diff addition (typically displayed green by VS Code); deleted
+files are compared against an empty right-hand document. Their absence from
+Git HEAD or the worktree does not prevent a diff tab from opening. Visual
+colors depend on the user's VS Code theme and diff-editor configuration. Binary
+files may use a non-text viewer rather than line-based highlighting.
+
+The [isolated VS Code GUI test](../../tests/integration/test_git_review_vscode_gui.py)
+asserts that the real editor opens separate, non-preview diff tabs with correct
+old/new document contents, including added and deleted files. It does not
+pixel-test the actual rendered colors or verify language-server navigation.
+
 ## 🧰 Installation and managed files
 
 Both profiles receive this feature during normal
