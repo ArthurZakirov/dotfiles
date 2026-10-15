@@ -116,7 +116,7 @@ def assert_review(source, home, git, review, base, expected_files):
     assert workspace.is_file()
     assert json.loads(workspace.read_text()) == {
         "folders": [{"name": f"{source.name} · review", "path": str(review)}],
-        "settings": {"gitReview.showSourceControl": True},
+        "settings": {"gitReview.showSourceControl": True, "gitReview.openDiffTabs": True},
     }
     assert workspace.parent != review
     assert not workspace.is_relative_to(source)
@@ -238,6 +238,7 @@ def test_poetry_review_configures_automatic_task_and_interpreter(sandbox):
     configuration = json.loads(workspace.read_text())
     assert configuration["settings"] == {
         "gitReview.showSourceControl": True,
+        "gitReview.openDiffTabs": True,
         "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
     }
     task = configuration["tasks"]["tasks"][0]

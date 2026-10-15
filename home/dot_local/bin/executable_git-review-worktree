@@ -83,7 +83,10 @@ def review_workspace(review: Path, repo_name: str, target_sha: str) -> Path:
     configuration = {
         "folders": [{"name": f"{repo_name} · review", "path": str(review)}],
     }
-    configuration["settings"] = {"gitReview.showSourceControl": True}
+    configuration["settings"] = {
+        "gitReview.showSourceControl": True,
+        "gitReview.openDiffTabs": True,
+    }
     if (review / "pyproject.toml").is_file() and (review / "poetry.lock").is_file():
         # Keep editor integration outside the reviewed Git tree. VS Code runs
         # the task on folder open, subject to its normal workspace trust rules.
