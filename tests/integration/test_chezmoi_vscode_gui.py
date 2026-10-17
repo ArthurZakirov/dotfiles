@@ -32,17 +32,28 @@ def test_real_chezmoi_diff_opens_valid_vscode_diff_tab(tmp_path, scenario):
     source.mkdir()
     if scenario == "new-file":
         (source / 'dot_demo').write_text('expected managed content\n')
-        expected_left, expected_right = '', 'expected managed content\n'
+        expected_pairs = [('', 'expected managed content\n')]
     else:
         # Existing Macs can have an arbitrary and even dangling Hammerspoon
         # symlink. Chezmoi compares it with /dev/null during a directory upgrade.
         shutil.copytree(ROOT / 'home/dot_hammerspoon', source / 'dot_hammerspoon')
         installed = home / '.hammerspoon'
         installed.mkdir()
-        old_bin = tmp_path / 'unrelated-hammerspoon/bin'
+        old_config = tmp_path / 'unrelated-hammerspoon'
+        modules = old_config / 'modules'
+        modules.mkdir(parents=True)
+        (modules / 'spaces.lua').write_text('-- previous space behavior\n')
+        (modules / 'chatgpt.lua').write_text('-- previous ChatGPT behavior\n')
+        old_bin = old_config / 'bin'
         (installed / 'bin').symlink_to(old_bin, target_is_directory=True)
-        expected_left = f'Symbolic link -> {old_bin}\n'
-        expected_right = ''
+        (installed / 'modules').symlink_to(modules, target_is_directory=True)
+        expected_pairs = [
+            (f'Symbolic link -> {old_bin}\n', ''),
+            ('-- previous space behavior\n',
+             (ROOT / 'home/dot_hammerspoon/modules/spaces.lua').read_text()),
+            ('-- previous ChatGPT behavior\n',
+             (ROOT / 'home/dot_hammerspoon/modules/chatgpt.lua').read_text()),
+        ]
     config = tmp_path / 'chezmoi.toml'
     config.write_text('[diff]\ncommand = "/bin/bash"\n'
                       f'args = ["{ADAPTER}"]\n')
@@ -83,7 +94,9 @@ async function check() {
       }
     }
   }
-  fs.writeFileSync(process.env.CHEZMOI_VSCODE_REPORT, JSON.stringify(report));
+  const target = process.env.CHEZMOI_VSCODE_REPORT;
+  fs.writeFileSync(target + '.pending', JSON.stringify(report));
+  fs.renameSync(target + '.pending', target);
 }
 function activate(context) {
   const timer = setInterval(() => { void check(); }, 400);
@@ -121,32 +134,34 @@ exports.deactivate = () => {};
     try:
         deadline = time.monotonic() + 75
         last = None
-        matching = None
+        matching = []
         while time.monotonic() < deadline:
             if report.exists():
                 last = json.loads(report.read_text())
-                matching = next((tab for tab in last.get('tabs', [])
-                                 if tab.get('left') == expected_left
-                                 and tab.get('right') == expected_right), None)
-                if matching is not None:
+                tabs = last.get('tabs', [])
+                matching = [
+                    next((tab for tab in tabs
+                          if tab.get('left') == left and tab.get('right') == right), None)
+                    for left, right in expected_pairs
+                ]
+                if all(tab is not None for tab in matching):
                     break
-            if process.poll() is not None:
+            if process.poll() is not None and process.returncode != 0:
                 break
             time.sleep(0.4)
-        if matching is None:
+        if not matching or any(tab is None for tab in matching):
             raise AssertionError(
-                f'No expected VS Code diff opened: report={last}; '
-                f'chezmoi_exit={process.poll()}; '
+                f'Expected {len(expected_pairs)} simultaneous VS Code diff tabs: '
+                f'report={last}; chezmoi_exit={process.poll()}; '
                 f'editor_invocations={launch_log.read_text() if launch_log.exists() else None}; '
                 f'chezmoi_stderr={log_path.read_text()}'
             )
-        assert matching['active']
-        assert matching['left'] == expected_left
-        assert matching['right'] == expected_right
-        assert matching['leftFileExists']
-        assert matching['rightFileExists']
-        assert 'null' not in matching['leftUri']
-        assert matching['rightUri'].startswith('file:')
+        for tab in matching:
+            assert tab['leftFileExists']
+            assert tab['rightFileExists']
+            assert 'null' not in tab['leftUri']
+            assert tab['rightUri'].startswith('file:')
+        assert any(tab['active'] for tab in matching)
     finally:
         stderr_log.close()
         # Only this disposable VS Code profile on an ephemeral CI runner.

@@ -30,7 +30,7 @@ def code_stub(tmp_path):
 
 def diff_args(env: dict[str, str]) -> list[Path]:
     args = Path(env["CODE_ARGS"]).read_text().splitlines()
-    assert args[:2] == ["--wait", "--diff"]
+    assert args[:2] == ["--reuse-window", "--diff"]
     return [Path(path) for path in args[2:]]
 
 
@@ -118,7 +118,8 @@ def test_real_chezmoi_diff_keeps_hammerspoon_upgrade_documents_available(
     # Record every editor invocation: chezmoi diff compares multiple files.
     code = Path(code_stub["PATH"].split(os.pathsep)[0]) / "code"
     code.write_text(
-        '#!/bin/sh\nprintf "%s\\t%s\\n" "$3" "$4" >> "$CODE_ARGS"\n'
+        '#!/bin/sh\ntest "$1" = --reuse-window && test "$2" = --diff || exit 2\n'
+        'printf "%s\\t%s\\n" "$3" "$4" >> "$CODE_ARGS"\n'
         'test -f "$3" && test -f "$4"\n'
     )
     source = tmp_path / "source"
@@ -134,6 +135,11 @@ def test_real_chezmoi_diff_keeps_hammerspoon_upgrade_documents_available(
     old_bin.mkdir()
     (old_bin / "mic_level").write_text("old bin content")
     (existing / "bin").symlink_to(old_bin, target_is_directory=True)
+    old_modules = old_setup / "modules"
+    old_modules.mkdir()
+    (old_modules / "spaces.lua").write_text("-- previous space behavior\n")
+    (old_modules / "chatgpt.lua").write_text("-- previous chatgpt behavior\n")
+    (existing / "modules").symlink_to(old_modules, target_is_directory=True)
     config = tmp_path / "chezmoi.toml"
     config.write_text(
         '[diff]\ncommand = "/bin/bash"\n'
@@ -159,5 +165,15 @@ def test_real_chezmoi_diff_keeps_hammerspoon_upgrade_documents_available(
         for before, after in pairs
     )
     assert any(after.name == "mic_level" for _, after in pairs)
+    for name, previous in (
+        ("spaces.lua", "-- previous space behavior\n"),
+        ("chatgpt.lua", "-- previous chatgpt behavior\n"),
+    ):
+        assert any(
+            before.read_text() == previous
+            and after.read_text() == (root / "home/dot_hammerspoon/modules" / name).read_text()
+            for before, after in pairs
+        )
     assert (existing / "bin").is_symlink()
+    assert (existing / "modules").is_symlink()
     assert (old_bin / "mic_level").read_text() == "old bin content"

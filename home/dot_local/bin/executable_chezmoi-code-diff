@@ -24,8 +24,8 @@ if [[ ( -d "$original" && ! -L "$original" ) || ( -d "$target" && ! -L "$target"
 fi
 
 # Chezmoi's target files live in a temporary tree that disappears when
-# chezmoi diff exits. A code --wait invocation can also return while its diff
-# tab is still visible. Preserve BOTH documents beyond either process's exit.
+# chezmoi diff exits. The editor should remain readable long after the
+# invocations have finished. Preserve BOTH documents independently.
 # The private cache is pruned after 30 days on subsequent diff invocations.
 umask 077
 cache="${CHEZMOI_CODE_DIFF_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/chezmoi/vscode-diff}"
@@ -55,4 +55,6 @@ snapshot_file() {
 
 original_snapshot="$(snapshot_file "$original" before)"
 target_snapshot="$(snapshot_file "$target" after)"
-code --wait --diff "$original_snapshot" "$target_snapshot"
+# Opening diffs must not block chezmoi: --wait prevents the next file diff
+# from being opened, even if VS Code continues showing the earlier tab.
+code --reuse-window --diff "$original_snapshot" "$target_snapshot"
