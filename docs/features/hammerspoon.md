@@ -63,7 +63,7 @@ device warnings without preventing the rest of Hammerspoon from working.
 | Audio check | [`modules/audio_check.lua`](../../home/dot_hammerspoon/modules/audio_check.lua) |
 | Microphone meter | [Swift source and lazy build wrapper](../../home/dot_hammerspoon/bin/) |
 | Application installation | [`src/apps.sh`](../../src/apps.sh) |
-| Legacy symlink migration | [`run_once_before_05-migrate-hammerspoon.sh`](../../home/run_once_before_05-migrate-hammerspoon.sh) |
+| Existing-config migration | [`run_once_before_05-migrate-hammerspoon.sh`](../../home/run_once_before_05-migrate-hammerspoon.sh) |
 | Start, reload and health check | [`run_after_30-ensure-hammerspoon.sh`](../../home/run_after_30-ensure-hammerspoon.sh), [`hammerspoon-activate`](../../home/dot_local/bin/executable_hammerspoon-activate), [`hammerspoon-verify`](../../home/dot_local/bin/executable_hammerspoon-verify) |
 | Swift compiler setup | [`hammerspoon-ensure-swiftc`](../../home/dot_local/bin/executable_hammerspoon-ensure-swiftc) |
 
@@ -107,10 +107,17 @@ tests are not a substitute for that verification.
 ## Migrating an existing Mac
 
 Follow the [existing-Mac synchronization workflow](../setup.md#already-configured-mac-synchronize-safely).
-The one-time hook backs up `~/.hammerspoon` and `~/.hammerspoon-local`
-under `~/Library/Application Support/dotfiles/backups/`, then replaces only
-recognized legacy symlinks. Unmanaged files, including `Spoons/`, are retained.
-Unknown symlinks cause the migration to stop rather than overwrite user data.
+The one-time hook backs up the existing `~/.hammerspoon` configuration and
+`~/.hammerspoon-local` (if present) under
+`~/Library/Application Support/dotfiles/backups/`. It supports ordinary files,
+subdirectories and symlinks with **arbitrary targets**, including a symlinked
+`~/.hammerspoon` directory. Existing symlink targets are never modified;
+replaced symlinks' contents are also copied into the backup. Chezmoi then
+manages `init.lua`, `modules/` and `bin/`, retaining unrelated files such as
+`Spoons/` and custom modules with non-conflicting names. An existing script
+whose path collides with a managed file is preserved in the backup rather than
+kept active. A broken top-level `~/.hammerspoon` symlink stops migration instead
+of being overwritten.
 
 **Do not reinstall a previous symlink-based configuration:**
 it would replace the managed files with external links. Make future

@@ -44,13 +44,14 @@ def setup_environment(tmp_path):
     local = home / ".hammerspoon-local"
     local.mkdir()
     (local / "init.lua").write_text("previous configuration")
-    skill = home / ".agents/skills/hammerspoon-macos-setup/assets/hammerspoon"
-    (skill / "modules").mkdir(parents=True)
-    (skill / "bin").mkdir()
-    (skill / "modules/core.lua").write_text("previous module")
-    (root / "init.lua").symlink_to(local / "init.lua")
-    (root / "modules").symlink_to(skill / "modules", target_is_directory=True)
-    (root / "bin").symlink_to(skill / "bin", target_is_directory=True)
+    legacy = home / "Repos/private-hammerspoon"
+    (legacy / "modules").mkdir(parents=True)
+    (legacy / "bin").mkdir()
+    (legacy / "init.lua").write_text("previous configuration")
+    (legacy / "modules/core.lua").write_text("previous module")
+    (root / "init.lua").symlink_to(legacy / "init.lua")
+    (root / "modules").symlink_to(legacy / "modules", target_is_directory=True)
+    (root / "bin").symlink_to(legacy / "bin", target_is_directory=True)
 
     fake_bin = tmp_path / "fake-bin"
     fake_bin.mkdir()
@@ -111,6 +112,7 @@ else:
     return home, root, events, runtime_nonce, command, env
 
 
+@pytest.mark.parametrize("layout", ["custom-symlinks", "regular-files", "root-symlink"])
 @pytest.mark.parametrize(
     ("running", "expected_events"),
     [
@@ -118,11 +120,27 @@ else:
         pytest.param(False, ["launched", "reloaded", "reloaded"], id="initially-stopped"),
     ],
 )
-def test_apply_migrates_legacy_config_and_reports_ready_runtime(
-    setup_environment, running, expected_events,
+def test_apply_migrates_existing_config_and_reports_ready_runtime(
+    setup_environment, running, expected_events, layout,
 ):
     home, root, events, runtime_nonce, command, env = setup_environment
     env["HAMMERSPOON_RUNNING"] = "1" if running else "0"
+    if layout == "regular-files":
+        for entry in ("init.lua", "modules", "bin"):
+            path = root / entry
+            if path.is_dir():
+                original = path.resolve()
+                path.unlink()
+                shutil.copytree(original, path)
+            else:
+                original = path.read_text()
+                path.unlink()
+                path.write_text(original)
+    elif layout == "root-symlink":
+        original_root = home / "original-hammerspoon-directory"
+        shutil.copytree(root, original_root, symlinks=True)
+        shutil.rmtree(root)
+        root.symlink_to(original_root, target_is_directory=True)
 
     first = subprocess.run(
         command, env=env, capture_output=True, text=True, timeout=40,
@@ -138,8 +156,17 @@ def test_apply_migrates_legacy_config_and_reports_ready_runtime(
     backup_root = home / "Library/Application Support/dotfiles/backups"
     backups = list(backup_root.iterdir())
     assert len(backups) == 1
-    assert (backups[0] / "resolved/init.lua").read_text() == "previous configuration"
-    assert (backups[0] / "resolved/modules/core.lua").read_text() == "previous module"
+    if layout == "regular-files":
+        assert (backups[0] / "hammerspoon/init.lua").read_text() == "previous configuration"
+        assert (backups[0] / "hammerspoon/modules/core.lua").read_text() == "previous module"
+        assert (root / "modules/core.lua").read_text() != "previous module"
+    else:
+        assert (backups[0] / "resolved/init.lua").read_text() == "previous configuration"
+        assert (backups[0] / "resolved/modules/core.lua").read_text() == "previous module"
+    if layout == "root-symlink":
+        assert not root.is_symlink()
+        assert (original_root / "init.lua").is_symlink()
+        assert (backups[0] / "original-root-link").is_symlink()
     assert (home / ".cache/chezmoi/hammerspoon-migration-complete").is_file()
     first_nonce = runtime_nonce.read_text()
     assert len(first_nonce) == 32
@@ -155,23 +182,26 @@ def test_apply_migrates_legacy_config_and_reports_ready_runtime(
     assert runtime_nonce.read_text() != first_nonce
 
 
-def test_apply_refuses_unrecognized_symlink_without_replacing_existing_config(
+def test_apply_accepts_arbitrary_symlink_target_and_does_not_mutate_it(
     setup_environment,
 ):
     home, root, events, _, command, env = setup_environment
-    unrecognized = home / "another-personal-config"
-    unrecognized.mkdir()
+    original = home / "another-personal-config"
+    original.mkdir()
+    (original / "untouched.lua").write_text("do not touch")
     (root / "modules").unlink()
-    (root / "modules").symlink_to(unrecognized, target_is_directory=True)
+    (root / "modules").symlink_to(original, target_is_directory=True)
+    env["HAMMERSPOON_RUNNING"] = "1"
 
     result = subprocess.run(
         command, env=env, capture_output=True, text=True, timeout=40,
     )
 
-    assert result.returncode != 0
-    assert "Refusing to replace an unknown Hammerspoon symlink" in result.stderr
-    assert (root / "init.lua").is_symlink()
-    assert (root / "modules").resolve() == unrecognized
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (root / "modules").is_symlink()
+    assert (root / "modules/audio_check.lua").is_file()
+    assert (original / "untouched.lua").read_text() == "do not touch"
     assert (root / "Spoons/keep.lua").read_text() == "unmanaged spoon"
-    assert not events.exists(), "Activation must not run after a rejected migration"
-    assert not (home / ".cache/chezmoi/hammerspoon-migration-complete").exists()
+    backup_root = home / "Library/Application Support/dotfiles/backups"
+    assert (next(backup_root.iterdir()) / "resolved/modules/untouched.lua").read_text() == "do not touch"
+    assert events.read_text().splitlines() == ["reloaded"]
