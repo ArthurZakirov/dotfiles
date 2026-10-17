@@ -1,0 +1,225 @@
+"""Portable macOS shortcut configuration, exercised at the CLI and preferences boundary."""
+
+import copy
+import json
+import plistlib
+import subprocess
+import sys
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path
+
+import pytest
+
+SCRIPT = Path(__file__).resolve().parents[2] / "home/dot_local/bin/executable_macos-shortcuts"
+loader = SourceFileLoader("macos_shortcuts", str(SCRIPT))
+spec = spec_from_loader(loader.name, loader)
+shortcuts = module_from_spec(spec)
+loader.exec_module(shortcuts)
+
+
+@pytest.fixture
+def example_profile():
+    return {
+        "version": 1,
+        "system_hotkeys": {
+            "15": {"enabled": True, "value": {"type": "standard", "parameters": [56, 28, 1572864]}},
+            "16": {"enabled": False},
+            "164": {"enabled": True, "value": {"type": "modifier", "parameters": [262144, 18446744073709289471]}},
+        },
+        "app_shortcuts": {"com.openai.codex": {"New Window": "@$n"}},
+        "service_shortcuts": {"service-id": "~$g"},
+        "accessibility_hotkeys": [{"enabled": True, "key": 120, "modifier": 8650752, "sybmolichotkey": 7}],
+    }
+
+
+def test_snapshot_includes_registered_and_unregistered_apps_without_other_preferences(
+    tmp_path, monkeypatch,
+):
+    # Arrange
+    (tmp_path / "com.example.unregistered.plist").write_bytes(
+        plistlib.dumps({"NSUserKeyEquivalents": {"Test": "@t"}, "PrivateToken": "do-not-export"})
+    )
+    prefs = {
+        "com.apple.symbolichotkeys": {"AppleSymbolicHotKeys": {"15": {"enabled": False}}},
+        "com.apple.universalaccess": {
+            "com.apple.custommenu.apps": ["com.openai.codex"],
+            "UserAssignableHotKeys": [],
+        },
+        "pbs": {"NSServicesStatus": {
+            "service-id": {"key_equivalent": "~$g", "enabled_context_menu": 1},
+            "other": {"enabled_context_menu": 1},
+        }},
+        "com.openai.codex": {"NSUserKeyEquivalents": {"New Window": "@$n"}},
+        "com.example.unregistered": {"NSUserKeyEquivalents": {"Test": "@t"}},
+    }
+    monkeypatch.setattr(shortcuts, "domain_values", lambda domain: prefs.get(domain, {}))
+
+    # Act
+    result = shortcuts.snapshot(preferences=tmp_path)
+
+    # Assert
+    assert result["app_shortcuts"] == {
+        "com.example.unregistered": {"Test": "@t"},
+        "com.openai.codex": {"New Window": "@$n"},
+    }
+    assert result["system_hotkeys"] == {"15": {"enabled": False}}
+    assert result["service_shortcuts"] == {"service-id": "~$g"}
+    assert "PrivateToken" not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        lambda p: p.update(version=999),
+        lambda p: p["system_hotkeys"].update({"oops": {"enabled": False}}),
+        lambda p: p["system_hotkeys"].update({"15": {"enabled": True, "value": {"type": "standard", "parameters": [1]}}}),
+        lambda p: p["app_shortcuts"].update({"app": {"New Window": 4}}),
+        lambda p: p["accessibility_hotkeys"].append({"enabled": True, "key": 99, "modifier": 0, "sybmolichotkey": 7}),
+    ],
+)
+def test_profile_rejects_invalid_configuration(example_profile, invalid):
+    # Arrange
+    invalid(example_profile)
+
+    # Act / Assert
+    with pytest.raises(shortcuts.ShortcutError, match="Invalid shortcut profile"):
+        shortcuts.validate(example_profile)
+
+
+def test_profiles_preserve_native_modifier_and_string_encoded_hotkeys(example_profile):
+    # Arrange
+    example_profile["system_hotkeys"]["61"] = {
+        "enabled": "1", "value": {"type": "standard", "parameters": ["32", "49", "786432"]}
+    }
+
+    # Act
+    shortcuts.validate(example_profile)
+
+    # Assert
+    assert not list(shortcuts.changes(example_profile, copy.deepcopy(example_profile)))
+
+
+def test_comparison_ignores_unmanaged_shortcuts(example_profile):
+    # Arrange
+    current = copy.deepcopy(example_profile)
+    current["system_hotkeys"]["999"] = {"enabled": True}
+    current["app_shortcuts"]["another.app"] = {"New Chat": "@n"}
+    current["service_shortcuts"]["another-service"] = "@g"
+    current["accessibility_hotkeys"].append({"enabled": False, "key": 0, "modifier": 0, "sybmolichotkey": 8})
+
+    # Act
+    differences = list(shortcuts.changes(example_profile, current))
+
+    # Assert
+    assert differences == []
+
+
+def test_comparison_reports_changed_shortcuts(example_profile):
+    # Arrange
+    current = copy.deepcopy(example_profile)
+    current["app_shortcuts"]["com.openai.codex"]["New Window"] = "@~n"
+    current["service_shortcuts"]["service-id"] = "~a"
+    current["system_hotkeys"]["16"]["enabled"] = True
+    current["accessibility_hotkeys"][0]["key"] = 115
+
+    # Act
+    differences = list(shortcuts.changes(example_profile, current))
+
+    # Assert
+    assert [(kind, key) for kind, key, _ in differences] == [
+        ("system", "16"),
+        ("app", ("com.openai.codex", "New Window")),
+        ("service", "service-id"),
+        ("accessibility", 7),
+    ]
+
+
+def test_apply_updates_only_declared_preferences_and_preserves_other_entries(
+    example_profile, monkeypatch,
+):
+    # Arrange
+    current = {"version": 1, "system_hotkeys": {}, "app_shortcuts": {},
+               "service_shortcuts": {}, "accessibility_hotkeys": [
+                   {"enabled": False, "key": 99, "modifier": 0, "sybmolichotkey": 8},
+               ]}
+    written = []
+    imported = {}
+    monkeypatch.setattr(
+        shortcuts, "domain_values",
+        lambda domain: {
+            "com.apple.universalaccess": {"com.apple.custommenu.apps": ["com.apple.finder"],
+                                           "UserAssignableHotKeys": current["accessibility_hotkeys"]},
+            "pbs": {"NSServicesStatus": {"service-id": {"enabled_services_menu": 1},
+                                         "untouched": {"enabled_services_menu": 0}}},
+            "com.apple.symbolichotkeys": {"AppleSymbolicHotKeys": {
+                "999": {"enabled": False},
+            }, "OtherSystemPreference": 23},
+        }.get(domain, {}),
+    )
+
+    def record(*args):
+        written.append(args)
+        if args[0] == "import":
+            imported[args[1]] = plistlib.loads(Path(args[2]).read_bytes())
+
+    monkeypatch.setattr(shortcuts, "defaults", record)
+    pending = list(shortcuts.changes(example_profile, current))
+
+    # Act
+    shortcuts.apply(example_profile, pending)
+
+    # Assert
+    assert ("write", "com.openai.codex", "NSUserKeyEquivalents",
+            "-dict-add", "New Window", "@$n") in written
+    assert ("write", "com.apple.universalaccess", "com.apple.custommenu.apps",
+            "-array-add", "com.openai.codex") in written
+    assert set(imported) == {"com.apple.symbolichotkeys", "pbs", "com.apple.universalaccess"}
+    symbolic = imported["com.apple.symbolichotkeys"]
+    assert symbolic["OtherSystemPreference"] == 23
+    assert symbolic["AppleSymbolicHotKeys"]["999"] == {"enabled": False}
+    assert symbolic["AppleSymbolicHotKeys"]["15"]["value"]["parameters"] == [56, 28, 1572864]
+    assert symbolic["AppleSymbolicHotKeys"]["164"]["value"]["parameters"][-1] == 18446744073709289471
+    services = imported["pbs"]["NSServicesStatus"]
+    assert services["service-id"] == {"enabled_services_menu": 1, "key_equivalent": "~$g"}
+    assert services["untouched"] == {"enabled_services_menu": 0}
+    assert len(imported["com.apple.universalaccess"]["UserAssignableHotKeys"]) == 2
+
+
+def test_export_and_apply_require_explicit_user_confirmation(
+    example_profile, monkeypatch, tmp_path, capsys,
+):
+    # Arrange
+    profile = tmp_path / "shortcuts.json"
+    current = copy.deepcopy(example_profile)
+    monkeypatch.setattr(shortcuts, "snapshot", lambda: copy.deepcopy(current))
+    calls = []
+    monkeypatch.setattr(shortcuts, "apply", lambda *args: calls.append(args))
+
+    # Act
+    assert shortcuts.main(["export", str(profile)]) == 0
+    current["app_shortcuts"]["com.openai.codex"]["New Window"] = "@~n"
+    assert shortcuts.main(["diff", str(profile)]) == 0
+    assert shortcuts.main(["apply", str(profile)]) == 2
+
+    # Assert
+    assert calls == []
+    assert profile.exists()
+    assert "app: ('com.openai.codex', 'New Window')" in capsys.readouterr().out
+
+    # Act
+    assert shortcuts.main(["apply", str(profile), "--yes"]) == 0
+
+    # Assert
+    assert len(calls) == 1
+
+
+def test_native_plist_export_is_type_preserving(example_profile):
+    # Arrange
+    original = {"AppleSymbolicHotKeys": example_profile["system_hotkeys"]}
+
+    # Act
+    restored = plistlib.loads(plistlib.dumps(original))
+
+    # Assert
+    assert restored == original

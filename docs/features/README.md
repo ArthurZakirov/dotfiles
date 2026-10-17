@@ -21,6 +21,7 @@ how to use it, and which files manage it.
 ## Shared infrastructure
 
 - **[Zsh configuration](zsh.md)** — Shared prompt, history, completion, search, and shell plugins.
+- **[macOS keyboard shortcuts](macos-shortcuts.md)** — Sync native system and application shortcuts through chezmoi.
 - **[Hammerspoon shortcuts](hammerspoon.md)** — Mac window, Spaces and app hotkeys; microphone check.
 - **[Application provisioning](applications.md)** — Missing applications and CLI tools installed for each profile.
 - **[Secrets management](secrets-management.md)** — Reusable credential lookup for independent personal-profile integrations.

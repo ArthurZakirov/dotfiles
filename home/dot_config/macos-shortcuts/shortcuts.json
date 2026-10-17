@@ -1,0 +1,410 @@
+{
+  "accessibility_hotkeys": [
+    {
+      "enabled": true,
+      "key": 120,
+      "modifier": 8650752,
+      "sybmolichotkey": 7
+    },
+    {
+      "enabled": true,
+      "key": 99,
+      "modifier": 8650752,
+      "sybmolichotkey": 8
+    },
+    {
+      "enabled": true,
+      "key": 118,
+      "modifier": 8650752,
+      "sybmolichotkey": 9
+    },
+    {
+      "enabled": true,
+      "key": 96,
+      "modifier": 8650752,
+      "sybmolichotkey": 10
+    },
+    {
+      "enabled": true,
+      "key": 97,
+      "modifier": 8650752,
+      "sybmolichotkey": 11
+    }
+  ],
+  "app_shortcuts": {
+    "com.apple.finder": {
+      "Google Drive": "@$d"
+    },
+    "com.openai.codex": {
+      "New Temporary Chat": "@~$n",
+      "New Window": "@$n"
+    }
+  },
+  "service_shortcuts": {
+    "com.mitchellh.ghostty - New Ghostty Window Here - openWindow": "~$g"
+  },
+  "system_hotkeys": {
+    "118": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          18,
+          262144
+        ],
+        "type": "standard"
+      }
+    },
+    "119": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          19,
+          262144
+        ],
+        "type": "standard"
+      }
+    },
+    "15": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          56,
+          28,
+          1572864
+        ],
+        "type": "standard"
+      }
+    },
+    "16": {
+      "enabled": false
+    },
+    "164": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          262144,
+          18446744073709289471
+        ],
+        "type": "modifier"
+      }
+    },
+    "17": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          61,
+          24,
+          1572864
+        ],
+        "type": "standard"
+      }
+    },
+    "179": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          65535,
+          0
+        ],
+        "type": "standard"
+      }
+    },
+    "18": {
+      "enabled": false
+    },
+    "19": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          45,
+          27,
+          1572864
+        ],
+        "type": "standard"
+      }
+    },
+    "20": {
+      "enabled": false
+    },
+    "21": {
+      "enabled": false,
+      "value": {
+        "parameters": [
+          56,
+          28,
+          1835008
+        ],
+        "type": "standard"
+      }
+    },
+    "22": {
+      "enabled": false
+    },
+    "222": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          115,
+          1,
+          524288
+        ],
+        "type": "standard"
+      }
+    },
+    "23": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          92,
+          42,
+          1572864
+        ],
+        "type": "standard"
+      }
+    },
+    "233": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          109,
+          46,
+          1048576
+        ],
+        "type": "standard"
+      }
+    },
+    "235": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          65535,
+          0
+        ],
+        "type": "standard"
+      }
+    },
+    "237": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          36,
+          786432
+        ],
+        "type": "standard"
+      }
+    },
+    "238": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          99,
+          8,
+          8650752
+        ],
+        "type": "standard"
+      }
+    },
+    "239": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          114,
+          15,
+          8650752
+        ],
+        "type": "standard"
+      }
+    },
+    "24": {
+      "enabled": false
+    },
+    "240": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          123,
+          9175040
+        ],
+        "type": "standard"
+      }
+    },
+    "241": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          124,
+          9175040
+        ],
+        "type": "standard"
+      }
+    },
+    "242": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          126,
+          8650752
+        ],
+        "type": "standard"
+      }
+    },
+    "243": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          125,
+          8650752
+        ],
+        "type": "standard"
+      }
+    },
+    "25": {
+      "enabled": false
+    },
+    "257": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          123,
+          9306112
+        ],
+        "type": "standard"
+      }
+    },
+    "258": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          124,
+          9306112
+        ],
+        "type": "standard"
+      }
+    },
+    "26": {
+      "enabled": false
+    },
+    "33": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          113,
+          12,
+          524288
+        ],
+        "type": "standard"
+      }
+    },
+    "35": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          113,
+          12,
+          655360
+        ],
+        "type": "standard"
+      }
+    },
+    "60": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          32,
+          49,
+          262144
+        ],
+        "type": "standard"
+      }
+    },
+    "61": {
+      "enabled": "1",
+      "value": {
+        "parameters": [
+          "32",
+          "49",
+          "786432"
+        ],
+        "type": "standard"
+      }
+    },
+    "64": {
+      "enabled": false,
+      "value": {
+        "parameters": [
+          32,
+          49,
+          1048576
+        ],
+        "type": "standard"
+      }
+    },
+    "65": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          32,
+          49,
+          1572864
+        ],
+        "type": "standard"
+      }
+    },
+    "79": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          123,
+          8650752
+        ],
+        "type": "standard"
+      }
+    },
+    "80": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          123,
+          8781824
+        ],
+        "type": "standard"
+      }
+    },
+    "81": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          124,
+          8650752
+        ],
+        "type": "standard"
+      }
+    },
+    "82": {
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          124,
+          8781824
+        ],
+        "type": "standard"
+      }
+    }
+  },
+  "version": 1
+}
