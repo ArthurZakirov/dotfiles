@@ -1,6 +1,7 @@
 """Behavioral tests for both machine profiles; low-level setup lives in fixtures."""
 
 import os
+import shlex
 
 import pytest
 
@@ -111,7 +112,8 @@ def test_peekaboo_skill_hook_is_rendered_and_safe_to_skip(
     )
     content = hook.read_text()
     assert "ensure_agent_skill peekaboo openclaw/Peekaboo" in content
-    assert f'DOTFILES_ROOT="{profile_factory.repository}"' in content
+    assignment = next(line for line in content.splitlines() if line.startswith("DOTFILES_ROOT="))
+    assert shlex.split(assignment) == [f"DOTFILES_ROOT={profile_factory.repository}"]
     assert 'source "$DOTFILES_ROOT/src/homebrew.sh"' in content
     assert content.index("configure_homebrew") < content.index("command -v peekaboo")
     assert 'source "$DOTFILES_ROOT/src/agent-skills.sh"' in content
@@ -136,7 +138,8 @@ def test_agent_browser_hook_renders_for_both_profiles(
         "run_after_50-ensure-agent-browser.sh.tmpl", "agent-browser",
     )
     content = hook.read_text()
-    assert f'DOTFILES_ROOT="{profile_factory.repository}"' in content
+    assignment = next(line for line in content.splitlines() if line.startswith("DOTFILES_ROOT="))
+    assert shlex.split(assignment) == [f"DOTFILES_ROOT={profile_factory.repository}"]
     assert 'source "$DOTFILES_ROOT/src/agent-skills.sh"' in content
     assert 'source "$DOTFILES_ROOT/src/homebrew.sh"' in content
     assert 'ensure_agent_skill agent-browser vercel-labs/agent-browser' in content

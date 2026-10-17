@@ -6,6 +6,7 @@ import subprocess
 import pytest
 
 
+@pytest.mark.skipif(os.uname().sysname != "Darwin", reason="LaunchAgent requires macOS")
 @pytest.mark.parametrize("profile", ["personal", "professional"])
 def test_live_remote_service_survives_apply_by_default(profile, profile_factory, tmp_path):
     rendered = profile_factory.render(profile)
@@ -38,7 +39,9 @@ def test_live_remote_service_survives_apply_by_default(profile, profile_factory,
     marker.write_text("digest of previous running service\n")
     env = {**os.environ, "HOME": str(home),
            "PATH": f"{fake_bin}:{os.environ['PATH']}",
-           "LAUNCHCTL_LOG": str(live_log)}
+           "LAUNCHCTL_LOG": str(live_log),
+           "DOTFILES_SKIP_OPTIONAL_APPS": "0",
+           "DOTFILES_ALLOW_SERVICE_INTERRUPTION": "0"}
     run = subprocess.run(["/bin/sh", str(hook)], env=env,
                          text=True, capture_output=True, timeout=15)
     assert run.returncode == 0, run.stderr
@@ -47,6 +50,7 @@ def test_live_remote_service_survives_apply_by_default(profile, profile_factory,
     assert plist.exists()
 
 
+@pytest.mark.skipif(os.uname().sysname != "Darwin", reason="LaunchAgent requires macOS")
 def test_service_restart_is_explicit(profile_factory, tmp_path):
     rendered = profile_factory.render("personal")
     hook = profile_factory.render_hook(
@@ -76,6 +80,7 @@ def test_service_restart_is_explicit(profile_factory, tmp_path):
                          env={**os.environ, "HOME": str(home),
                               "PATH": f"{stub}:{os.environ['PATH']}",
                               "LAUNCHCTL_LOG": str(commands),
+                              "DOTFILES_SKIP_OPTIONAL_APPS": "0",
                               "DOTFILES_ALLOW_SERVICE_INTERRUPTION": "1"},
                          text=True, capture_output=True, timeout=15)
     assert run.returncode == 0, run.stderr

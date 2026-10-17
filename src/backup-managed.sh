@@ -4,7 +4,7 @@
 
 snapshot_existing_managed() {
   local config="$1" source="$2" working_tree="$3" destination="$4"
-  local scratch backup_root backup_dir target relative copied=0
+  local scratch backup_root backup_dir target relative resolved_destination resolved_parent copied=0
   scratch="$(mktemp -d)" || return 1
   # The outer chezmoi apply holds its own state lock. A nested status or
   # managed invocation must use a separate scratch state to avoid deadlock.
@@ -29,6 +29,7 @@ snapshot_existing_managed() {
 
   umask 077
   backup_root="$destination/Library/Application Support/dotfiles/backups"
+  resolved_destination="$(cd -P "$destination" && pwd -P)" || { rm -rf "$scratch"; return 1; }
   while IFS= read -r -d '' target; do
     case "$target" in
       "$destination"/*) relative="${target#"$destination"/}" ;;
@@ -36,6 +37,18 @@ snapshot_existing_managed() {
          rm -rf "$scratch"; return 1 ;;
     esac
     if [[ -f "$target" || -L "$target" ]]; then
+      # -P prevents dereferencing only the final symlink. A managed path can
+      # also have an intermediate symlink leading outside the destination.
+      resolved_parent="$(cd -P "$(dirname "$target")" && pwd -P)" || {
+        printf 'Pre-apply backup: unable to resolve target parent: %s\n' "$target" >&2
+        rm -rf "$scratch"
+        return 1
+      }
+      case "$resolved_parent" in
+        "$resolved_destination"|"$resolved_destination"/*) ;;
+        *) printf 'Pre-apply backup: target resolves outside destination: %s\n' "$target" >&2
+           rm -rf "$scratch"; return 1 ;;
+      esac
       if [[ -z "${backup_dir:-}" ]]; then
         mkdir -p "$backup_root"
         backup_dir="$(mktemp -d "$backup_root/apply.XXXXXXXX")" || return 1

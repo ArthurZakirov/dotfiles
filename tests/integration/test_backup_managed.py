@@ -103,3 +103,31 @@ def test_real_chezmoi_dry_run_and_apply_preserve_existing_state(tmp_path):
     assert again.returncode == 0, again.stderr
     assert target.read_text() == "new managed state\n"
     assert len(list((home / "Library/Application Support/dotfiles/backups").glob("apply.*"))) == 1
+
+
+def test_backup_rejects_managed_path_through_external_parent_symlink(tmp_path):
+    """A lexical destination prefix cannot authorize following a parent symlink."""
+    source = tmp_path / "repository" / "home"
+    source.mkdir(parents=True)
+    nested = source / "dot_link"
+    nested.mkdir()
+    (nested / "dot_private").write_text("new managed content\n")
+    home = tmp_path / "destination"
+    home.mkdir()
+    outside = tmp_path / "external"
+    outside.mkdir()
+    (outside / ".private").write_text("sensitive external content\n")
+    (home / ".link").symlink_to(outside, target_is_directory=True)
+    config = tmp_path / "chezmoi.toml"
+    config.write_text(f'sourceDir = "{source}"\n')
+
+    script = ROOT / "src/backup-managed.sh"
+    result = subprocess.run(
+        ["/bin/bash", "-c", 'source "$1"; snapshot_existing_managed "$2" "$3" "$4" "$5"',
+         "test", str(script), str(config), str(source), str(source.parent), str(home)],
+        env={**os.environ, "HOME": str(home)}, text=True, capture_output=True, timeout=20,
+    )
+    assert result.returncode != 0
+    assert "target resolves outside destination" in result.stderr
+    assert not (home / "Library/Application Support/dotfiles/backups").exists()
+    assert (outside / ".private").read_text() == "sensitive external content\n"
