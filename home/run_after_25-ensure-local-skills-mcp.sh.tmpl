@@ -1,0 +1,165 @@
+#!/bin/sh
+set -eu
+
+label='local.skills.mcp'
+plist="$HOME/Library/LaunchAgents/$label.plist"
+marker="$HOME/.local/state/local-skills-mcp/$label.sha256"
+domain="gui/$(id -u)"
+service="$domain/$label"
+
+# Discover a previously installed local service from its existing plist.
+# Its historical launcher name is compatibility metadata, not a dependency.
+# The old label's user-specific prefix is never assumed or hardcoded.
+legacy_label=''
+legacy_plist=''
+legacy_marker=''
+legacy_service=''
+for candidate in "$HOME"/Library/LaunchAgents/com.*.skillport-mcp.plist; do
+  [ -f "$candidate" ] || continue
+  if grep -Fq '/.local/bin/skillport-mcp-launch' "$candidate"; then
+    if [ -n "$legacy_label" ]; then
+      echo "Multiple historical MCP services detected; not changing either." >&2
+      exit 1
+    fi
+    legacy_plist="$candidate"
+    legacy_label="$(basename "$candidate" .plist)"
+    legacy_marker="$HOME/Library/Caches/chezmoi/$legacy_label.sha256"
+    legacy_service="$domain/$legacy_label"
+  fi
+done
+
+{{ if eq .profile "personal" -}}
+if [ "$(uname -s)" != Darwin ] || [ "${DOTFILES_SKIP_OPTIONAL_APPS:-}" = 1 ]; then
+  exit 0
+fi
+
+for tool in uv tunnel-client bws python3; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    echo "Local skills MCP requires $tool from personal dotfiles setup." >&2
+    exit 1
+  }
+done
+
+project="$HOME/.local/share/local-skills-mcp"
+# On a fresh or partially configured Mac, wait for the regular managed-file
+# phase to provision this optional integration before attempting service setup.
+if [ ! -f "$project/launch.py" ]; then
+  exit 0
+fi
+test -r "$HOME/.local/share/dotfiles-secrets/secret_store.py" || exit 1
+test -x "$HOME/.local/bin/local-skills-mcp-launch" || exit 1
+
+# The ID comes from per-machine state, a previous local installation or the
+# optional OPENAI_TUNNEL_ID secret. Missing provisioning is a no-op, never a prompt.
+if ! DOTFILES_SECRETS_ACCOUNT={{ .bwsAccount | quote }} python3 "$project/launch.py" --configured >/dev/null 2>&1; then
+  exit 0
+fi
+
+uv sync --project "$project" --frozen --no-dev
+test -x "$project/.venv/bin/python" || exit 1
+plutil -lint "$plist" >/dev/null
+id_file="$HOME/.config/local-skills-mcp/tunnel-id"
+if [ ! -f "$id_file" ]; then
+  id_file="$HOME/.config/skillport-mcp/tunnel-id"
+fi
+current_hash="$(
+  for file in "$plist" "$project/server.py" "$project/launch.py" "$project/uv.lock" "$HOME/.local/share/dotfiles-secrets/secret_store.py" "$id_file"; do
+    [ ! -f "$file" ] || shasum -a 256 "$file"
+  done | shasum -a 256 | awk '{print $1}'
+)"
+previous_hash="$(cat "$marker" 2>/dev/null || true)"
+
+wait_for_bootout() {
+  i=0
+  while launchctl print "$1" >/dev/null 2>&1; do
+    if [ "$i" -ge 20 ]; then
+      echo "Timed out waiting for launchd service to stop: $1" >&2
+      return 1
+    fi
+    sleep 0.5
+    i=$((i + 1))
+  done
+}
+
+if launchctl print "$service" >/dev/null 2>&1; then
+  if [ ! -f "$marker" ]; then
+    echo "Local skills MCP service exists but is unmanaged; leaving it untouched." >&2
+    exit 1
+  fi
+  if [ "$current_hash" != "$previous_hash" ]; then
+    launchctl bootout "$service"
+    wait_for_bootout "$service"
+    launchctl bootstrap "$domain" "$plist"
+  fi
+else
+  # Migrate only the earlier dotfiles-managed instance. Do not take over
+  # unknown services or interrupt other clients sharing the tunnel.
+  old_running=0
+  if launchctl print "$legacy_service" >/dev/null 2>&1; then
+    if [ ! -f "$legacy_marker" ]; then
+      echo "An unmanaged predecessor is active; leaving it untouched." >&2
+      exit 1
+    fi
+    old_running=1
+  fi
+
+  # Skip a competing manual tunnel. An owned predecessor will be stopped below.
+  tunnel_id="$(python3 - "$project/launch.py" <<'PY'
+import importlib.util
+import os
+import pathlib
+import sys
+spec = importlib.util.spec_from_file_location("local_skills_launcher", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+home = pathlib.Path.home()
+for path in (home / ".config/local-skills-mcp/tunnel-id",
+             home / ".config/skillport-mcp/tunnel-id"):
+    if path.is_file():
+        print(path.read_text().strip())
+        break
+PY
+)"
+  if [ "$old_running" -eq 0 ] && [ -n "$tunnel_id" ]; then
+    if pgrep -f 'tunnel-client run' 2>/dev/null | while IFS= read -r pid; do
+      ps -p "$pid" -o command= 2>/dev/null
+    done | grep -F -- "$tunnel_id" >/dev/null; then
+      echo "Another tunnel-client uses this ID; preserving the existing connection." >&2
+      exit 1
+    fi
+  fi
+
+  if [ "$old_running" -eq 1 ]; then
+    launchctl bootout "$legacy_service"
+    wait_for_bootout "$legacy_service"
+  fi
+  if ! launchctl bootstrap "$domain" "$plist"; then
+    if [ "$old_running" -eq 1 ]; then
+      launchctl bootstrap "$domain" "$legacy_plist" || true
+    fi
+    exit 1
+  fi
+fi
+
+mkdir -p "$(dirname "$marker")"
+tmp_marker="$(mktemp "$marker.XXXXXX")"
+printf '%s\n' "$current_hash" > "$tmp_marker"
+mv "$tmp_marker" "$marker"
+if [ -f "$legacy_marker" ] && ! launchctl print "$legacy_service" >/dev/null 2>&1; then
+  rm -f "$legacy_plist" "$legacy_marker"
+fi
+{{ else -}}
+# Switching to professional removes only services owned by this dotfiles setup.
+for managed in "$label" "$legacy_label"; do
+  case "$managed" in
+    "$label") owned_marker="$marker"; managed_plist="$plist" ;;
+    *) owned_marker="$legacy_marker"; managed_plist="$legacy_plist" ;;
+  esac
+  if [ -f "$owned_marker" ]; then
+    if launchctl print "$domain/$managed" >/dev/null 2>&1; then
+      launchctl bootout "$domain/$managed"
+    fi
+    rm -f "$managed_plist" "$owned_marker"
+  fi
+done
+{{ end -}}

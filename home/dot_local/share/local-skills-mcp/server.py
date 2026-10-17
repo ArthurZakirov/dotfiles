@@ -13,7 +13,7 @@ TEXT_SUFFIXES = {".md", ".txt", ".json", ".yaml", ".yml", ".py", ".toml"}
 MAX_BYTES = 256_000
 
 mcp = FastMCP(
-    "SkillPort Local Skills",
+    "Local Agent Skills",
     instructions=(
         "Search the user's local Agent Skills before relevant coding, testing, "
         "software architecture or agentic workflow tasks. Read the complete "
@@ -23,7 +23,7 @@ mcp = FastMCP(
 
 
 def root() -> Path:
-    return Path(os.environ.get("SKILLPORT_SKILLS_ROOT", "~/.agents/skills")).expanduser()
+    return Path(os.environ.get("LOCAL_SKILLS_ROOT", "~/.agents/skills")).expanduser()
 
 
 def directory(name: str) -> Path:
@@ -32,7 +32,7 @@ def directory(name: str) -> Path:
     candidate = root() / name
     if not (candidate / "SKILL.md").is_file():
         raise ValueError("Skill not found")
-    # Direct child symlinks are allowed: SkillPort installs them from Git repositories.
+    # Top-level skill symlinks may point to independently managed skill directories.
     return candidate.resolve(strict=True)
 
 
@@ -93,16 +93,21 @@ def read_skill(name: str) -> dict:
 
 
 @mcp.tool(description=(
-    "Read an explicitly referenced text resource from an already selected "
-    "Agent Skill, such as references/testing.md. Never accesses arbitrary files."
+    "Read text in the references/ directory of a selected Agent Skill, "
+    "such as references/testing.md. Cannot read arbitrary repository files."
 ))
 def read_skill_resource(name: str, path: str) -> dict:
     base = directory(name)
     rel = PurePosixPath(path)
-    if (not path or rel.is_absolute() or any(part.startswith(".") for part in rel.parts)
+    if (not path or rel.is_absolute() or len(rel.parts) < 2 or rel.parts[0] != "references"
+            or any(part.startswith(".") for part in rel.parts)
             or rel.suffix.lower() not in TEXT_SUFFIXES):
         raise ValueError("Invalid skill resource path")
-    return {"name": name, "path": path, "content": read_text(base / path, base)}
+    references = base / "references"
+    if not references.is_dir() or references.is_symlink():
+        raise ValueError("Skill does not declare a references directory")
+    return {"name": name, "path": path,
+            "content": read_text(base / path, references.resolve(strict=True))}
 
 
 if __name__ == "__main__":

@@ -53,7 +53,7 @@ fi
    chezmoi execute-template '{{ .profile }}'
    ```
 
-4. For the personal profile, configure your Bitwarden Secrets Manager Keychain account separately if needed. To enable the persistent ChatGPT SkillPort tunnel on this Mac, follow [ChatGPT local Agent Skills](features/chatgpt-skills-mcp.md); once its machine-local tunnel ID is configured, the regular `chezmoi apply` sets up the LaunchAgent automatically.
+4. The personal profile uses shared [secrets management](features/secrets-management.md). The [local skills MCP integration](features/chatgpt-skills-mcp.md) is installed and started automatically when its tunnel configuration is available.
 5. If you had a previous `~/.zshrc`, check the backup in `~/Library/Application Support/dotfiles/backups/` before deleting anything.
 
 For the underlying provisioning sequence, see [Architecture](architecture.md).

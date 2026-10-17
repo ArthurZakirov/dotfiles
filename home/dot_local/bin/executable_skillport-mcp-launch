@@ -1,3 +1,0 @@
-#!/bin/sh
-set -eu
-exec python3 "$HOME/.local/share/skillport-mcp/launch.py"

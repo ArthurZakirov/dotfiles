@@ -10,7 +10,7 @@ import types
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "home/dot_local/share/skillport-mcp"
+SOURCE = ROOT / "home/dot_local/share/local-skills-mcp"
 
 
 class FakeFastMCP:
@@ -30,12 +30,12 @@ def server(monkeypatch, tmp_path):
     spec.loader.exec_module(module)
     installed = tmp_path / "installed"
     installed.mkdir()
-    monkeypatch.setenv("SKILLPORT_SKILLS_ROOT", str(installed))
+    monkeypatch.setenv("LOCAL_SKILLS_ROOT", str(installed))
     return module, installed
 
 
 def create_skill(installed, name="python-testing", description="Write Python tests."):
-    # Real SkillPort may link a top-level install to a canonical Git checkout.
+    # Installed skills may be directory symlinks to their source location.
     canonical = installed.parent / f"canonical-{name}"
     canonical.mkdir()
     (canonical / "SKILL.md").write_text(
@@ -91,7 +91,10 @@ def test_references_must_stay_inside_selected_skill(server):
     outside = installed.parent / "outside.md"
     outside.write_text("private")
     (canonical / "references/unsafe.md").symlink_to(outside)
-    for path in ("../outside.md", ".env", "/tmp/other.md", "references/unsafe.md", "references/../../outside.md"):
+    (canonical / "private.json").write_text('{"private": true}')
+    (canonical / "references/backdoor").symlink_to(canonical, target_is_directory=True)
+    for path in ("../outside.md", ".env", "/tmp/other.md", "references/unsafe.md",
+                 "references/backdoor/private.json", "references/../../outside.md"):
         with pytest.raises((ValueError, FileNotFoundError)):
             service.read_skill_resource("python-testing", path)
 
@@ -105,43 +108,56 @@ def test_invalid_skills_do_not_break_search(server):
     assert [skill["name"] for skill in service.search_skills("anything")["skills"]] == ["python-testing"]
 
 
-def test_launcher_only_injects_runtime_key(monkeypatch, tmp_path):
-    spec = importlib.util.spec_from_file_location("skillport_launcher", SOURCE / "launch.py")
+def test_runtime_uses_generic_secrets_and_injected_tunnel_id(monkeypatch, tmp_path):
+    spec = importlib.util.spec_from_file_location("local_skills_launcher", SOURCE / "launch.py")
     launch = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(launch)
-    config = tmp_path / ".config/skillport-mcp"
-    config.mkdir(parents=True)
-    (config / "tunnel-id").write_text("tunnel_example12345678\n")
+    account = "account-from-chezmoi-template"
     calls = []
 
-    def fake_run(argv, **kwargs):
-        calls.append(argv[0])
-        if argv[0] == "security":
-            return subprocess.CompletedProcess(argv, 0, "synthetic-bws-token\n", "")
-        assert kwargs["env"]["BWS_ACCESS_TOKEN"] == "synthetic-bws-token"
-        return subprocess.CompletedProcess(
-            argv, 0,
-            json.dumps([{"key": "OPENAI_TUNNEL_API_KEY", "value": "synthetic-runtime-key"}]), "",
-        )
+    def read_secrets(names, selected, inherited):
+        calls.append((names, selected))
+        return {
+            "OPENAI_TUNNEL_API_KEY": "synthetic-runtime-key",
+            "OPENAI_TUNNEL_ID": "tunnel_" + "a" * 32,
+        }
 
-    monkeypatch.setattr(launch.subprocess, "run", fake_run)
-    env, tunnel = launch.runtime_environment(tmp_path, "fake-keychain-account", {"PATH": "/bin"})
-    assert tunnel == "tunnel_example12345678"
+    monkeypatch.setattr(launch, "credential_provider", lambda home: types.SimpleNamespace(
+        read_secrets=read_secrets,
+        sanitized_environment=lambda env: {k: v for k, v in env.items() if k != "BWS_ACCESS_TOKEN"},
+    ))
+    env, tunnel = launch.runtime_environment(tmp_path, account, {
+        "PATH": "/bin", "BWS_ACCESS_TOKEN": "synthetic-legacy-token"
+    })
+    assert tunnel == "tunnel_" + "a" * 32
     assert env["CONTROL_PLANE_API_KEY"] == "synthetic-runtime-key"
     assert "BWS_ACCESS_TOKEN" not in env
-    assert "OPENAI_TUNNEL_API_KEY" not in env
-    assert calls == ["security", "bws"]
+    assert "OPENAI_TUNNEL_ID" not in env
+    assert calls == [({"OPENAI_TUNNEL_ID", "OPENAI_TUNNEL_API_KEY"}, account)]
 
 
-def test_configure_is_non_destructive(tmp_path):
-    cli = ROOT / "home/dot_local/bin/executable_skillport-mcp-configure"
-    env = {**os.environ, "HOME": str(tmp_path)}
-    command = ["/bin/sh", str(cli), "tunnel_0123456789abcdef"]
-    first = subprocess.run(command, env=env, capture_output=True, text=True, check=True)
-    config = tmp_path / ".config/skillport-mcp/tunnel-id"
-    assert config.read_text().strip() == "tunnel_0123456789abcdef"
-    assert (config.stat().st_mode & 0o777) == 0o600
-    second = subprocess.run(command, env=env, capture_output=True, text=True)
-    assert second.returncode != 0
-    assert config.read_text().strip() == "tunnel_0123456789abcdef"
-    assert "already configured" in second.stderr.lower()
+def test_machine_local_tunnel_config_overrides_secrets(tmp_path):
+    spec = importlib.util.spec_from_file_location("local_skills_launcher", SOURCE / "launch.py")
+    launch = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(launch)
+    path = tmp_path / ".config/local-skills-mcp/tunnel-id"
+    path.parent.mkdir(parents=True)
+    path.write_text("tunnel_" + "b" * 32 + "\n")
+    assert launch.select_tunnel_id(tmp_path, {"OPENAI_TUNNEL_ID": "tunnel_" + "a" * 32}) == "tunnel_" + "b" * 32
+
+
+@pytest.mark.parametrize("invalid", ["tunnel_short", "tunnel_" + "F" * 32, "../secret"])
+def test_rejects_invalid_tunnel_id(tmp_path, invalid):
+    spec = importlib.util.spec_from_file_location("local_skills_launcher", SOURCE / "launch.py")
+    launch = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(launch)
+    with pytest.raises(ValueError):
+        launch.select_tunnel_id(tmp_path, {"OPENAI_TUNNEL_ID": invalid})
+
+
+def test_unrelated_skill_files_are_not_readable(server):
+    service, installed = server
+    canonical = create_skill(installed)
+    (canonical / "config.json").write_text('{"private": true}')
+    with pytest.raises(ValueError):
+        service.read_skill_resource("python-testing", "config.json")

@@ -1,110 +1,71 @@
-# ChatGPT local Agent Skills (personal Mac)
+# Local Agent Skills in ChatGPT (personal profile)
 
 [← Features](README.md) · [Setup](../setup.md)
 
-## What this does
-
-Normal **ChatGPT Chat** can call a custom MCP plugin whose three stable tools
-search and read the installed Agent Skills. The bridge does not install, edit
-or synchronize skills; SkillPort owns `~/.agents/skills` (including its
-symlinks) and the canonical Git repositories remain unchanged.
+This personal-only integration exposes installed `~/.agents/skills` to normal
+ChatGPT chats over a **read-only** FastMCP server and an OpenAI Secure MCP
+Tunnel. It does not install, update, manage or depend on any skill repository or
+skill installer.
 
 ```text
-Installed ~/.agents/skills/
-  -> FastMCP server (stdio, read-only)
-  -> OpenAI tunnel-client
-  -> Secure MCP Tunnel
-  -> Custom MCP plugin -> normal ChatGPT Chat
+~/.agents/skills/ → local FastMCP → OpenAI tunnel → ChatGPT plugin
 ```
 
-The tools `search_skills(query, limit, offset)`, `read_skill(name)`, and
-`read_skill_resource(name, path)` load fresh local files for each call.
-They do not require a new plugin upload after a `SKILL.md` or reference edit.
-The MCP tool descriptions *encourage* ChatGPT to search on relevant requests;
-**automatic invocation is model-mediated, not guaranteed**. A new plugin install
-and first ChatGPT-chat discovery are still required on each account/workspace.
+The MCP server offers `search_skills`, `read_skill` and
+`read_skill_resource`. It reads the local files on each call, including
+supported symlinked skill directories. Tool descriptions encourage discovery,
+but ChatGPT ultimately decides which tool to call.
 
-## Install and configure on each personal Mac
+## Automated personal-Mac setup
 
-1. Apply your updated dotfiles following [the safe chezmoi setup](../setup.md).
-   The personal app installer installs the official
-   `brew install openai/tools/tunnel-client`; the shared Brewfile already
-   provides `uv`. The service's frozen Python dependencies are installed by
-   `uv sync` at first configured apply. Professional machines skip the plugin.
-2. In [OpenAI Platform Tunnels](https://platform.openai.com/settings/organization/tunnels),
-   create or choose a tunnel attached to the ChatGPT workspace. Do not reuse
-   an ID simultaneously from two Macs. The owner of the runtime credential must
-   have Tunnels **Read + Use**.
-3. Put a restricted runtime API key in **Bitwarden Secrets Manager** as the
-   secret named `OPENAI_TUNNEL_API_KEY`. The existing `BWS_ACCESS_TOKEN`
-   is held in macOS Keychain under the account chosen in chezmoi's personal
-   profile setup (`bwsAccount`). No secret value belongs in Git, a plist,
-   `~/.zshrc.local`, or a tunnel-client profile.
-4. After reviewing the tunnel ID, run (only once per Mac):
+The personal-profile dotfiles installer installs the tunnel client, FastMCP
+runtime, and `local.skills.mcp` macOS LaunchAgent automatically. The
+LaunchAgent starts at login and restarts after failures. A repeated
+`chezmoi apply` leaves an unchanged service running; changing the managed
+configuration restarts only that service.
 
-   ```sh
-   skillport-mcp-configure tunnel_YOUR_ID_FROM_PLATFORM
-   ```
+The launcher obtains its API key from the [shared secrets infrastructure]
+(secrets-management.md) rather than implementing a feature-specific credential
+store. The server does not inherit that key. No passwords or API keys are kept
+in Git, a LaunchAgent plist or command arguments.
 
-   This creates `~/.config/skillport-mcp/tunnel-id` (mode 0600) and refuses
-   to replace an existing file. The ID is machine-local and not tracked.
-5. **Stop any existing foreground demo `tunnel-client run` for that ID**
-   before proceeding. Stdio tunnels cannot have multiple active runtimes
-   on the same tunnel. With the personal files applied, run `chezmoi apply`
-   after configuring the tunnel ID. Chezmoi automatically installs the
-   `com.arthur.skillport-mcp` LaunchAgent, synchronizes the frozen Python
-   environment, and registers the service using `launchctl`; **no manual
-   `launchctl bootstrap` or terminal session is needed**. The LaunchAgent
-   starts at login and restarts the tunnel if it exits. Repeated applies
-   leave an unchanged running service alone, while configuration updates
-   reload the managed service. Setup exits without starting a service if
-   no tunnel ID exists. It refuses to take over an unmanaged existing service
-   with the same label.
-6. Inspect the service:
+Tunnel selection is **injected per machine**, never hardcoded: existing local
+tunnel configuration takes precedence, with optional `OPENAI_TUNNEL_ID` from
+the configured secret provider as fallback. The one-time prerequisite is an
+existing OpenAI tunnel attached to the correct workspace, with a restricted
+`OPENAI_TUNNEL_API_KEY` provisioned through the common secrets infrastructure.
+Once available, dotfiles setup needs no feature-specific terminal commands or
+manual launchctl action. Missing external account provisioning results in a
+safe no-op, not a prompt or a broken service.
 
-   ```sh
-   launchctl print "gui/$(id -u)/com.arthur.skillport-mcp"
-   tail -n 30 "$HOME/Library/Logs/skillport-mcp.err.log"
-   ```
+The first connection of a *new* custom MCP plugin to a ChatGPT account/workspace
+still requires authorization through ChatGPT's own UI. An existing plugin does
+not need updating when a local `SKILL.md` changes; if the MCP schema changes,
+refresh the plugin's tool catalog.
 
-   The launcher retrieves the Bitwarden access token from Keychain and
-   injects only `CONTROL_PLANE_API_KEY` into the tunnel process; the MCP child
-   explicitly unsets credential variables before running. There is no
-   shell-history/API-key echo step.
-7. In ChatGPT **Plugins → Add custom MCP server**, select **Tunnel**,
-   choose the existing tunnel ID, select authentication **None** for this
-   read-only server, and create the plugin. In a new **normal Chat** (not Work),
-   request `search_skills` and `read_skill`. Existing demo plugin tool catalogs
-   may require a manual refresh/reconnection when switching from the stub
-   to the real server; subsequent content changes require no reinstallation.
+## Scope and security
 
-## Operations and boundaries
+- **Personal profile only:** The professional profile does not install the
+  server, secret helper, LaunchAgent or optional tunnel client.
+- **Neutral service label:** `local.skills.mcp`. No computer/user/account name
+  or tunnel ID is compiled into the code or plist.
+- **Skill discovery:** Reads `~/.agents/skills/` by default, independent of how
+  its directories are managed. `LOCAL_SKILLS_ROOT` overrides it for testing.
+- **Resource access:** Reads only text-like files within a selected skill's
+  `references/` directory; rejects traversal, hidden paths and symlinks
+  escaping the selected skill. Files larger than 256 KB are rejected.
+- **Communication:** Requested skill text is sent to ChatGPT. Store no secrets
+  in skills exposed through this integration.
+- **Runtime:** The Mac must be running with its user session logged in for
+  the user LaunchAgent to provide the tunnel.
+- **Troubleshooting:** Read the macOS LaunchAgent status and
+  `~/Library/Logs/local-skills-mcp.err.log`. Credential retrieval failures
+  report redacted errors without dumping backend output.
 
-- Server source: `~/.local/share/skillport-mcp/server.py`. Python environment
-  at `~/.local/share/skillport-mcp/.venv`; only the package declarations and
-  lockfile are managed by chezmoi. The environment is generated locally.
-- Installed skill directory: `~/.agents/skills`. Override with
-  `SKILLPORT_SKILLS_ROOT` only when testing or with an explicitly trusted
-  directory. Canonical top-level skill symlinks are supported.
-- Safety: only declared text-like resources within a selected skill are read,
-  with 256 KB per-file limit; `..`, hidden resource paths and escaping
-  resource symlinks are rejected. A top-level skill symlink is explicitly trusted
-  and may resolve to its canonical repository outside the skill root.
-- Keep this Mac awake and logged in for live access. The tunnel-client
-  must run for discovery and tool calls. An outgoing tunnel does not grant
-  ChatGPT arbitrary filesystem access, but **skill instructions and read
-  references are transmitted to ChatGPT** when tools are invoked; do not include
-  private data in accessible skill contents.
-- A change to MCP tool schemas or server behavior may need a restart and a
-  ChatGPT plugin refresh. A change to a skill's content does not.
-- If switching the Mac to `professional`, the chezmoi after-hook stops/removes
-  only a service previously proven managed by its marker; unrelated services
-  are left alone. Local tunnel configuration is retained until removed manually.
-- Don't use `nohup`/`disown` to keep a second daemon alive. Managed
-  launchd handles login startup and restarts, with throttling to avoid rapid
-  Keychain failures. On credential failure, inspect the redacted startup error
-  and check the Keychain grant / Secrets Manager entry.
+Existing local installations are migrated by the chezmoi after-hook without
+requiring users to start or stop shell processes. The running predecessor is
+preserved if the new service cannot start.
 
 Official references: [OpenAI Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels),
-[tunnel-client setup](https://github.com/openai/tunnel-client/blob/v0.0.16/README.md),
+[tunnel-client](https://github.com/openai/tunnel-client),
 [FastMCP](https://gofastmcp.com/).

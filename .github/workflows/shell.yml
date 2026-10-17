@@ -24,7 +24,7 @@ jobs:
           pipx install poetry
           POETRY_VIRTUALENVS_IN_PROJECT=true poetry install --no-interaction --sync
       - name: Install isolated FastMCP runtime for real stdio integration
-        run: uv sync --project home/dot_local/share/skillport-mcp --frozen --no-dev
+        run: uv sync --project home/dot_local/share/local-skills-mcp --frozen --no-dev
       - name: Run read-only test suite
         run: ./tests/run.sh
 
