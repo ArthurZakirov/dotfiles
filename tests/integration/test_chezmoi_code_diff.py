@@ -18,7 +18,7 @@ def code_stub(tmp_path):
     code = bin_dir / "code"
     code.write_text(
         '#!/bin/sh\nprintf "%s\\n" "$@" > "$CODE_ARGS"\n'
-        'test -f "$4" && test -f "$5" && test -d "$6"\n'
+        'test -f "$3" && test -f "$4" && test -d "$5"\n'
     )
     code.chmod(0o755)
     return {
@@ -27,6 +27,7 @@ def code_stub(tmp_path):
         "CODE_ARGS": str(tmp_path / "arguments"),
         "CHEZMOI_CODE_DIFF_CACHE": str(tmp_path / "snapshot-cache"),
         "CHEZMOI_CODE_DIFF_WORKSPACE": str(tmp_path),
+        "CHEZMOI_CODE_DIFF_SETTLE_SECONDS": "0",
     }
 
 
@@ -42,9 +43,9 @@ def recorded_args(env: dict[str, str]) -> list[str]:
 
 def diff_args(env: dict[str, str]) -> list[Path]:
     args = recorded_args(env)
-    assert args[:3] == ["--reuse-window", "--wait", "--diff"]
-    assert Path(args[5]) == Path(env["CHEZMOI_CODE_DIFF_WORKSPACE"])
-    return [Path(path) for path in args[3:5]]
+    assert args[:2] == ["--reuse-window", "--diff"]
+    assert Path(args[4]) == Path(env["CHEZMOI_CODE_DIFF_WORKSPACE"])
+    return [Path(path) for path in args[2:4]]
 
 
 def test_added_file_remains_readable_after_diff_process_exits(tmp_path, code_stub):
@@ -88,9 +89,9 @@ def test_default_workspace_is_repository_root_not_nested_chezmoi_source(
     )
 
     args = recorded_args(env)
-    assert args[:3] == ["--reuse-window", "--wait", "--diff"]
-    assert Path(args[5]) == repo
-    assert Path(args[5]) != source
+    assert args[:2] == ["--reuse-window", "--diff"]
+    assert Path(args[4]) == repo
+    assert Path(args[4]) != source
 
 
 def test_existing_files_are_snapshotted_before_launching_editor(tmp_path, code_stub):
@@ -161,9 +162,9 @@ def test_real_chezmoi_diff_keeps_hammerspoon_upgrade_documents_available(
     # Record every editor invocation: chezmoi diff compares multiple files.
     code = Path(code_stub["PATH"].split(os.pathsep)[0]) / "code"
     code.write_text(
-        '#!/bin/sh\ntest "$1" = --reuse-window && test "$2" = --wait && test "$3" = --diff || exit 2\n'
-        'printf "%s\\t%s\\n" "$4" "$5" >> "$CODE_ARGS"\n'
-        'test -f "$4" && test -f "$5" && test -d "$6"\n'
+        '#!/bin/sh\ntest "$1" = --reuse-window && test "$2" = --diff || exit 2\n'
+        'printf "%s\\t%s\\n" "$3" "$4" >> "$CODE_ARGS"\n'
+        'test -f "$3" && test -f "$4" && test -d "$5"\n'
     )
     source = tmp_path / "source"
     source.mkdir()
@@ -226,3 +227,31 @@ def test_real_chezmoi_diff_keeps_hammerspoon_upgrade_documents_available(
     assert (existing / "bin").is_symlink()
     assert (existing / "modules").is_symlink()
     assert (old_bin / "mic_level").read_text() == "old bin content"
+
+
+def test_editor_dispatch_finishes_before_adapter_returns_and_errors_propagate(
+    tmp_path, code_stub,
+):
+    """A backgrounded CLI silently loses tabs and hides launch failures."""
+    code = Path(code_stub["PATH"].split(os.pathsep)[0]) / "code"
+    target = tmp_path / "modified.lua"
+    target.write_text("changed\n")
+    code.write_text(
+        '#!/bin/sh\nsleep 0.2\nprintf "done\\n" > "$CODE_ARGS"\n'
+    )
+    code.chmod(0o755)
+
+    started = time.monotonic()
+    subprocess.run(
+        ["/bin/bash", str(SCRIPT), "/dev/null", str(target)],
+        env=code_stub, check=True,
+    )
+    assert time.monotonic() - started >= 0.18
+    assert Path(code_stub["CODE_ARGS"]).read_text() == "done\n"
+
+    code.write_text("#!/bin/sh\nexit 47\n")
+    failed = subprocess.run(
+        ["/bin/bash", str(SCRIPT), "/dev/null", str(target)],
+        env=code_stub, capture_output=True, text=True,
+    )
+    assert failed.returncode == 47

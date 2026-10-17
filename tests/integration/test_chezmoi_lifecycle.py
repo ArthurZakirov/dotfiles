@@ -6,7 +6,6 @@ The fake editor validates all diff arguments, not a hardcoded file inventory.
 from pathlib import Path
 import os
 import subprocess
-import time
 
 import pytest
 
@@ -25,15 +24,16 @@ def test_full_managed_tree_diff_apply_and_upgrade(profile, tmp_path, profile_fac
     code = bin_dir / "code"
     code.write_text(
         '#!/bin/sh\n'
-        'test "$1" = --reuse-window && test "$2" = --wait && test "$3" = --diff || exit 22\n'
-        'test -f "$4" && test -f "$5" || exit 23\n'
-        'printf "%s\\n" "$4 -> $5" >> "$CHEZMOI_DIFF_LOG"\n'
+        'test "$1" = --reuse-window && test "$2" = --diff || exit 22\n'
+        'test -f "$3" && test -f "$4" || exit 23\n'
+        'printf "%s\\n" "$3 -> $4" >> "$CHEZMOI_DIFF_LOG"\n'
     )
     code.chmod(0o755)
     env = {**os.environ, "HOME": str(home),
            "PATH": f"{bin_dir}:{os.environ['PATH']}",
            "CHEZMOI_DIFF_LOG": str(log),
-           "DOTFILES_SKIP_OPTIONAL_APPS": "1"}
+           "DOTFILES_SKIP_OPTIONAL_APPS": "1",
+           "CHEZMOI_CODE_DIFF_SETTLE_SECONDS": "0"}
     config = rendered.config
 
     def command(action, *args):
@@ -53,20 +53,8 @@ def test_full_managed_tree_diff_apply_and_upgrade(profile, tmp_path, profile_fac
     assert not any("__pycache__" in path or path.endswith(".pyc") for path in managed)
 
     def recorded_editor_calls() -> int:
-        # Chezmoi finishes spawning each detached editor before returning.
-        # The snapshots it produced are the exact number of pending CLI calls.
-        # Wait for ALL of them, rather than declaring an empty log stable.
-        snapshots = home / ".cache/chezmoi/vscode-diff"
-        expected = len(list(snapshots.glob("diff.*")))
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline:
-            count = len(log.read_text().splitlines()) if log.exists() else 0
-            if count >= expected:
-                return count
-            time.sleep(0.05)
-        raise AssertionError(
-            f"Editor invocations incomplete: received {count} of {expected}"
-        )
+        # Adapter invokes code synchronously: no detached-process polling.
+        return len(log.read_text().splitlines()) if log.exists() else 0
 
     assert not list(home.iterdir())
     command("diff", "--exclude", "scripts")

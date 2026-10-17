@@ -125,6 +125,7 @@ exports.deactivate = () => {};
            'CHEZMOI_VSCODE_REPORT': str(report),
            'CHEZMOI_CODE_DIFF_CACHE': str(tmp_path / 'snapshots'),
            'CHEZMOI_CODE_DIFF_WORKSPACE': str(home),
+           'CHEZMOI_CODE_DIFF_SETTLE_SECONDS': '1',
            'ELECTRON_DISABLE_SECURITY_WARNINGS': 'true'}
     log_path = tmp_path / 'chezmoi-stderr.log'
     launch_log = tmp_path / 'editor-launches.log'
