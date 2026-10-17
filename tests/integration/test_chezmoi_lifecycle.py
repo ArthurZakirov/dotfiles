@@ -6,6 +6,7 @@ The fake editor validates all diff arguments, not a hardcoded file inventory.
 from pathlib import Path
 import os
 import subprocess
+import time
 
 import pytest
 
@@ -24,7 +25,7 @@ def test_full_managed_tree_diff_apply_and_upgrade(profile, tmp_path, profile_fac
     code = bin_dir / "code"
     code.write_text(
         '#!/bin/sh\n'
-        'test "$1" = --reuse-window && test "$2" = --diff || exit 22\n'
+        'test "$1" = --wait && test "$2" = --diff || exit 22\n'
         'test -f "$3" && test -f "$4" || exit 23\n'
         'printf "%s\\n" "$3 -> $4" >> "$CHEZMOI_DIFF_LOG"\n'
     )
@@ -51,10 +52,26 @@ def test_full_managed_tree_diff_apply_and_upgrade(profile, tmp_path, profile_fac
     assert any(".local/bin/" in path for path in managed)
     assert not any("__pycache__" in path or path.endswith(".pyc") for path in managed)
 
+    def recorded_editor_calls() -> int:
+        # Each --wait editor process is detached so chezmoi can finish without
+        # asking the user to close a tab. Observe the completed fake calls.
+        last_count = -1
+        stable_since = time.monotonic()
+        deadline = stable_since + 8
+        while time.monotonic() < deadline:
+            count = len(log.read_text().splitlines()) if log.exists() else 0
+            if count != last_count:
+                last_count = count
+                stable_since = time.monotonic()
+            if time.monotonic() - stable_since >= 0.6:
+                return count
+            time.sleep(0.05)
+        raise AssertionError("VS Code diff processes did not finish writing their logs")
+
     assert not list(home.iterdir())
     command("diff", "--exclude", "scripts")
-    assert log.exists() and log.read_text().strip()
-    initial_calls = len(log.read_text().splitlines())
+    initial_calls = recorded_editor_calls()
+    assert initial_calls > 0
 
     command("apply", "--exclude", "scripts", "--force")
     for path in managed:
@@ -63,19 +80,19 @@ def test_full_managed_tree_diff_apply_and_upgrade(profile, tmp_path, profile_fac
         if path.startswith('.local/bin/'):
             assert installed.is_file() and os.access(installed, os.X_OK), (path, 'CLI is not executable')
     command("diff", "--exclude", "scripts")
-    assert len(log.read_text().splitlines()) == initial_calls
+    assert recorded_editor_calls() == initial_calls
     command("apply", "--exclude", "scripts", "--force")
     command("diff", "--exclude", "scripts")
-    assert len(log.read_text().splitlines()) == initial_calls
+    assert recorded_editor_calls() == initial_calls
 
     # Simulate a drifted existing Mac; exercising the same configured diff adapter.
     target = home / ".zshrc"
     original = target.read_text()
     target.write_text(original + "\n# simulated local drift\n")
     command("diff", "--exclude", "scripts")
-    assert len(log.read_text().splitlines()) > initial_calls
+    assert recorded_editor_calls() > initial_calls
     command("apply", "--exclude", "scripts", "--force")
     assert target.read_text() == original
-    after = len(log.read_text().splitlines())
+    after = recorded_editor_calls()
     command("diff", "--exclude", "scripts")
-    assert len(log.read_text().splitlines()) == after
+    assert recorded_editor_calls() == after

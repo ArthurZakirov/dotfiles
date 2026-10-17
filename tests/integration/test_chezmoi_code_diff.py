@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import subprocess
+import time
 
 import pytest
 
@@ -28,9 +29,19 @@ def code_stub(tmp_path):
     }
 
 
+def recorded_args(env: dict[str, str]) -> list[str]:
+    output = Path(env["CODE_ARGS"])
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if output.exists() and output.stat().st_size:
+            return output.read_text().splitlines()
+        time.sleep(0.025)
+    raise AssertionError(f"Editor CLI not invoked: {output}")
+
+
 def diff_args(env: dict[str, str]) -> list[Path]:
-    args = Path(env["CODE_ARGS"]).read_text().splitlines()
-    assert args[:2] == ["--reuse-window", "--diff"]
+    args = recorded_args(env)
+    assert args[:2] == ["--wait", "--diff"]
     return [Path(path) for path in args[2:]]
 
 
@@ -118,7 +129,7 @@ def test_real_chezmoi_diff_keeps_hammerspoon_upgrade_documents_available(
     # Record every editor invocation: chezmoi diff compares multiple files.
     code = Path(code_stub["PATH"].split(os.pathsep)[0]) / "code"
     code.write_text(
-        '#!/bin/sh\ntest "$1" = --reuse-window && test "$2" = --diff || exit 2\n'
+        '#!/bin/sh\ntest "$1" = --wait && test "$2" = --diff || exit 2\n'
         'printf "%s\\t%s\\n" "$3" "$4" >> "$CODE_ARGS"\n'
         'test -f "$3" && test -f "$4"\n'
     )
@@ -155,7 +166,13 @@ def test_real_chezmoi_diff_keeps_hammerspoon_upgrade_documents_available(
     )
 
     assert result.returncode == 0, result.stderr
-    recorded = Path(code_stub["CODE_ARGS"]).read_text().splitlines()
+    recorded = []
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        recorded = Path(code_stub["CODE_ARGS"]).read_text().splitlines() if Path(code_stub["CODE_ARGS"]).exists() else []
+        if any("window_picker.lua" in line for line in recorded):
+            break
+        time.sleep(0.05)
     pairs = [tuple(map(Path, line.split("\t"))) for line in recorded]
     assert len(pairs) >= 2
     assert all(before.is_file() and after.is_file() for before, after in pairs)

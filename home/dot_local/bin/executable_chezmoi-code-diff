@@ -55,6 +55,8 @@ snapshot_file() {
 
 original_snapshot="$(snapshot_file "$original" before)"
 target_snapshot="$(snapshot_file "$target" after)"
-# Opening diffs must not block chezmoi: --wait prevents the next file diff
-# from being opened, even if VS Code continues showing the earlier tab.
-code --reuse-window --diff "$original_snapshot" "$target_snapshot"
+# Each CLI invocation holds its diff tab open with --wait. Detach the
+# invocation so chezmoi can proceed to the next changed file without waiting
+# for the user to close the tab. Both snapshots persist after chezmoi exits.
+nohup code --wait --diff "$original_snapshot" "$target_snapshot" \
+  </dev/null >/dev/null 2>&1 &
