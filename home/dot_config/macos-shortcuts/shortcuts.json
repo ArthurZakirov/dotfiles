@@ -1,0 +1,453 @@
+{
+  "accessibility_hotkeys": [
+    {
+      "action": "Keyboard navigation: focus menu bar",
+      "enabled": true,
+      "key": 120,
+      "modifier": 8650752,
+      "sybmolichotkey": 7
+    },
+    {
+      "action": "Keyboard navigation: focus Dock",
+      "enabled": true,
+      "key": 99,
+      "modifier": 8650752,
+      "sybmolichotkey": 8
+    },
+    {
+      "action": "Keyboard navigation: focus active or next window",
+      "enabled": true,
+      "key": 118,
+      "modifier": 8650752,
+      "sybmolichotkey": 9
+    },
+    {
+      "action": "Keyboard navigation: focus window toolbar",
+      "enabled": true,
+      "key": 96,
+      "modifier": 8650752,
+      "sybmolichotkey": 10
+    },
+    {
+      "action": "Keyboard navigation: focus floating window",
+      "enabled": true,
+      "key": 97,
+      "modifier": 8650752,
+      "sybmolichotkey": 11
+    }
+  ],
+  "app_shortcuts": {
+    "com.apple.finder": {
+      "Google Drive": "@$d"
+    },
+    "com.openai.codex": {
+      "New Temporary Chat": "@~$n",
+      "New Window": "@$n"
+    }
+  },
+  "service_shortcuts": {
+    "com.mitchellh.ghostty - New Ghostty Window Here - openWindow": "~$g"
+  },
+  "system_hotkeys": {
+    "118": {
+      "action": "Mission Control: switch to Desktop 1",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          18,
+          262144
+        ],
+        "type": "standard"
+      }
+    },
+    "119": {
+      "action": "Mission Control: switch to Desktop 2",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          19,
+          262144
+        ],
+        "type": "standard"
+      }
+    },
+    "15": {
+      "action": "Accessibility: toggle zoom",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          56,
+          28,
+          1572864
+        ],
+        "type": "standard"
+      }
+    },
+    "16": {
+      "action": "Accessibility: toggle zoom (keypad)",
+      "enabled": false
+    },
+    "164": {
+      "action": "Accessibility: modifier key double-tap",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          262144,
+          18446744073709289471
+        ],
+        "type": "modifier"
+      }
+    },
+    "17": {
+      "action": "Accessibility: zoom in",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          61,
+          24,
+          1572864
+        ],
+        "type": "standard"
+      }
+    },
+    "179": {
+      "action": "Accessibility: zoom follows keyboard focus",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          65535,
+          0
+        ],
+        "type": "standard"
+      }
+    },
+    "18": {
+      "action": "Accessibility: zoom in (keypad)",
+      "enabled": false
+    },
+    "19": {
+      "action": "Accessibility: zoom out",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          45,
+          27,
+          1572864
+        ],
+        "type": "standard"
+      }
+    },
+    "20": {
+      "action": "Accessibility: zoom out (keypad)",
+      "enabled": false
+    },
+    "21": {
+      "action": "Accessibility: invert colors",
+      "enabled": false,
+      "value": {
+        "parameters": [
+          56,
+          28,
+          1835008
+        ],
+        "type": "standard"
+      }
+    },
+    "22": {
+      "action": "Accessibility: invert colors (keypad)",
+      "enabled": false
+    },
+    "222": {
+      "action": "Desktop & Dock: toggle Stage Manager",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          115,
+          1,
+          524288
+        ],
+        "type": "standard"
+      }
+    },
+    "23": {
+      "action": "Accessibility: toggle zoom image smoothing",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          92,
+          42,
+          1572864
+        ],
+        "type": "standard"
+      }
+    },
+    "233": {
+      "action": "Window: minimize",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          109,
+          46,
+          1048576
+        ],
+        "type": "standard"
+      }
+    },
+    "235": {
+      "action": "Window: zoom",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          65535,
+          0
+        ],
+        "type": "standard"
+      }
+    },
+    "237": {
+      "action": "Window: fill",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          36,
+          786432
+        ],
+        "type": "standard"
+      }
+    },
+    "238": {
+      "action": "Window: center",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          99,
+          8,
+          8650752
+        ],
+        "type": "standard"
+      }
+    },
+    "239": {
+      "action": "Window: return to previous size",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          114,
+          15,
+          8650752
+        ],
+        "type": "standard"
+      }
+    },
+    "24": {
+      "action": "Accessibility: zoom pan back",
+      "enabled": false
+    },
+    "240": {
+      "action": "Window: tile left half",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          123,
+          9175040
+        ],
+        "type": "standard"
+      }
+    },
+    "241": {
+      "action": "Window: tile right half",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          124,
+          9175040
+        ],
+        "type": "standard"
+      }
+    },
+    "242": {
+      "action": "Window: tile top half",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          126,
+          8650752
+        ],
+        "type": "standard"
+      }
+    },
+    "243": {
+      "action": "Window: tile bottom half",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          125,
+          8650752
+        ],
+        "type": "standard"
+      }
+    },
+    "25": {
+      "action": "Accessibility: increase contrast",
+      "enabled": false
+    },
+    "257": {
+      "action": "Window: full-screen tile left half",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          123,
+          9306112
+        ],
+        "type": "standard"
+      }
+    },
+    "258": {
+      "action": "Window: full-screen tile right half",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          124,
+          9306112
+        ],
+        "type": "standard"
+      }
+    },
+    "26": {
+      "action": "Accessibility: decrease contrast",
+      "enabled": false
+    },
+    "33": {
+      "action": "Mission Control: application windows",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          113,
+          12,
+          524288
+        ],
+        "type": "standard"
+      }
+    },
+    "35": {
+      "action": "Mission Control: application windows (alternate)",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          113,
+          12,
+          655360
+        ],
+        "type": "standard"
+      }
+    },
+    "60": {
+      "action": "Input Sources: select previous input source",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          32,
+          49,
+          262144
+        ],
+        "type": "standard"
+      }
+    },
+    "61": {
+      "action": "Input Sources: select next input source",
+      "enabled": "1",
+      "value": {
+        "parameters": [
+          "32",
+          "49",
+          "786432"
+        ],
+        "type": "standard"
+      }
+    },
+    "64": {
+      "action": "Spotlight: show search",
+      "enabled": false,
+      "value": {
+        "parameters": [
+          32,
+          49,
+          1048576
+        ],
+        "type": "standard"
+      }
+    },
+    "65": {
+      "action": "Spotlight: show Finder search window",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          32,
+          49,
+          1572864
+        ],
+        "type": "standard"
+      }
+    },
+    "79": {
+      "action": "Mission Control: move left a space",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          123,
+          8650752
+        ],
+        "type": "standard"
+      }
+    },
+    "80": {
+      "action": "Mission Control: move left a space (alternate)",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          123,
+          8781824
+        ],
+        "type": "standard"
+      }
+    },
+    "81": {
+      "action": "Mission Control: move right a space",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          124,
+          8650752
+        ],
+        "type": "standard"
+      }
+    },
+    "82": {
+      "action": "Mission Control: move right a space (alternate)",
+      "enabled": true,
+      "value": {
+        "parameters": [
+          65535,
+          124,
+          8781824
+        ],
+        "type": "standard"
+      }
+    }
+  },
+  "version": 1
+}

@@ -14,3 +14,8 @@ sourceDir = "<DOTFILES_REPO>"
 [edit]
     command = "code"
     args = ["--wait"]
+
+# Compare the live macOS shortcut configuration after normal file diffs.
+[hooks.diff.post]
+    command = "/usr/bin/env"
+    args = ["python3", "<DOTFILES_REPO>/src/macos_shortcuts.py", "review", "<DOTFILES_REPO>/home/dot_config/macos-shortcuts/shortcuts.json"]
