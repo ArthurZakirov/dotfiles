@@ -4,8 +4,9 @@
 
 Bitwarden Secrets Manager stores API keys for independent dotfiles features.
 The shared [credential helper](../../home/dot_local/share/dotfiles-secrets/secret_store.py)
-reads only the requested secrets. No values or Mac-specific access tokens
-belong in Git.
+reads the secrets available to the machine account, then **returns only the
+requested values** to the calling feature. No values or Mac-specific access
+tokens belong in Git.
 
 The linked Bitwarden help pages are the **current source for UI navigation**;
 menu names below may change.
@@ -77,8 +78,10 @@ specific secret rather than the entire project.
    [personal chezmoi template](../../home/.chezmoi.toml.tmpl), and **Password**
    to the token created under [Grant machine access](#grant-machine-access).
    Save the item in the user's login keychain.
-3. Approve macOS's Keychain access request for the configured application
-   when it first retrieves the credential.
+3. When macOS asks for Keychain access, verify the requesting application is
+   the expected trusted program. For unattended background use, select
+   **Always Allow** for this specific item; **Allow Once** would prompt again
+   on later launches.
 
 The [shared credential helper](../../home/dot_local/share/dotfiles-secrets/secret_store.py)
 reads the Keychain entry at runtime; integrations do not duplicate this
