@@ -2,6 +2,7 @@
 """Export, compare and explicitly restore macOS native keyboard shortcuts."""
 
 import argparse
+import copy
 import json
 import os
 import plistlib
@@ -16,6 +17,58 @@ SYSTEM = "com.apple.symbolichotkeys"
 ACCESSIBILITY = "com.apple.universalaccess"
 SERVICES = "pbs"
 GLOBAL = "NSGlobalDomain"
+
+# Curated from https://gist.github.com/stephancasas/2c8e8f71e23ec7221495d7f4b9efb794
+# and https://github.com/linearmouse/linearmouse/blob/main/Modules/KeyKit/Sources/KeyKit/SymbolicHotKey.swift
+# The IDs remain authoritative; labels are for human review only.
+SYMBOLIC_ACTIONS = {
+    "15": "Accessibility: toggle zoom",
+    "16": "Accessibility: toggle zoom (keypad)",
+    "17": "Accessibility: zoom in",
+    "18": "Accessibility: zoom in (keypad)",
+    "19": "Accessibility: zoom out",
+    "20": "Accessibility: zoom out (keypad)",
+    "21": "Accessibility: invert colors",
+    "22": "Accessibility: invert colors (keypad)",
+    "23": "Accessibility: toggle zoom image smoothing",
+    "24": "Accessibility: zoom pan back",
+    "25": "Accessibility: increase contrast",
+    "26": "Accessibility: decrease contrast",
+    "33": "Mission Control: application windows",
+    "35": "Mission Control: application windows (alternate)",
+    "60": "Input Sources: select previous input source",
+    "61": "Input Sources: select next input source",
+    "64": "Spotlight: show search",
+    "65": "Spotlight: show Finder search window",
+    "79": "Mission Control: move left a space",
+    "80": "Mission Control: move left a space (alternate)",
+    "81": "Mission Control: move right a space",
+    "82": "Mission Control: move right a space (alternate)",
+    "118": "Mission Control: switch to Desktop 1",
+    "119": "Mission Control: switch to Desktop 2",
+    "164": "Accessibility: modifier key double-tap",
+    "179": "Accessibility: zoom follows keyboard focus",
+    "222": "Desktop & Dock: toggle Stage Manager",
+    "233": "Window: minimize",
+    "235": "Window: zoom",
+    "237": "Window: fill",
+    "238": "Window: center",
+    "239": "Window: return to previous size",
+    "240": "Window: tile left half",
+    "241": "Window: tile right half",
+    "242": "Window: tile top half",
+    "243": "Window: tile bottom half",
+    "257": "Window: full-screen tile left half",
+    "258": "Window: full-screen tile right half",
+}
+
+ACCESSIBILITY_ACTIONS = {
+    7: "Keyboard navigation: focus menu bar",
+    8: "Keyboard navigation: focus Dock",
+    9: "Keyboard navigation: focus active or next window",
+    10: "Keyboard navigation: focus window toolbar",
+    11: "Keyboard navigation: focus floating window",
+}
 
 
 class ShortcutError(Exception):
@@ -87,6 +140,24 @@ def snapshot(preferences=None):
     }
 
 
+
+def without_action(entry):
+    """Use only native preference fields to compare or restore a shortcut."""
+    return {name: value for name, value in entry.items() if name != "action"}
+
+
+def with_action_labels(profile):
+    """Provide readable names in exported JSON and VS Code's review documents."""
+    annotated = copy.deepcopy(profile)
+    for key, entry in annotated["system_hotkeys"].items():
+        if action := SYMBOLIC_ACTIONS.get(key):
+            entry["action"] = action
+    for entry in annotated["accessibility_hotkeys"]:
+        if action := ACCESSIBILITY_ACTIONS.get(entry["sybmolichotkey"]):
+            entry["action"] = action
+    return annotated
+
+
 def require(condition, description):
     if not condition:
         raise ShortcutError(f"Invalid shortcut profile: {description}")
@@ -104,7 +175,10 @@ def validate(profile):
                 "system hotkey IDs must be numeric")
         require(isinstance(entry, dict) and entry.get("enabled") in (True, False, 0, 1, "0", "1"),
                 f"system hotkey {key} needs an enabled flag")
-        require(set(entry) <= {"enabled", "value"}, f"unsupported fields in hotkey {key}")
+        require(set(entry) <= {"enabled", "value", "action"}, f"unsupported fields in hotkey {key}")
+        if "action" in entry:
+            require(entry["action"] == SYMBOLIC_ACTIONS.get(key),
+                    f"system hotkey {key} has an incorrect action label")
         if "value" in entry:
             value = entry["value"]
             require(isinstance(value, dict) and value.get("type") in ("standard", "modifier")
@@ -128,10 +202,15 @@ def validate(profile):
     require(isinstance(accessibility, list), "accessibility_hotkeys must be a list")
     seen = set()
     for entry in accessibility:
-        require(isinstance(entry, dict) and set(entry) == {"enabled", "key", "modifier", "sybmolichotkey"}
+        require(isinstance(entry, dict) and
+                set(entry) in ({"enabled", "key", "modifier", "sybmolichotkey"},
+                               {"enabled", "key", "modifier", "sybmolichotkey", "action"})
                 and type(entry["enabled"]) is bool
                 and all(type(entry[field]) is int for field in ("key", "modifier", "sybmolichotkey")),
                 "invalid accessibility hotkey")
+        if "action" in entry:
+            require(entry["action"] == ACCESSIBILITY_ACTIONS.get(entry["sybmolichotkey"]),
+                    "incorrect accessibility action label")
         require(entry["sybmolichotkey"] not in seen, "duplicate accessibility hotkey")
         seen.add(entry["sybmolichotkey"])
 
@@ -148,8 +227,8 @@ def load_profile(path):
 def changes(desired, current):
     """Yield only differences for explicitly declared keys; never delete extra entries."""
     for key, value in desired["system_hotkeys"].items():
-        if current["system_hotkeys"].get(key) != value:
-            yield ("system", key, value)
+        if current["system_hotkeys"].get(key) != without_action(value):
+            yield ("system", key, without_action(value))
     for domain, shortcuts in desired["app_shortcuts"].items():
         actual = current["app_shortcuts"].get(domain, {})
         for title, shortcut in shortcuts.items():
@@ -160,8 +239,9 @@ def changes(desired, current):
             yield ("service", name, shortcut)
     actual = {x["sybmolichotkey"]: x for x in current["accessibility_hotkeys"]}
     for entry in desired["accessibility_hotkeys"]:
-        if actual.get(entry["sybmolichotkey"]) != entry:
-            yield ("accessibility", entry["sybmolichotkey"], entry)
+        native = without_action(entry)
+        if actual.get(entry["sybmolichotkey"]) != native:
+            yield ("accessibility", entry["sybmolichotkey"], native)
 
 
 def import_merged_domain(domain, data):
@@ -249,7 +329,7 @@ def review(desired, current):
     with tempfile.TemporaryDirectory(prefix="chezmoi-shortcuts-diff-") as tmp:
         actual = Path(tmp) / "macOS shortcuts (current).json"
         expected = Path(tmp) / "macOS shortcuts (managed).json"
-        actual.write_text(json.dumps(projected_live_profile(desired, current), indent=2,
+        actual.write_text(json.dumps(with_action_labels(projected_live_profile(desired, current)), indent=2,
                                      sort_keys=True) + "\n")
         expected.write_text(json.dumps(desired, indent=2, sort_keys=True) + "\n")
         try:
@@ -275,7 +355,7 @@ def main(argv=None):
     args.path = args.path.expanduser()
 
     if args.command == "export":
-        profile = snapshot()
+        profile = with_action_labels(snapshot())
         validate(profile)
         args.path.parent.mkdir(parents=True, exist_ok=True)
         args.path.write_text(json.dumps(profile, indent=2, sort_keys=True) + "\n")
@@ -299,7 +379,10 @@ def main(argv=None):
         print(f"Applied {len(pending)} macOS shortcut settings.")
         return 0
     for kind, key, value in pending:
-        print(f"{kind}: {key}: {json.dumps(value, sort_keys=True)}")
+        action = (SYMBOLIC_ACTIONS.get(key) if kind == "system" else
+                  ACCESSIBILITY_ACTIONS.get(key) if kind == "accessibility" else None)
+        title = f"{key} ({action})" if action else str(key)
+        print(f"{kind}: {title}: {json.dumps(value, sort_keys=True)}")
     print(f"{len(pending)} shortcut differences")
     return 0
 

@@ -143,6 +143,7 @@ def test_apply_updates_only_declared_preferences_and_preserves_other_entries(
                "service_shortcuts": {}, "accessibility_hotkeys": [
                    {"enabled": False, "key": 99, "modifier": 0, "sybmolichotkey": 8},
                ]}
+    example_profile = shortcuts.with_action_labels(example_profile)
     written = []
     imported = {}
     monkeypatch.setattr(
@@ -237,7 +238,7 @@ def test_export_accepts_a_quoted_home_path(example_profile, monkeypatch, tmp_pat
 
     # Assert
     assert exit_code == 0
-    assert json.loads((tmp_path / "mac_shortcuts.json").read_text()) == example_profile
+    assert json.loads((tmp_path / "mac_shortcuts.json").read_text()) == shortcuts.with_action_labels(example_profile)
 
 
 def test_chezmoi_review_opens_live_vs_managed_in_vscode_only_for_drift(
@@ -295,3 +296,69 @@ def test_chezmoi_review_targets_login_users_home(
 
     # Assert
     assert result == 0
+
+
+
+def test_action_names_are_present_for_current_mac_shortcut_ids():
+    # Arrange
+    source = Path(__file__).resolve().parents[2] / "home/dot_config/macos-shortcuts/shortcuts.json"
+    profile = json.loads(source.read_text())
+
+    # Act
+    shortcuts.validate(profile)
+
+    # Assert: every stored system/accessibility action is described by the curated mapping.
+    assert all(
+        entry["action"] == shortcuts.SYMBOLIC_ACTIONS[key]
+        for key, entry in profile["system_hotkeys"].items()
+    )
+    assert all(
+        entry["action"] == shortcuts.ACCESSIBILITY_ACTIONS[entry["sybmolichotkey"]]
+        for entry in profile["accessibility_hotkeys"]
+    )
+    assert profile["system_hotkeys"]["64"]["action"] == "Spotlight: show search"
+    assert profile["system_hotkeys"]["240"]["action"] == "Window: tile left half"
+
+
+def test_action_descriptions_do_not_trigger_preference_changes(example_profile):
+    # Arrange: the native records match, including the enabled state and key bindings.
+    labelled = shortcuts.with_action_labels(example_profile)
+
+    # Act
+    pending = list(shortcuts.changes(labelled, example_profile))
+
+    # Assert
+    assert pending == []
+
+
+def test_exported_action_descriptions_are_not_written_to_macos_preferences(example_profile):
+    # Arrange
+    labelled = shortcuts.with_action_labels(example_profile)
+    native = {
+        "version": 1, "system_hotkeys": {}, "app_shortcuts": {},
+        "service_shortcuts": {}, "accessibility_hotkeys": [],
+    }
+
+    # Act
+    pending = list(shortcuts.changes(labelled, native))
+
+    # Assert: the apply boundary receives only preference-compatible fields.
+    assert pending
+    assert all("action" not in value for kind, _, value in pending
+               if kind in ("system", "accessibility"))
+
+
+@pytest.mark.parametrize(("id_", "wrong_name"), [
+    ("64", "Window: tile left half"),
+    ("240", "Spotlight: show search"),
+])
+def test_rejects_mislabeled_system_action(example_profile, id_, wrong_name):
+    # Arrange
+    labelled = shortcuts.with_action_labels(example_profile)
+    labelled["system_hotkeys"][id_] = {
+        "enabled": True, "action": wrong_name
+    }
+
+    # Act and Assert
+    with pytest.raises(shortcuts.ShortcutError, match="incorrect action label"):
+        shortcuts.validate(labelled)

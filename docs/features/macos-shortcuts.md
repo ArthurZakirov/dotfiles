@@ -15,6 +15,22 @@ other dotfiles. The desired configuration is stored in
 | `service_shortcuts` | `pbs` / `NSServicesStatus` | Shortcuts by Service ID |
 | `accessibility_hotkeys` | `com.apple.universalaccess` / `UserAssignableHotKeys` | Shortcuts by accessibility-hotkey ID |
 
+Each system and accessibility hotkey includes a readable `action` label
+alongside its numeric ID and binding. For example:
+
+```json
+"64": {
+  "action": "Spotlight: show search",
+  "enabled": true
+}
+```
+
+The numeric ID and binding define the native macOS behavior. The action label
+is used for reading and reviewing JSON; the importer writes only native
+preference fields. Labels come from a
+[curated macOS hotkey ID mapping](https://gist.github.com/stephancasas/2c8e8f71e23ec7221495d7f4b9efb794)
+and [LinearMouse's hotkey definitions](https://github.com/linearmouse/linearmouse/blob/main/Modules/KeyKit/Sources/KeyKit/SymbolicHotKey.swift).
+
 Chezmoi preserves other preferences and locally configured shortcuts outside
 the managed entries. Review numeric hotkey IDs when transferring configurations
 between macOS versions or keyboard layouts.

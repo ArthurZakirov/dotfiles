@@ -90,10 +90,18 @@ def test_chezmoi_diff_and_apply_synchronize_live_shortcuts(
     domain_dir = tmp_path / "domains"
     domain_dir.mkdir()
     prefs = {
-        "com.apple.symbolichotkeys": {"AppleSymbolicHotKeys": desired["system_hotkeys"]},
+        "com.apple.symbolichotkeys": {
+            "AppleSymbolicHotKeys": {
+                key: {field: value for field, value in entry.items() if field != "action"}
+                for key, entry in desired["system_hotkeys"].items()
+            }
+        },
         "com.apple.universalaccess": {
             "com.apple.custommenu.apps": list(desired["app_shortcuts"]),
-            "UserAssignableHotKeys": desired["accessibility_hotkeys"],
+            "UserAssignableHotKeys": [
+                {field: value for field, value in entry.items() if field != "action"}
+                for entry in desired["accessibility_hotkeys"]
+            ],
         },
         "pbs": {"NSServicesStatus": {
             name: {"key_equivalent": shortcut, "enabled_services_menu": 1}
@@ -103,6 +111,12 @@ def test_chezmoi_diff_and_apply_synchronize_live_shortcuts(
     for domain, shortcuts in desired["app_shortcuts"].items():
         prefs[domain] = {"NSUserKeyEquivalents": dict(shortcuts)}
     prefs["com.openai.codex"]["NSUserKeyEquivalents"]["New Window"] = "@~n"
+    system_id = "64"
+    prefs["com.apple.symbolichotkeys"]["AppleSymbolicHotKeys"][system_id] = {
+        **desired["system_hotkeys"][system_id],
+        "enabled": not desired["system_hotkeys"][system_id]["enabled"],
+    }
+    prefs["com.apple.symbolichotkeys"]["AppleSymbolicHotKeys"][system_id].pop("action")
     for name, content in prefs.items():
         (domain_dir / f"{name}.plist").write_bytes(plistlib.dumps(content))
     home = tmp_path / "home"
@@ -177,6 +191,11 @@ with open(os.environ["FAKE_CODE_LOG"], "a") as stream:
     assert calls[0]["args"][:2] == ["--wait", "--diff"]
     assert json.loads(calls[0]["original"])["app_shortcuts"]["com.openai.codex"]["New Window"] == "@~n"
     assert json.loads(calls[0]["target"])["app_shortcuts"]["com.openai.codex"]["New Window"] == "@$n"
+    left_system = json.loads(calls[0]["original"])["system_hotkeys"]
+    right_system = json.loads(calls[0]["target"])["system_hotkeys"]
+    assert left_system[system_id]["action"] == "Spotlight: show search"
+    assert right_system[system_id]["action"] == "Spotlight: show search"
+    assert left_system[system_id]["enabled"] != right_system[system_id]["enabled"]
 
     # Act: chezmoi dry-run leaves the preferences intact; ordinary apply executes the run_after script.
     source_hook = ROOT / "home/run_after_30-apply-macos-shortcuts.sh.tmpl"
@@ -188,5 +207,10 @@ with open(os.environ["FAKE_CODE_LOG"], "a") as stream:
     # Assert: the preferences match the desired state, with no VS Code diff on the next run.
     actual = plistlib.loads((domain_dir / "com.openai.codex.plist").read_bytes())
     assert actual["NSUserKeyEquivalents"]["New Window"] == "@$n"
+    actual_system = plistlib.loads(
+        (domain_dir / "com.apple.symbolichotkeys.plist").read_bytes()
+    )["AppleSymbolicHotKeys"][system_id]
+    assert actual_system["enabled"] == desired["system_hotkeys"][system_id]["enabled"]
+    assert "action" not in actual_system
     chezmoi("diff")
     assert len(log.read_text().splitlines()) == 1

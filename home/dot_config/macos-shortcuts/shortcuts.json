@@ -1,30 +1,35 @@
 {
   "accessibility_hotkeys": [
     {
+      "action": "Keyboard navigation: focus menu bar",
       "enabled": true,
       "key": 120,
       "modifier": 8650752,
       "sybmolichotkey": 7
     },
     {
+      "action": "Keyboard navigation: focus Dock",
       "enabled": true,
       "key": 99,
       "modifier": 8650752,
       "sybmolichotkey": 8
     },
     {
+      "action": "Keyboard navigation: focus active or next window",
       "enabled": true,
       "key": 118,
       "modifier": 8650752,
       "sybmolichotkey": 9
     },
     {
+      "action": "Keyboard navigation: focus window toolbar",
       "enabled": true,
       "key": 96,
       "modifier": 8650752,
       "sybmolichotkey": 10
     },
     {
+      "action": "Keyboard navigation: focus floating window",
       "enabled": true,
       "key": 97,
       "modifier": 8650752,
@@ -45,6 +50,7 @@
   },
   "system_hotkeys": {
     "118": {
+      "action": "Mission Control: switch to Desktop 1",
       "enabled": true,
       "value": {
         "parameters": [
@@ -56,6 +62,7 @@
       }
     },
     "119": {
+      "action": "Mission Control: switch to Desktop 2",
       "enabled": true,
       "value": {
         "parameters": [
@@ -67,6 +74,7 @@
       }
     },
     "15": {
+      "action": "Accessibility: toggle zoom",
       "enabled": true,
       "value": {
         "parameters": [
@@ -78,9 +86,11 @@
       }
     },
     "16": {
+      "action": "Accessibility: toggle zoom (keypad)",
       "enabled": false
     },
     "164": {
+      "action": "Accessibility: modifier key double-tap",
       "enabled": true,
       "value": {
         "parameters": [
@@ -91,6 +101,7 @@
       }
     },
     "17": {
+      "action": "Accessibility: zoom in",
       "enabled": true,
       "value": {
         "parameters": [
@@ -102,6 +113,7 @@
       }
     },
     "179": {
+      "action": "Accessibility: zoom follows keyboard focus",
       "enabled": true,
       "value": {
         "parameters": [
@@ -113,9 +125,11 @@
       }
     },
     "18": {
+      "action": "Accessibility: zoom in (keypad)",
       "enabled": false
     },
     "19": {
+      "action": "Accessibility: zoom out",
       "enabled": true,
       "value": {
         "parameters": [
@@ -127,9 +141,11 @@
       }
     },
     "20": {
+      "action": "Accessibility: zoom out (keypad)",
       "enabled": false
     },
     "21": {
+      "action": "Accessibility: invert colors",
       "enabled": false,
       "value": {
         "parameters": [
@@ -141,9 +157,11 @@
       }
     },
     "22": {
+      "action": "Accessibility: invert colors (keypad)",
       "enabled": false
     },
     "222": {
+      "action": "Desktop & Dock: toggle Stage Manager",
       "enabled": true,
       "value": {
         "parameters": [
@@ -155,6 +173,7 @@
       }
     },
     "23": {
+      "action": "Accessibility: toggle zoom image smoothing",
       "enabled": true,
       "value": {
         "parameters": [
@@ -166,6 +185,7 @@
       }
     },
     "233": {
+      "action": "Window: minimize",
       "enabled": true,
       "value": {
         "parameters": [
@@ -177,6 +197,7 @@
       }
     },
     "235": {
+      "action": "Window: zoom",
       "enabled": true,
       "value": {
         "parameters": [
@@ -188,6 +209,7 @@
       }
     },
     "237": {
+      "action": "Window: fill",
       "enabled": true,
       "value": {
         "parameters": [
@@ -199,6 +221,7 @@
       }
     },
     "238": {
+      "action": "Window: center",
       "enabled": true,
       "value": {
         "parameters": [
@@ -210,6 +233,7 @@
       }
     },
     "239": {
+      "action": "Window: return to previous size",
       "enabled": true,
       "value": {
         "parameters": [
@@ -221,9 +245,11 @@
       }
     },
     "24": {
+      "action": "Accessibility: zoom pan back",
       "enabled": false
     },
     "240": {
+      "action": "Window: tile left half",
       "enabled": true,
       "value": {
         "parameters": [
@@ -235,6 +261,7 @@
       }
     },
     "241": {
+      "action": "Window: tile right half",
       "enabled": true,
       "value": {
         "parameters": [
@@ -246,6 +273,7 @@
       }
     },
     "242": {
+      "action": "Window: tile top half",
       "enabled": true,
       "value": {
         "parameters": [
@@ -257,6 +285,7 @@
       }
     },
     "243": {
+      "action": "Window: tile bottom half",
       "enabled": true,
       "value": {
         "parameters": [
@@ -268,9 +297,11 @@
       }
     },
     "25": {
+      "action": "Accessibility: increase contrast",
       "enabled": false
     },
     "257": {
+      "action": "Window: full-screen tile left half",
       "enabled": true,
       "value": {
         "parameters": [
@@ -282,6 +313,7 @@
       }
     },
     "258": {
+      "action": "Window: full-screen tile right half",
       "enabled": true,
       "value": {
         "parameters": [
@@ -293,9 +325,11 @@
       }
     },
     "26": {
+      "action": "Accessibility: decrease contrast",
       "enabled": false
     },
     "33": {
+      "action": "Mission Control: application windows",
       "enabled": true,
       "value": {
         "parameters": [
@@ -307,6 +341,7 @@
       }
     },
     "35": {
+      "action": "Mission Control: application windows (alternate)",
       "enabled": true,
       "value": {
         "parameters": [
@@ -318,6 +353,7 @@
       }
     },
     "60": {
+      "action": "Input Sources: select previous input source",
       "enabled": true,
       "value": {
         "parameters": [
@@ -329,6 +365,7 @@
       }
     },
     "61": {
+      "action": "Input Sources: select next input source",
       "enabled": "1",
       "value": {
         "parameters": [
@@ -340,6 +377,7 @@
       }
     },
     "64": {
+      "action": "Spotlight: show search",
       "enabled": false,
       "value": {
         "parameters": [
@@ -351,6 +389,7 @@
       }
     },
     "65": {
+      "action": "Spotlight: show Finder search window",
       "enabled": true,
       "value": {
         "parameters": [
@@ -362,6 +401,7 @@
       }
     },
     "79": {
+      "action": "Mission Control: move left a space",
       "enabled": true,
       "value": {
         "parameters": [
@@ -373,6 +413,7 @@
       }
     },
     "80": {
+      "action": "Mission Control: move left a space (alternate)",
       "enabled": true,
       "value": {
         "parameters": [
@@ -384,6 +425,7 @@
       }
     },
     "81": {
+      "action": "Mission Control: move right a space",
       "enabled": true,
       "value": {
         "parameters": [
@@ -395,6 +437,7 @@
       }
     },
     "82": {
+      "action": "Mission Control: move right a space (alternate)",
       "enabled": true,
       "value": {
         "parameters": [
