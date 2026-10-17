@@ -2,19 +2,22 @@
 
 [← Features](README.md)
 
-Bitwarden Secrets Manager stores API keys for **multiple independent dotfiles
-features**. The common credential helper retrieves only the secrets requested
-by each feature. Secrets and Mac-specific access tokens are never committed
-to Git.
+Bitwarden Secrets Manager stores API keys for independent dotfiles features.
+The shared [credential helper](../../home/dot_local/share/dotfiles-secrets/secret_store.py)
+reads only the requested secrets. No values or Mac-specific access tokens
+belong in Git.
+
+The linked Bitwarden help pages are the **current source for UI navigation**;
+menu names below may change.
 
 ## One-time organization and project setup
 
 Skip resources that already exist.
 
-1. In the [Bitwarden web vault](https://vault.bitwarden.com/), open the
-   **Secrets Manager** product. If unavailable, enable it under
-   **Admin Console → Billing → Subscription**. Under the organization's
-   **Members** view, grant the relevant person Secrets Manager access.
+1. In the [Bitwarden web vault](https://vault.bitwarden.com/), open
+   **Secrets Manager**. If unavailable, follow the
+   [organization setup instructions](https://bitwarden.com/help/secrets-manager-quick-start/)
+   to enable it and grant the relevant person access.
 2. Select **New → Project**, name the project and **Save**. A secret belongs
    to exactly one project.
 3. Open the project → **People**, choose the members/groups who may manage
@@ -68,16 +71,18 @@ specific secret rather than the entire project.
 
 1. Open **Keychain Access** on that Mac and create a new password item
    (**⌘N**).
-2. Set **Name** to `BWS_ACCESS_TOKEN`, **Account** to the Keychain account
-   configured for the personal chezmoi profile, and **Password** to the
-   machine account token created under [Grant machine access](#grant-machine-access).
+2. Set **Name** to `BWS_ACCESS_TOKEN` (the service name expected by the
+   [shared credential helper](../../home/dot_local/share/dotfiles-secrets/secret_store.py)),
+   **Account** to the account configured in the
+   [personal chezmoi template](../../home/.chezmoi.toml.tmpl), and **Password**
+   to the token created under [Grant machine access](#grant-machine-access).
    Save the item in the user's login keychain.
 3. Approve macOS's Keychain access request for the configured application
    when it first retrieves the credential.
 
-The shared dotfiles code reads this item to authenticate noninteractive
-services. No feature-specific shell exports or manual service launches
-are needed.
+The [shared credential helper](../../home/dot_local/share/dotfiles-secrets/secret_store.py)
+reads the Keychain entry at runtime; integrations do not duplicate this
+backend logic. No feature-specific shell exports or service commands are needed.
 
 [Bitwarden's Keychain setup](https://bitwarden.com/blog/how-to-securely-store-your-secrets-manager-access-tokens-with-bash-scripting/) ·
 [macOS Keychain permissions](https://support.apple.com/guide/keychain-access/kyca1243/mac)
