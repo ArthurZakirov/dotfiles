@@ -49,8 +49,9 @@ Follow the [current ChatGPT connection instructions](https://help.openai.com/en/
    (or enter its Tunnel ID).
 4. Choose **Authentication: None** for this read-only server, acknowledge
    the risk notice, then select **Create as a plugin**.
-5. In a new normal chat, test `search_skills` and `read_skill` against
-   an installed skill.
+5. Install the newly created plugin in the intended ChatGPT workspace.
+6. Open a new normal chat and select the installed plugin using `@`.
+   Test `search_skills` and `read_skill` against an installed skill.
 
 ## Automated setup and behavior
 
