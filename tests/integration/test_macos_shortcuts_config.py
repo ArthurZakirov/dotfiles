@@ -170,6 +170,7 @@ with open(os.environ["FAKE_CODE_LOG"], "a") as stream:
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
         "FAKE_PREF_DIR": str(domain_dir),
         "FAKE_CODE_LOG": str(log),
+        "MACOS_SHORTCUTS_TEST_LOGIN_HOME": str(home),
         "DOTFILES_SKIP_OPTIONAL_APPS": "1",
     }
 

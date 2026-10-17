@@ -2,11 +2,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Shortcut preferences belong to the login user, so apply only to their HOME.
-if [[ "${CHEZMOI_DEST_DIR:?}" != "${CHEZMOI_HOME_DIR:?}" ]]; then
-    exit 0
-fi
-
 # Use the source checkout so this works on a fresh Mac before executable setup.
+# The importer checks that chezmoi targets the current login user's home.
 python3 {{ (printf "%s/src/macos_shortcuts.py" .chezmoi.workingTree) | quote }} apply {{ (printf "%s/home/dot_config/macos-shortcuts/shortcuts.json" .chezmoi.workingTree) | quote }} --yes
 {{ end -}}

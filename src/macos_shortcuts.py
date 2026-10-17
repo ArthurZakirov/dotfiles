@@ -6,6 +6,7 @@ import copy
 import json
 import os
 import plistlib
+import pwd
 import re
 import subprocess
 import tempfile
@@ -339,6 +340,18 @@ def review(desired, current):
     return 0
 
 
+def is_login_home_destination():
+    """Target native preferences only for the current login account's home."""
+    destination = os.environ.get("CHEZMOI_DEST_DIR")
+    if not destination:
+        return False
+    # The explicit override is for testing the actual chezmoi lifecycle against
+    # isolated macOS preference doubles; normal execution uses the account home.
+    login_home = (os.environ.get("MACOS_SHORTCUTS_TEST_LOGIN_HOME")
+                  or pwd.getpwuid(os.getuid()).pw_dir)
+    return Path(destination).resolve() == Path(login_home).resolve()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -362,8 +375,10 @@ def main(argv=None):
         print(f"Exported shortcuts to {args.path.resolve()}")
         return 0
 
-    if args.command == "review" and os.environ.get("CHEZMOI_DEST_DIR") != os.environ.get("CHEZMOI_HOME_DIR"):
-        return 0
+    if (args.command == "review" or
+            (args.command == "apply" and os.environ.get("CHEZMOI_DEST_DIR"))):
+        if not is_login_home_destination():
+            return 0
     desired = load_profile(args.path)
     current = snapshot()
     pending = list(changes(desired, current))

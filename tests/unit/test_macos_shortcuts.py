@@ -285,7 +285,11 @@ def test_chezmoi_review_targets_login_users_home(
     profile = tmp_path / "shortcut-config.json"
     profile.write_text(json.dumps(example_profile))
     monkeypatch.setenv("CHEZMOI_DEST_DIR", str(tmp_path / "isolated-home"))
-    monkeypatch.setenv("CHEZMOI_HOME_DIR", str(tmp_path / "actual-home"))
+    monkeypatch.setenv("CHEZMOI_HOME_DIR", str(tmp_path / "isolated-home"))
+    monkeypatch.delenv("MACOS_SHORTCUTS_TEST_LOGIN_HOME", raising=False)
+    monkeypatch.setattr(
+        shortcuts.pwd, "getpwuid", lambda _: type("Account", (), {"pw_dir": str(tmp_path / "actual-home")})(),
+    )
     monkeypatch.setattr(
         shortcuts, "snapshot",
         lambda: pytest.fail("Preferences read for an unrelated chezmoi destination"),
@@ -362,3 +366,51 @@ def test_rejects_mislabeled_system_action(example_profile, id_, wrong_name):
     # Act and Assert
     with pytest.raises(shortcuts.ShortcutError, match="incorrect action label"):
         shortcuts.validate(labelled)
+
+
+
+def test_chezmoi_review_accepts_the_real_account_home(monkeypatch, tmp_path):
+    # Arrange: the destination is the account home despite a different HOME variable.
+    monkeypatch.setenv("CHEZMOI_DEST_DIR", str(tmp_path))
+    monkeypatch.setenv("CHEZMOI_HOME_DIR", str(tmp_path / "different-env-home"))
+    monkeypatch.delenv("MACOS_SHORTCUTS_TEST_LOGIN_HOME", raising=False)
+    monkeypatch.setattr(shortcuts.pwd, "getpwuid",
+                        lambda _: type("Account", (), {"pw_dir": str(tmp_path)})())
+
+    # Act / Assert
+    assert shortcuts.is_login_home_destination()
+
+
+def test_chezmoi_review_is_skipped_if_destination_is_missing(monkeypatch):
+    # Arrange
+    monkeypatch.delenv("CHEZMOI_DEST_DIR", raising=False)
+    monkeypatch.delenv("MACOS_SHORTCUTS_TEST_LOGIN_HOME", raising=False)
+
+    # Act / Assert
+    assert not shortcuts.is_login_home_destination()
+
+
+
+def test_chezmoi_apply_does_not_touch_preferences_in_an_isolated_home(
+    example_profile, monkeypatch, tmp_path,
+):
+    # Arrange: a disposable chezmoi HOME is distinct from the login account home.
+    source = tmp_path / "shortcuts.json"
+    source.write_text(json.dumps(shortcuts.with_action_labels(example_profile)))
+    monkeypatch.setenv("CHEZMOI_DEST_DIR", str(tmp_path / "temporary-home"))
+    monkeypatch.setenv("CHEZMOI_HOME_DIR", str(tmp_path / "temporary-home"))
+    monkeypatch.delenv("MACOS_SHORTCUTS_TEST_LOGIN_HOME", raising=False)
+    monkeypatch.setattr(
+        shortcuts.pwd, "getpwuid",
+        lambda _: type("Account", (), {"pw_dir": str(tmp_path / "login-home")})(),
+    )
+    monkeypatch.setattr(
+        shortcuts, "snapshot",
+        lambda: pytest.fail("Preferences read for a disposable chezmoi home"),
+    )
+
+    # Act
+    result = shortcuts.main(["apply", str(source), "--yes"])
+
+    # Assert
+    assert result == 0
