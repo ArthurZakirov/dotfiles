@@ -21,15 +21,28 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_real_chezmoi_diff_opens_valid_vscode_diff_tab(tmp_path):
-    """Inspect TabInputTextDiff and text contents via a disposable VS Code extension."""
+@pytest.mark.parametrize("scenario", ["new-file", "hammerspoon-existing-symlink"])
+def test_real_chezmoi_diff_opens_valid_vscode_diff_tab(tmp_path, scenario):
+    """Verify real diff editor documents for new files and Hammerspoon upgrades."""
     code_cli = shutil.which('code')
     assert code_cli
     home = tmp_path / 'home'
     home.mkdir()
     source = tmp_path / 'source'
     source.mkdir()
-    (source / 'dot_demo').write_text('expected managed content\n')
+    if scenario == "new-file":
+        (source / 'dot_demo').write_text('expected managed content\n')
+        expected_left, expected_right = '', 'expected managed content\n'
+    else:
+        # Existing Macs can have an arbitrary and even dangling Hammerspoon
+        # symlink. Chezmoi compares it with /dev/null during a directory upgrade.
+        shutil.copytree(ROOT / 'home/dot_hammerspoon', source / 'dot_hammerspoon')
+        installed = home / '.hammerspoon'
+        installed.mkdir()
+        old_bin = tmp_path / 'unrelated-hammerspoon/bin'
+        (installed / 'bin').symlink_to(old_bin, target_is_directory=True)
+        expected_left = f'Symbolic link -> {old_bin}\n'
+        expected_right = ''
     config = tmp_path / 'chezmoi.toml'
     config.write_text('[diff]\ncommand = "/bin/bash"\n'
                       f'args = ["{ADAPTER}"]\n')
@@ -55,11 +68,18 @@ async function check() {
       try {
         const left = await vscode.workspace.openTextDocument(tab.input.original);
         const right = await vscode.workspace.openTextDocument(tab.input.modified);
+        const leftText = left.getText();
+        const rightText = right.getText();
+        // Prefer the intended diff when chezmoi offers several files.
+        if (leftText !== process.env.CHEZMOI_EXPECTED_LEFT ||
+            rightText !== process.env.CHEZMOI_EXPECTED_RIGHT) continue;
         fs.writeFileSync(process.env.CHEZMOI_VSCODE_REPORT, JSON.stringify({
           active: tab.isActive,
-          left: left.getText(), right: right.getText(),
+          left: leftText, right: rightText,
           leftUri: tab.input.original.toString(),
           rightUri: tab.input.modified.toString(),
+          leftFileExists: fs.existsSync(tab.input.original.fsPath),
+          rightFileExists: fs.existsSync(tab.input.modified.fsPath),
           name: tab.label,
         }));
       } catch (e) {
@@ -90,10 +110,14 @@ exports.deactivate = () => {};
     env = {**os.environ, 'HOME': str(home),
            'PATH': f'{bindir}:{os.environ["PATH"]}',
            'CHEZMOI_VSCODE_REPORT': str(report),
+           'CHEZMOI_EXPECTED_LEFT': expected_left,
+           'CHEZMOI_EXPECTED_RIGHT': expected_right,
+           'CHEZMOI_CODE_DIFF_CACHE': str(tmp_path / 'snapshots'),
            'ELECTRON_DISABLE_SECURITY_WARNINGS': 'true'}
     process = subprocess.Popen([
         'chezmoi', '--source', str(source), '--destination', str(home),
         '--config', str(config), 'diff',
+        *(['--recursive', str(home / '.hammerspoon')] if scenario != 'new-file' else []),
     ], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)
     try:
         deadline = time.monotonic() + 75
@@ -101,7 +125,7 @@ exports.deactivate = () => {};
         while time.monotonic() < deadline:
             if report.exists():
                 last = json.loads(report.read_text())
-                if last.get('right') == 'expected managed content\n':
+                if last.get('left') == expected_left and last.get('right') == expected_right:
                     break
             if process.poll() is not None:
                 raise AssertionError(f'chezmoi diff ended before editor state: exit={process.returncode}, state={last}')
@@ -109,8 +133,10 @@ exports.deactivate = () => {};
         else:
             raise AssertionError(f'No valid VS Code diff editor opened: {last}')
         assert last['active']
-        assert last['left'] == ''
-        assert last['right'] == 'expected managed content\n'
+        assert last['left'] == expected_left
+        assert last['right'] == expected_right
+        assert last['leftFileExists']
+        assert last['rightFileExists']
         assert 'null' not in last['leftUri']
         assert last['rightUri'].startswith('file:')
     finally:

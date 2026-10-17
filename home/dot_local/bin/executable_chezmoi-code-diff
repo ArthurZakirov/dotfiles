@@ -8,32 +8,51 @@ fi
 original="$1"
 target="$2"
 
-# Directories need a text diff; VS Code's --diff accepts files only.
-if [[ -d "$original" || -d "$target" ]]; then
+# A directory tree belongs in a textual recursive diff; VS Code's --diff
+# expects two files. Symlinks (even dangling or directory-valued ones) must be
+# handled as links rather than followed into an unrelated checkout.
+if [[ ( -d "$original" && ! -L "$original" ) || ( -d "$target" && ! -L "$target" ) ]]; then
   if [[ "$original" == /dev/null || "$target" == /dev/null ]]; then
     temp_dir="$(mktemp -d)"
     trap 'rm -rf "$temp_dir"' EXIT
+    mkdir -p "$temp_dir/empty-directory"
     [[ "$original" != /dev/null ]] || original="$temp_dir/empty-directory"
     [[ "$target" != /dev/null ]] || target="$temp_dir/empty-directory"
-    mkdir -p "$temp_dir/empty-directory"
   fi
   diff -ruN "$original" "$target" || [[ $? -eq 1 ]]
   exit
 fi
 
-# Chezmoi compares newly managed files against /dev/null; VS Code cannot
-# open that special device as a regular diff editor document.
-if [[ "$original" == /dev/null || "$target" == /dev/null ]]; then
-  temp_dir="$(mktemp -d)"
-  trap 'rm -rf "$temp_dir"' EXIT
-  if [[ "$original" == /dev/null ]]; then
-    original="$temp_dir/empty"
-    : > "$original"
-  fi
-  if [[ "$target" == /dev/null ]]; then
-    target="$temp_dir/empty"
-    : > "$target"
-  fi
-fi
+# Chezmoi's target files live in a temporary tree that disappears when
+# chezmoi diff exits. A code --wait invocation can also return while its diff
+# tab is still visible. Preserve BOTH documents beyond either process's exit.
+# The private cache is pruned after 30 days on subsequent diff invocations.
+umask 077
+cache="${CHEZMOI_CODE_DIFF_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/chezmoi/vscode-diff}"
+mkdir -p "$cache"
+find "$cache" -mindepth 1 -maxdepth 1 -type d -name 'diff.*' -mtime +30 -exec rm -rf -- {} +
+snapshot="$(mktemp -d "$cache/diff.XXXXXXXX")"
 
-code --wait --diff "$original" "$target"
+snapshot_file() {
+  local from="$1" side="$2"
+  local filename
+  filename="${from##*/}"
+  [[ "$from" != /dev/null ]] || filename="empty"
+  local to="$snapshot/$side/$filename"
+  mkdir -p "$snapshot/$side"
+  if [[ "$from" == /dev/null ]]; then
+    : > "$to"
+  elif [[ -L "$from" ]]; then
+    printf 'Symbolic link -> %s\n' "$(readlink "$from")" > "$to"
+  elif [[ -f "$from" ]]; then
+    cp -p "$from" "$to"
+  else
+    printf 'chezmoi-code-diff: unsupported input: %s\n' "$from" >&2
+    return 1
+  fi
+  printf '%s\n' "$to"
+}
+
+original_snapshot="$(snapshot_file "$original" before)"
+target_snapshot="$(snapshot_file "$target" after)"
+code --wait --diff "$original_snapshot" "$target_snapshot"
