@@ -58,5 +58,21 @@ target_snapshot="$(snapshot_file "$target" after)"
 # Each CLI invocation holds its diff tab open with --wait. Detach the
 # invocation so chezmoi can proceed to the next changed file without waiting
 # for the user to close the tab. Both snapshots persist after chezmoi exits.
-nohup code --reuse-window --wait --diff "$original_snapshot" "$target_snapshot" \
+# A user's desktop may have multiple VS Code windows. --reuse-window alone
+# routes diffs to whichever window VS Code considers active, not necessarily
+# the dotfiles window. Include the repository workspace explicitly so VS Code
+# selects (or opens) that workspace for every file comparison.
+workspace="${CHEZMOI_CODE_DIFF_WORKSPACE:-}"
+if [[ -z "$workspace" ]]; then
+  source_dir="$(chezmoi source-path 2>/dev/null)" || source_dir="$PWD"
+  [[ -d "$source_dir" ]] || source_dir="$PWD"
+  # A chezmoi source tree often lives in <repo>/home, while VS Code has
+  # <repo> open. Target that actual workspace, not a new `home` window.
+  workspace="$(git -C "$source_dir" rev-parse --show-toplevel 2>/dev/null)" || workspace="$source_dir"
+fi
+if [[ ! -d "$workspace" ]]; then
+  printf 'chezmoi-code-diff: VS Code workspace does not exist: %s\n' "$workspace" >&2
+  exit 1
+fi
+nohup code --reuse-window --wait --diff "$original_snapshot" "$target_snapshot" "$workspace" \
   </dev/null >/dev/null 2>&1 &

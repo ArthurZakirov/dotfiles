@@ -53,20 +53,20 @@ def test_full_managed_tree_diff_apply_and_upgrade(profile, tmp_path, profile_fac
     assert not any("__pycache__" in path or path.endswith(".pyc") for path in managed)
 
     def recorded_editor_calls() -> int:
-        # Each --wait editor process is detached so chezmoi can finish without
-        # asking the user to close a tab. Observe the completed fake calls.
-        last_count = -1
-        stable_since = time.monotonic()
-        deadline = stable_since + 8
+        # Chezmoi finishes spawning each detached editor before returning.
+        # The snapshots it produced are the exact number of pending CLI calls.
+        # Wait for ALL of them, rather than declaring an empty log stable.
+        snapshots = home / ".cache/chezmoi/vscode-diff"
+        expected = len(list(snapshots.glob("diff.*")))
+        deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             count = len(log.read_text().splitlines()) if log.exists() else 0
-            if count != last_count:
-                last_count = count
-                stable_since = time.monotonic()
-            if time.monotonic() - stable_since >= 0.6:
+            if count >= expected:
                 return count
             time.sleep(0.05)
-        raise AssertionError("VS Code diff processes did not finish writing their logs")
+        raise AssertionError(
+            f"Editor invocations incomplete: received {count} of {expected}"
+        )
 
     assert not list(home.iterdir())
     command("diff", "--exclude", "scripts")

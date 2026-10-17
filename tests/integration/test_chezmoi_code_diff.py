@@ -18,7 +18,7 @@ def code_stub(tmp_path):
     code = bin_dir / "code"
     code.write_text(
         '#!/bin/sh\nprintf "%s\\n" "$@" > "$CODE_ARGS"\n'
-        'test -f "$4" && test -f "$5"\n'
+        'test -f "$4" && test -f "$5" && test -d "$6"\n'
     )
     code.chmod(0o755)
     return {
@@ -26,6 +26,7 @@ def code_stub(tmp_path):
         "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
         "CODE_ARGS": str(tmp_path / "arguments"),
         "CHEZMOI_CODE_DIFF_CACHE": str(tmp_path / "snapshot-cache"),
+        "CHEZMOI_CODE_DIFF_WORKSPACE": str(tmp_path),
     }
 
 
@@ -42,7 +43,8 @@ def recorded_args(env: dict[str, str]) -> list[str]:
 def diff_args(env: dict[str, str]) -> list[Path]:
     args = recorded_args(env)
     assert args[:3] == ["--reuse-window", "--wait", "--diff"]
-    return [Path(path) for path in args[3:]]
+    assert Path(args[5]) == Path(env["CHEZMOI_CODE_DIFF_WORKSPACE"])
+    return [Path(path) for path in args[3:5]]
 
 
 def test_added_file_remains_readable_after_diff_process_exits(tmp_path, code_stub):
@@ -59,6 +61,36 @@ def test_added_file_remains_readable_after_diff_process_exits(tmp_path, code_stu
     assert managed.is_file() and managed.read_text() == "managed\n"
     assert original.parent.parent == managed.parent.parent
     assert original.parent.parent.parent == Path(code_stub["CHEZMOI_CODE_DIFF_CACHE"])
+
+
+def test_default_workspace_is_repository_root_not_nested_chezmoi_source(
+    tmp_path, code_stub,
+):
+    repo = tmp_path / "dotfiles"
+    source = repo / "home"
+    source.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    fake_chezmoi = Path(code_stub["PATH"].split(os.pathsep)[0]) / "chezmoi"
+    fake_chezmoi.write_text(
+        '#!/bin/sh\n'
+        'test "$1" = source-path || exit 2\n'
+        f'printf "%s\\n" "{source}"\n'
+    )
+    fake_chezmoi.chmod(0o755)
+    env = dict(code_stub)
+    del env["CHEZMOI_CODE_DIFF_WORKSPACE"]
+    new_file = tmp_path / "new-file"
+    new_file.write_text("managed content")
+
+    subprocess.run(
+        ["/bin/bash", str(SCRIPT), "/dev/null", str(new_file)],
+        env=env, check=True,
+    )
+
+    args = recorded_args(env)
+    assert args[:3] == ["--reuse-window", "--wait", "--diff"]
+    assert Path(args[5]) == repo
+    assert Path(args[5]) != source
 
 
 def test_existing_files_are_snapshotted_before_launching_editor(tmp_path, code_stub):
@@ -131,7 +163,7 @@ def test_real_chezmoi_diff_keeps_hammerspoon_upgrade_documents_available(
     code.write_text(
         '#!/bin/sh\ntest "$1" = --reuse-window && test "$2" = --wait && test "$3" = --diff || exit 2\n'
         'printf "%s\\t%s\\n" "$4" "$5" >> "$CODE_ARGS"\n'
-        'test -f "$4" && test -f "$5"\n'
+        'test -f "$4" && test -f "$5" && test -d "$6"\n'
     )
     source = tmp_path / "source"
     source.mkdir()

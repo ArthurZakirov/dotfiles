@@ -73,6 +73,10 @@ def test_real_chezmoi_diff_opens_valid_vscode_diff_tab(tmp_path, scenario):
 const vscode = require('vscode');
 const fs = require('fs');
 async function check() {
+  // A second VS Code window intentionally competes for the active window.
+  // Only the designated chezmoi workspace is allowed to report success.
+  const workspace = process.env.CHEZMOI_CODE_DIFF_WORKSPACE;
+  if (!vscode.workspace.workspaceFolders?.some(folder => folder.uri.fsPath === workspace)) return;
   const report = { activated: true, tabs: [] };
   for (const group of vscode.window.tabGroups.all) {
     for (const tab of group.tabs) {
@@ -120,6 +124,7 @@ exports.deactivate = () => {};
            'PATH': f'{bindir}:{os.environ["PATH"]}',
            'CHEZMOI_VSCODE_REPORT': str(report),
            'CHEZMOI_CODE_DIFF_CACHE': str(tmp_path / 'snapshots'),
+           'CHEZMOI_CODE_DIFF_WORKSPACE': str(home),
            'ELECTRON_DISABLE_SECURITY_WARNINGS': 'true'}
     log_path = tmp_path / 'chezmoi-stderr.log'
     launch_log = tmp_path / 'editor-launches.log'
@@ -142,6 +147,14 @@ exports.deactivate = () => {};
         else:
             raise AssertionError(f'VS Code observer did not activate; stderr={log_path.read_text()}')
 
+        competing = tmp_path / 'competing-workspace'
+        competing.mkdir()
+        subprocess.run([str(wrapper), '--new-window', str(competing)],
+                       env=env, capture_output=True, text=True, check=True, timeout=18)
+        # Give VS Code time to register the second, recently active window.
+        # Without an explicit workspace on each diff CLI invocation, the
+        # Hammerspoon diff tabs would be sent to this competing window.
+        time.sleep(1.5)
         process = subprocess.Popen([
             'chezmoi', '--source', str(source), '--destination', str(home),
             '--config', str(config), 'diff',
