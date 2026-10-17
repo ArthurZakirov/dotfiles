@@ -22,3 +22,11 @@ hs.autoLaunch(true)
 dofile(hs.configdir .. "/modules/audio_check.lua")
 
 hs.alert.show("Hammerspoon config loaded")
+
+-- Published only after every module has loaded and baseline hotkeys are active.
+-- An activation nonce distinguishes this load from a previous running instance.
+local activeHotkeys = #hs.hotkey.getHotkeys()
+if activeHotkeys < 28 then
+  error("Hammerspoon: expected at least 28 active base hotkeys, got " .. activeHotkeys)
+end
+HammerspoonConfig.readyNonce = hs.settings.get("dotfiles.activation_nonce") or ""

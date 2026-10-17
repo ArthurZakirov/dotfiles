@@ -64,7 +64,7 @@ device warnings without preventing the rest of Hammerspoon from working.
 | Microphone meter | [Swift source and lazy build wrapper](../../home/dot_hammerspoon/bin/) |
 | Application installation | [`src/apps.sh`](../../src/apps.sh) |
 | Legacy symlink migration | [`run_once_before_05-migrate-hammerspoon.sh`](../../home/run_once_before_05-migrate-hammerspoon.sh) |
-| First launch and health check | [`run_after_30-ensure-hammerspoon.sh`](../../home/run_after_30-ensure-hammerspoon.sh), [`hammerspoon-verify`](../../home/dot_local/bin/executable_hammerspoon-verify) |
+| Start, reload and health check | [`run_after_30-ensure-hammerspoon.sh`](../../home/run_after_30-ensure-hammerspoon.sh), [`hammerspoon-activate`](../../home/dot_local/bin/executable_hammerspoon-activate), [`hammerspoon-verify`](../../home/dot_local/bin/executable_hammerspoon-verify) |
 | Swift compiler setup | [`hammerspoon-ensure-swiftc`](../../home/dot_local/bin/executable_hammerspoon-ensure-swiftc) |
 
 If `swiftc` is missing, the first-run hook provisions a Swift toolchain using
@@ -77,11 +77,15 @@ logs are not version-controlled.
 ## Installation and verification
 
 On an interactive macOS session, `chezmoi apply` installs the managed files,
-launches Hammerspoon **if it is not already running**, and runs a bounded,
-read-only runtime check. It never restarts or reloads an active instance. If
-the GUI session or app is unavailable, the launch is skipped. Configuration
-changes to a running Hammerspoon instance take effect after a deliberate
-`Hyper+R` reload.
+starts Hammerspoon if stopped **or reloads it if already running**, and then
+checks that the new configuration finished loading with a fresh activation
+nonce, the expected baseline hotkey count, and required macOS permissions.
+Failure to activate or verify produces a nonzero apply status rather than a
+misleading success. If there is no GUI login session or the app is not installed,
+activation is skipped; hotkeys cannot work until Hammerspoon is available.
+Conditional Claude and ChatGPT shortcuts only activate in their respective apps.
+The verification cannot physically press keys or guarantee that macOS or
+other applications will not intercept a shortcut.
 
 Run the verifier separately when needed:
 

@@ -6,7 +6,7 @@ set -euo pipefail
 [[ "$(uname -s)" == "Darwin" ]] || exit 0
 
 app="${HAMMERSPOON_APP_PATH:-/Applications/Hammerspoon.app}"
-verify="${HAMMERSPOON_VERIFY_BIN:-$HOME/.local/bin/hammerspoon-verify}"
+activate="${HAMMERSPOON_ACTIVATE_BIN:-$HOME/.local/bin/hammerspoon-activate}"
 swift_setup="${HAMMERSPOON_SWIFTC_HELPER:-$HOME/.local/bin/hammerspoon-ensure-swiftc}"
 if [[ ! -d "$app" ]]; then
   printf 'Hammerspoon: not installed; skipping launch.\n'
@@ -22,15 +22,10 @@ if [[ -x "$swift_setup" ]] && ! "$swift_setup" >/dev/null; then
   printf 'Hammerspoon: Swift setup incomplete; will retry during audio check.\n' >&2
 fi
 
-# Only launch when absent. Never kill, restart, or reload a running instance.
-if ! pgrep -x Hammerspoon >/dev/null 2>&1; then
-  if ! open -a "$app"; then
-    printf 'Hammerspoon: launch failed; continuing dotfiles setup.\n' >&2
-  fi
+# Reconcile both states: start when stopped, or reload when already running.
+# A failed readiness check must be visible as a failed apply, not false success.
+if [[ ! -x "$activate" ]]; then
+  printf 'Hammerspoon: activation helper missing: %s\n' "$activate" >&2
+  exit 1
 fi
-
-# Non-destructive, time-bounded check. A missing permission or IPC response
-# is actionable feedback, not grounds to fail a chezmoi apply.
-if [[ -x "$verify" ]] && ! "$verify"; then
-  printf 'Hammerspoon: automatic verification incomplete; see output above.\n' >&2
-fi
+"$activate"

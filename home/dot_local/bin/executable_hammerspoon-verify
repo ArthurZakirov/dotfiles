@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read-only, bounded health check for the managed Hammerspoon runtime."""
 
+import argparse
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,8 @@ QUERY = (
     'accessibility=hs.accessibilityState(),'
     'autolaunch=hs.autoLaunch(),'
     'hotkeys=#hs.hotkey.getHotkeys(),'
+    'ready=type(HammerspoonConfig)=="table" and HammerspoonConfig.readyNonce~=nil,'
+    'nonce=type(HammerspoonConfig)=="table" and HammerspoonConfig.readyNonce or "",'
     'audio=type(HammerspoonConfig)=="table" and '
     'type(HammerspoonConfig.audioCheck)=="table" and '
     'type(HammerspoonConfig.audioCheck.run)=="function"'
@@ -21,6 +24,9 @@ QUERY = (
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--nonce", help="Require this freshly loaded configuration nonce")
+    args = parser.parse_args()
     command = shutil.which("hs")
     if not command:
         app = Path(os.environ.get("HAMMERSPOON_APP_PATH", "/Applications/Hammerspoon.app"))
@@ -59,6 +65,8 @@ def main() -> int:
         status.get("accessibility") is True,
         status.get("autolaunch") is True,
         status.get("audio") is True,
+        status.get("ready") is True,
+        args.nonce is None or status.get("nonce") == args.nonce,
         type(status.get("hotkeys")) is int and status["hotkeys"] > 0,
     )
     print(
@@ -66,6 +74,7 @@ def main() -> int:
         f"accessibility={status.get('accessibility')}, "
         f"autolaunch={status.get('autolaunch')}, "
         f"audio_check={status.get('audio')}, "
+        f"config_ready={status.get('ready')}, "
         f"registered_hotkeys={status.get('hotkeys')}"
     )
     if not all(required):

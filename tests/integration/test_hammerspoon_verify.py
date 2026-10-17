@@ -23,10 +23,10 @@ def fake_commands(tmp_path):
 @pytest.mark.parametrize(
     ("state", "success"),
     [
-        pytest.param(dict(accessibility=True, autolaunch=True, audio=True, hotkeys=24), True, id="ready"),
-        pytest.param(dict(accessibility=False, autolaunch=True, audio=True, hotkeys=24), False, id="accessibility-denied"),
-        pytest.param(dict(accessibility=True, autolaunch=True, audio=False, hotkeys=24), False, id="audio-not-loaded"),
-        pytest.param(dict(accessibility=True, autolaunch=True, audio=True, hotkeys=0), False, id="no-hotkeys"),
+        pytest.param(dict(accessibility=True, autolaunch=True, audio=True, ready=True, nonce="", hotkeys=24), True, id="ready"),
+        pytest.param(dict(accessibility=False, autolaunch=True, audio=True, ready=True, nonce="", hotkeys=24), False, id="accessibility-denied"),
+        pytest.param(dict(accessibility=True, autolaunch=True, audio=False, ready=True, nonce="", hotkeys=24), False, id="audio-not-loaded"),
+        pytest.param(dict(accessibility=True, autolaunch=True, audio=True, ready=True, nonce="", hotkeys=0), False, id="no-hotkeys"),
     ],
 )
 def test_runtime_verifier_reports_config_state(fake_commands, state, success):
@@ -63,7 +63,7 @@ def test_verifier_uses_bundled_cli_without_global_hs_symlink(tmp_path):
         **os.environ,
         "HAMMERSPOON_APP_PATH": str(app),
         "HS_TEST_RESULT": json.dumps(
-            dict(accessibility=True, autolaunch=True, audio=True, hotkeys=18)
+            dict(accessibility=True, autolaunch=True, audio=True, ready=True, nonce="", hotkeys=18)
         ),
         "PATH": "/usr/bin:/bin",
     }
@@ -73,3 +73,22 @@ def test_verifier_uses_bundled_cli_without_global_hs_symlink(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "audio_check=True" in result.stdout
     assert "registered_hotkeys=18" in result.stdout
+
+
+def test_verifier_rejects_a_stale_configuration_nonce(fake_commands):
+    executable(fake_commands, "hs", 'printf "%s\\n" "$HS_TEST_RESULT"\n')
+    env = {
+        **os.environ,
+        "PATH": f"{fake_commands}:{os.environ['PATH']}",
+        "HS_TEST_RESULT": json.dumps(dict(
+            accessibility=True, autolaunch=True, audio=True,
+            ready=True, nonce="old", hotkeys=30,
+        )),
+    }
+
+    result = subprocess.run(
+        [str(VERIFY), "--nonce", "new"], env=env, capture_output=True, text=True
+    )
+
+    assert result.returncode != 0
+    assert "config_ready=True" in result.stdout
