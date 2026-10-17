@@ -114,8 +114,7 @@ exports.deactivate = () => {};
                        f'exec "{code_cli}" --no-sandbox --disable-gpu '
                        '--disable-workspace-trust '
                        f'--user-data-dir "{profile}" '
-                       f'--extensions-dir "{extensions}" '
-                       f'--extensionDevelopmentPath "{observer}" "$@"\n')
+                       f'--extensions-dir "{extensions}" "$@"\n')
     wrapper.chmod(0o755)
     env = {**os.environ, 'HOME': str(home),
            'PATH': f'{bindir}:{os.environ["PATH"]}',
@@ -126,12 +125,28 @@ exports.deactivate = () => {};
     launch_log = tmp_path / 'editor-launches.log'
     env['CHEZMOI_EDITOR_LAUNCH_LOG'] = str(launch_log)
     stderr_log = log_path.open('w')
-    process = subprocess.Popen([
-        'chezmoi', '--source', str(source), '--destination', str(home),
-        '--config', str(config), 'diff',
-        *(['--recursive', str(home / '.hammerspoon')] if scenario != 'new-file' else []),
+    # Start the observer once, in the exact isolated window all diff tabs
+    # should use. Repeated --extensionDevelopmentPath invocations accidentally
+    # launched distinct windows, leaving the observer with zero diff tabs.
+    bootstrap = subprocess.Popen([
+        str(wrapper), '--extensionDevelopmentPath', str(observer),
+        '--new-window', str(home),
     ], env=env, stdout=subprocess.DEVNULL, stderr=stderr_log, text=True)
+    process = None
     try:
+        startup_deadline = time.monotonic() + 45
+        while time.monotonic() < startup_deadline:
+            if report.exists() and json.loads(report.read_text()).get('activated'):
+                break
+            time.sleep(0.3)
+        else:
+            raise AssertionError(f'VS Code observer did not activate; stderr={log_path.read_text()}')
+
+        process = subprocess.Popen([
+            'chezmoi', '--source', str(source), '--destination', str(home),
+            '--config', str(config), 'diff',
+            *(['--recursive', str(home / '.hammerspoon')] if scenario != 'new-file' else []),
+        ], env=env, stdout=subprocess.DEVNULL, stderr=stderr_log, text=True)
         deadline = time.monotonic() + 75
         last = None
         matching = []
@@ -167,10 +182,13 @@ exports.deactivate = () => {};
         # Only this disposable VS Code profile on an ephemeral CI runner.
         from tests.integration.test_git_review_vscode_gui import stop_isolated_vscode
         stop_isolated_vscode(profile)
-        if process.poll() is None:
-            process.terminate()
-        try:
-            process.wait(timeout=8)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
+        for child in (process, bootstrap):
+            if child is None:
+                continue
+            if child.poll() is None:
+                child.terminate()
+            try:
+                child.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait(timeout=5)

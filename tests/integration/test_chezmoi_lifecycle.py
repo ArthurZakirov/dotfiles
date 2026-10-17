@@ -25,9 +25,9 @@ def test_full_managed_tree_diff_apply_and_upgrade(profile, tmp_path, profile_fac
     code = bin_dir / "code"
     code.write_text(
         '#!/bin/sh\n'
-        'test "$1" = --wait && test "$2" = --diff || exit 22\n'
-        'test -f "$3" && test -f "$4" || exit 23\n'
-        'printf "%s\\n" "$3 -> $4" >> "$CHEZMOI_DIFF_LOG"\n'
+        'test "$1" = --reuse-window && test "$2" = --wait && test "$3" = --diff || exit 22\n'
+        'test -f "$4" && test -f "$5" || exit 23\n'
+        'printf "%s\\n" "$4 -> $5" >> "$CHEZMOI_DIFF_LOG"\n'
     )
     code.chmod(0o755)
     env = {**os.environ, "HOME": str(home),

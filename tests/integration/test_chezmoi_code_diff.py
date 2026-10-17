@@ -18,7 +18,7 @@ def code_stub(tmp_path):
     code = bin_dir / "code"
     code.write_text(
         '#!/bin/sh\nprintf "%s\\n" "$@" > "$CODE_ARGS"\n'
-        'test -f "$3" && test -f "$4"\n'
+        'test -f "$4" && test -f "$5"\n'
     )
     code.chmod(0o755)
     return {
@@ -41,8 +41,8 @@ def recorded_args(env: dict[str, str]) -> list[str]:
 
 def diff_args(env: dict[str, str]) -> list[Path]:
     args = recorded_args(env)
-    assert args[:2] == ["--wait", "--diff"]
-    return [Path(path) for path in args[2:]]
+    assert args[:3] == ["--reuse-window", "--wait", "--diff"]
+    return [Path(path) for path in args[3:]]
 
 
 def test_added_file_remains_readable_after_diff_process_exits(tmp_path, code_stub):
@@ -129,9 +129,9 @@ def test_real_chezmoi_diff_keeps_hammerspoon_upgrade_documents_available(
     # Record every editor invocation: chezmoi diff compares multiple files.
     code = Path(code_stub["PATH"].split(os.pathsep)[0]) / "code"
     code.write_text(
-        '#!/bin/sh\ntest "$1" = --wait && test "$2" = --diff || exit 2\n'
-        'printf "%s\\t%s\\n" "$3" "$4" >> "$CODE_ARGS"\n'
-        'test -f "$3" && test -f "$4"\n'
+        '#!/bin/sh\ntest "$1" = --reuse-window && test "$2" = --wait && test "$3" = --diff || exit 2\n'
+        'printf "%s\\t%s\\n" "$4" "$5" >> "$CODE_ARGS"\n'
+        'test -f "$4" && test -f "$5"\n'
     )
     source = tmp_path / "source"
     source.mkdir()
