@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""Start or reload Hammerspoon and require the newly applied config to become ready."""
+
+import os
+from pathlib import Path
+import secrets
+import shutil
+import subprocess
+import sys
+import time
+
+
+def run(command: list[str], timeout: float = 4) -> subprocess.CompletedProcess[str] | None:
+    try:
+        return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def cli_for(app: Path) -> str | None:
+    bundled = app / "Contents/Frameworks/hs/hs"
+    return shutil.which("hs") or (str(bundled) if os.access(bundled, os.X_OK) else None)
+
+
+def wait_for_ipc(cli: str, seconds: float) -> bool:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        result = run([cli, "-c", 'return "dotfiles-ipc-ready"'], timeout=2)
+        if result and result.returncode == 0 and "dotfiles-ipc-ready" in result.stdout:
+            return True
+        time.sleep(0.25)
+    return False
+
+
+def activate() -> int:
+    app = Path(os.environ.get("HAMMERSPOON_APP_PATH", "/Applications/Hammerspoon.app"))
+    verifier = os.environ.get(
+        "HAMMERSPOON_VERIFY_BIN",
+        str(Path.home() / ".local/bin/hammerspoon-verify"),
+    )
+    cli = cli_for(app)
+    if not cli:
+        print("Hammerspoon: CLI unavailable; cannot confirm hotkeys.", file=sys.stderr)
+        return 1
+
+    running = run(["pgrep", "-x", "Hammerspoon"])
+    if not running or running.returncode != 0:
+        launched = run(["open", "-a", str(app)])
+        if not launched or launched.returncode != 0:
+            print("Hammerspoon: could not launch app.", file=sys.stderr)
+            return 1
+
+    if not wait_for_ipc(cli, seconds=8):
+        print("Hammerspoon: IPC unavailable; cannot reload or verify hotkeys.", file=sys.stderr)
+        return 1
+
+    nonce = secrets.token_hex(16)
+    # A new token is visible only after init.lua has completed this reload.
+    # Verify despite a CLI disconnect: IPC may be replaced while hs.reload runs.
+    run(
+        [cli, "-c", f'hs.settings.set("dotfiles.activation_nonce", "{nonce}"); hs.reload()'],
+        timeout=4,
+    )
+
+    deadline = time.monotonic() + 15
+    last_error = ""
+    while time.monotonic() < deadline:
+        result = run([verifier, "--nonce", nonce], timeout=5)
+        if result and result.returncode == 0:
+            print(result.stdout.strip())
+            print("Hammerspoon: applied configuration is active.")
+            return 0
+        if result:
+            last_error = (result.stderr or result.stdout).strip()
+        time.sleep(0.35)
+
+    print(
+        "Hammerspoon: new configuration did not become ready. "
+        "Hotkeys may require recovery. " + last_error,
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(activate())

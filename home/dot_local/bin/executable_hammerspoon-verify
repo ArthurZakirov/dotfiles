@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Read-only, bounded health check for the managed Hammerspoon runtime."""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+
+QUERY = (
+    'return hs.json.encode({'
+    'accessibility=hs.accessibilityState(),'
+    'autolaunch=hs.autoLaunch(),'
+    'hotkeys=#hs.hotkey.getHotkeys(),'
+    'ready=type(HammerspoonConfig)=="table" and HammerspoonConfig.readyNonce~=nil,'
+    'nonce=type(HammerspoonConfig)=="table" and HammerspoonConfig.readyNonce or "",'
+    'audio=type(HammerspoonConfig)=="table" and '
+    'type(HammerspoonConfig.audioCheck)=="table" and '
+    'type(HammerspoonConfig.audioCheck.run)=="function"'
+    '})'
+)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--nonce", help="Require this freshly loaded configuration nonce")
+    args = parser.parse_args()
+    command = shutil.which("hs")
+    if not command:
+        app = Path(os.environ.get("HAMMERSPOON_APP_PATH", "/Applications/Hammerspoon.app"))
+        bundled = app / "Contents/Frameworks/hs/hs"
+        if bundled.is_file() and os.access(bundled, os.X_OK):
+            command = str(bundled)
+    if not command:
+        print("Hammerspoon: hs CLI unavailable; cannot check runtime.", file=sys.stderr)
+        return 1
+
+    try:
+        result = subprocess.run(
+            [command, "-c", QUERY], capture_output=True, text=True, timeout=4
+        )
+    except subprocess.TimeoutExpired:
+        print("Hammerspoon: runtime IPC did not respond within 4 seconds.", file=sys.stderr)
+        return 1
+    except OSError as error:
+        print(f"Hammerspoon: cannot query runtime: {error}", file=sys.stderr)
+        return 1
+
+    if result.returncode != 0:
+        print(
+            f"Hammerspoon: runtime query failed: {result.stderr.strip()}",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        status = json.loads(result.stdout.strip())
+    except (json.JSONDecodeError, ValueError):
+        print("Hammerspoon: invalid runtime response.", file=sys.stderr)
+        return 1
+
+    required = (
+        status.get("accessibility") is True,
+        status.get("autolaunch") is True,
+        status.get("audio") is True,
+        status.get("ready") is True,
+        args.nonce is None or status.get("nonce") == args.nonce,
+        type(status.get("hotkeys")) is int and status["hotkeys"] > 0,
+    )
+    print(
+        "Hammerspoon runtime: "
+        f"accessibility={status.get('accessibility')}, "
+        f"autolaunch={status.get('autolaunch')}, "
+        f"audio_check={status.get('audio')}, "
+        f"config_ready={status.get('ready')}, "
+        f"registered_hotkeys={status.get('hotkeys')}"
+    )
+    if not all(required):
+        print(
+            "Hammerspoon: check Accessibility, launch-at-login, and config loading.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
