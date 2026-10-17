@@ -1,10 +1,10 @@
--- AgentDesk Hammerspoon entrypoint.
+-- Managed Hammerspoon entrypoint.
 -- Each concern owns its own bindings and implementation under modules/.
 
 hs.window.animationDuration = 0
 require("hs.ipc")
 
-AgentDesk = {
+HammerspoonConfig = {
   hyper = { "ctrl", "alt", "cmd" },
 }
 
@@ -17,10 +17,8 @@ dofile(hs.configdir .. "/modules/claude.lua")
 dofile(hs.configdir .. "/modules/chatgpt.lua")
 dofile(hs.configdir .. "/modules/layout.lua")
 
-hs.hotkey.bind(AgentDesk.hyper, "r", hs.reload)
+hs.hotkey.bind(HammerspoonConfig.hyper, "r", hs.reload)
 hs.autoLaunch(true)
-{{ if eq .profile "personal" -}}
-dofile(hs.configdir .. "/audio_check.lua")
-{{ end -}}
+dofile(hs.configdir .. "/modules/audio_check.lua")
 
 hs.alert.show("Hammerspoon config loaded")

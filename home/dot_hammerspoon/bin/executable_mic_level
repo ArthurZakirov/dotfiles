@@ -8,14 +8,20 @@ cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/hammerspoon"
 executable="$cache_dir/mic_level"
 
 if [ ! -x "$executable" ] || [ "$source" -nt "$executable" ]; then
-  if ! command -v swiftc >/dev/null 2>&1; then
-    echo 'swiftc is required to build the Hammerspoon microphone meter.' >&2
+  setup="${HAMMERSPOON_SWIFTC_HELPER:-$HOME/.local/bin/hammerspoon-ensure-swiftc}"
+  if [ -x "$setup" ]; then
+    compiler=$("$setup")
+  else
+    compiler=$(command -v swiftc || true)
+  fi
+  if [ -z "$compiler" ]; then
+    echo 'Cannot build microphone meter: Swift compiler is unavailable.' >&2
     exit 127
   fi
   mkdir -p "$cache_dir"
   temporary=$(mktemp "$cache_dir/mic_level.XXXXXX")
   trap 'rm -f "$temporary"' EXIT HUP INT TERM
-  swiftc "$source" -o "$temporary"
+  "$compiler" "$source" -o "$temporary"
   chmod 700 "$temporary"
   mv -f "$temporary" "$executable"
   trap - EXIT HUP INT TERM

@@ -1,7 +1,7 @@
 ------------------------------------------------------- claude sidebar (via AX)
 
-local HYPER = AgentDesk.hyper
-local afterModsReleased = AgentDesk.afterModsReleased
+local HYPER = HammerspoonConfig.hyper
+local afterModsReleased = HammerspoonConfig.afterModsReleased
 
 -- Claude's Code tab is a web UI, and Chromium only builds its accessibility
 -- tree once an assistive client asks for it. Until AXManualAccessibility is

@@ -13,7 +13,7 @@ METER = ROOT / "home/dot_hammerspoon/bin/executable_mic_level"
 
 
 @pytest.mark.parametrize("profile", ("personal", "professional"))
-def test_managed_hammerspoon_is_standalone_and_profile_scoped(profile, profile_factory):
+def test_full_hammerspoon_configuration_is_shared_across_profiles(profile, profile_factory):
     rendered = profile_factory.render(profile)
     managed = set(profile_factory.chezmoi(
         rendered.config, "managed", "--include", "files"
@@ -30,17 +30,18 @@ def test_managed_hammerspoon_is_standalone_and_profile_scoped(profile, profile_f
     assert 'dofile(hs.configdir .. "/modules/core.lua")' in entrypoint
 
     audio_files = {
-        ".hammerspoon/audio_check.lua",
-        ".hammerspoon/audio_check_impl.lua",
+        ".hammerspoon/modules/audio_check.lua",
         ".hammerspoon/bin/mic_level",
         ".hammerspoon/bin/mic_level.swift",
     }
-    if profile == "personal":
-        assert audio_files <= managed
-        assert 'dofile(hs.configdir .. "/audio_check.lua")' in entrypoint
-    else:
-        assert audio_files.isdisjoint(managed)
-        assert "/audio_check.lua" not in entrypoint
+    assert audio_files <= managed
+    assert 'dofile(hs.configdir .. "/modules/audio_check.lua")' in entrypoint
+
+    audio = profile_factory.chezmoi(
+        rendered.config, "cat", str(Path.home() / ".hammerspoon/modules/audio_check.lua")
+    )
+    assert 'hs.hotkey.bind(HammerspoonConfig.hyper, "ä", M.run)' in audio
+    assert 'hs.configdir .. "/bin/mic_level"' in audio
 
 
 def test_migration_backs_up_legacy_links_and_preserves_unmanaged_files(tmp_path):
@@ -178,8 +179,52 @@ def test_legacy_symlinks_upgrade_to_managed_files_in_isolated_home(
     subprocess.run(command, env=env, check=True, capture_output=True, text=True)
     assert (directory / "init.lua").is_file() and not (directory / "init.lua").is_symlink()
     assert (directory / "modules/core.lua").is_file()
-    assert (directory / "audio_check.lua").is_file()
+    assert (directory / "modules/audio_check.lua").is_file()
     assert os.access(directory / "bin/mic_level", os.X_OK)
     assert (directory / "Spoons/keep.txt").read_text() == "unmanaged"
     subprocess.run(command, env=env, check=True, capture_output=True, text=True)
     assert (directory / "Spoons/keep.txt").read_text() == "unmanaged"
+
+
+def test_both_profiles_generate_identical_hammerspoon_files(profile_factory):
+    configurations = {
+        profile: profile_factory.render(profile).config
+        for profile in ("personal", "professional")
+    }
+    tree = {}
+    for profile, config in configurations.items():
+        managed = profile_factory.chezmoi(
+            config, "managed", "--include", "files"
+        ).splitlines()
+        paths = [path for path in managed if path.startswith(".hammerspoon/")]
+        tree[profile] = {
+            path: profile_factory.chezmoi(
+                config, "cat", str(Path.home() / path)
+            )
+            for path in paths
+        }
+        assert ".hammerspoon/modules/audio_check.lua" in tree[profile]
+        scripts = profile_factory.chezmoi(config, "managed", "--include", "scripts")
+        assert "30-ensure-hammerspoon.sh" in scripts
+
+    assert tree["personal"] == tree["professional"]
+
+
+def test_audio_check_ignores_stale_async_work():
+    # Structural guard regression until an actual Hammerspoon runtime is
+    # available in an ephemeral GUI test environment.
+    source = (ROOT / "home/dot_hammerspoon/modules/audio_check.lua").read_text()
+    assert "if startTimer then startTimer:stop(); startTimer = nil end" in source
+    assert "activeRun = activeRun + 1" in source
+    assert "if run ~= activeRun then return end" in source
+    assert "if run ~= activeRun then return false end" in source
+    assert "if outputMuted == nil then" not in source
+    assert 'addRow(elements, 212, notWhenKnown(outputMuted),' in source
+    assert "notWhenKnown(inputMuted)" in source
+
+
+def test_failed_space_move_stops_polling():
+    source = (ROOT / "home/dot_hammerspoon/modules/spaces.lua").read_text()
+    assert "if poller then poller:stop() end" in source
+    assert "poller = hs.timer.waitUntil(" in source
+    assert "hs.timer.doAfter(2, release)" in source

@@ -1,4 +1,4 @@
-local HYPER = AgentDesk.hyper
+local HYPER = HammerspoonConfig.hyper
 
 local function pickWindow()
   -- Mission Control swallows every keystroke, so the chooser would open but

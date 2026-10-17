@@ -11,6 +11,8 @@ local VALID_INPUTS = {
 
 local card
 local micTask
+local startTimer
+local activeRun = 0
 local closeTimer
 local testSound
 local micIconIndex
@@ -29,6 +31,8 @@ local COLORS = {
 }
 
 local function stopPreviousRun()
+  activeRun = activeRun + 1
+  if startTimer then startTimer:stop(); startTimer = nil end
   if closeTimer then closeTimer:stop(); closeTimer = nil end
   if micTask and micTask:isRunning() then micTask:terminate() end
   micTask = nil
@@ -44,6 +48,11 @@ end
 local function statusSymbol(ok)
   if ok == nil then return "⏳" end
   return ok and "✅" or "❗"
+end
+
+local function notWhenKnown(value)
+  if value == nil then return nil end
+  return not value
 end
 
 local function statusColor(ok)
@@ -114,8 +123,9 @@ local function showCard(output, input)
   end
   addRow(elements, 176, outputVolume ~= nil and outputVolume >= MIN_OUTPUT_VOLUME,
     "Lautstärke", volumeLabel)
-  addRow(elements, 212, outputMuted ~= true,
-    "Stummschaltung", outputMuted and "Stumm" or "Nicht stumm")
+  addRow(elements, 212, notWhenKnown(outputMuted),
+    "Stummschaltung", outputMuted == nil and "Nicht verfügbar" or
+      (outputMuted and "Stumm" or "Nicht stumm"))
 
   elements[#elements + 1] = {
     type = "segments",
@@ -136,7 +146,7 @@ local function showCard(output, input)
   inputMuteIconIndex, inputMuteValueIndex = addRow(
     elements,
     390,
-    inputMuted == nil and nil or not inputMuted,
+    notWhenKnown(inputMuted),
     "Stummschaltung",
     inputMuted == nil and "Wird durch Mikrofontest geprüft" or (inputMuted and "Stumm" or "Nicht stumm")
   )
@@ -203,7 +213,8 @@ local function processMicOutput(chunk)
   end
 end
 
-local function startMicTest(input)
+local function startMicTest(input, run)
+  if run ~= activeRun then return end
   if not input then
     setMicResult(false, "Kein Eingabegerät erkannt")
     scheduleClose()
@@ -215,6 +226,7 @@ local function startMicTest(input)
   micTask = hs.task.new(
     MIC_METER,
     function(exitCode, _, stdErr)
+      if run ~= activeRun then return end
       if signalDetected then
         scheduleClose()
         return
@@ -230,6 +242,7 @@ local function startMicTest(input)
       scheduleClose()
     end,
     function(_, stdOut, _)
+      if run ~= activeRun then return false end
       processMicOutput(stdOut)
       return not signalDetected
     end
@@ -257,7 +270,15 @@ function M.run()
     end
   end
 
-  hs.timer.doAfter(0.8, function() startMicTest(input) end)
+  local run = activeRun
+  startTimer = hs.timer.doAfter(0.8, function()
+    if run ~= activeRun then return end
+    startTimer = nil
+    startMicTest(input, run)
+  end)
 end
+
+hs.hotkey.bind(HammerspoonConfig.hyper, "ä", M.run)
+HammerspoonConfig.audioCheck = M
 
 return M

@@ -1,9 +1,9 @@
-local AD = AgentDesk
-local HYPER = AD.hyper
-local currentScreen = AD.currentScreen
-local focusScreen = AD.focusScreen
-local screensLeftToRight = AD.screensLeftToRight
-local afterModsReleased = AD.afterModsReleased
+local config = HammerspoonConfig
+local HYPER = config.hyper
+local currentScreen = config.currentScreen
+local focusScreen = config.focusScreen
+local screensLeftToRight = config.screensLeftToRight
+local afterModsReleased = config.afterModsReleased
 
 local function spacesOn(screen, userOnly)
   local ids = hs.spaces.spacesForScreen(screen:getUUID()) or {}
@@ -72,9 +72,11 @@ local function moveWindowSpace(delta)
     local grab = hs.geometry(win:zoomButtonRect()):move({ -1, -1 }).topleft
     local restore = hs.mouse.absolutePosition()
     local released = false
+    local poller
     local function release()
       if released then return end
       released = true
+      if poller then poller:stop() end
       et.newMouseEvent(et.types.leftMouseUp, grab):post()
       hs.mouse.absolutePosition(restore)
       win:focus()
@@ -83,7 +85,7 @@ local function moveWindowSpace(delta)
     et.newMouseEvent(et.types.leftMouseDown, grab):post()
     hs.timer.doAfter(0.15, function()
       hs.eventtap.keyStroke({ "ctrl", "fn" }, delta < 0 and "left" or "right", 0)
-      hs.timer.waitUntil(
+      poller = hs.timer.waitUntil(
         function()
           local ws = hs.spaces.windowSpaces(win)
           return ws and ws[1] and ws[1] ~= initial

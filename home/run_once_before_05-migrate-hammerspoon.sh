@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Replace only the symlinks installed by the legacy AgentDesk Hammerspoon skill.
+# Replace only the symlinks installed by the previous Hammerspoon configuration.
 # Back up the existing live configuration before changing any links.
 root="$HOME/.hammerspoon"
 marker="$HOME/.cache/chezmoi/hammerspoon-migration-complete"

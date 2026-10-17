@@ -1,7 +1,7 @@
 --------------------------------------------------------------------------- displays
 
-local AD = AgentDesk
-local HYPER = AD.hyper
+local config = HammerspoonConfig
+local HYPER = config.hyper
 local SEND_KEYS = { "j", "k", "l", ";" }
 local FOCUS_KEYS = { "u", "i", "o", "p" }
 
@@ -195,10 +195,10 @@ end
 -- Exposed for testing via the hs CLI.
 Identify = identifyScreens
 
-AD.screensLeftToRight = screensLeftToRight
-AD.currentScreen = currentScreen
-AD.focusScreen = focusScreen
-AD.focusScreenAt = focusScreenAt
+config.screensLeftToRight = screensLeftToRight
+config.currentScreen = currentScreen
+config.focusScreen = focusScreen
+config.focusScreenAt = focusScreenAt
 
 for i = 1, #SEND_KEYS do
   hs.hotkey.bind(HYPER, SEND_KEYS[i], function()

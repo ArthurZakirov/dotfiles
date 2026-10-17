@@ -1,4 +1,4 @@
-local AD = AgentDesk
+local config = HammerspoonConfig
 
 local function noModsHeld()
   local flags = hs.eventtap.checkKeyboardModifiers()
@@ -16,4 +16,4 @@ local function afterModsReleased(fn)
   end, 0.05)
 end
 
-AD.afterModsReleased = afterModsReleased
+config.afterModsReleased = afterModsReleased

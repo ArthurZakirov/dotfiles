@@ -1,7 +1,7 @@
 --------------------------------------------------------------- chrome omnibox scopes
 
-local HYPER = AgentDesk.hyper
-local afterModsReleased = AgentDesk.afterModsReleased
+local HYPER = HammerspoonConfig.hyper
+local afterModsReleased = HammerspoonConfig.afterModsReleased
 
 -- Focus Chrome and open the omnibox pre-scoped (@bookmarks / @tabs / @history:
 -- typing the scope then Tab activates Chrome's scoped search). The synthetic

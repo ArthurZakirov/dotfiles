@@ -15,7 +15,7 @@ end
 
 local shortcut = hs.hotkey.new({ "cmd", "shift" }, 26, function()
   local target = hs.application.frontmostApplication()
-  AgentDesk.afterModsReleased(function()
+  HammerspoonConfig.afterModsReleased(function()
     -- Do not act on a different app if focus changes while keys are held.
     if not isChatGPT(target) or
       hs.application.frontmostApplication() ~= target then return end
@@ -37,7 +37,7 @@ local function update()
 end
 
 -- Retain watchers and the hotkey across garbage collection.
-AgentDesk.chatgpt = {
+HammerspoonConfig.chatgpt = {
   shortcut = shortcut,
   watcher = hs.application.watcher.new(function(_, event)
     if event == hs.application.watcher.activated or
@@ -45,6 +45,6 @@ AgentDesk.chatgpt = {
       event == hs.application.watcher.terminated then update() end
   end),
 }
-AgentDesk.chatgpt.watcher:start()
+HammerspoonConfig.chatgpt.watcher:start()
 hs.keycodes.inputSourceChanged(update)
 update()
