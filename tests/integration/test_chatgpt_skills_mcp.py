@@ -128,7 +128,15 @@ chmod +x "$HOME/.local/share/local-skills-mcp/.venv/bin/python"
 """,
         "tunnel-client": "#!/bin/sh\nexit 0\n",
         "bws": """#!/bin/sh
-printf '[{"key":"OPENAI_TUNNEL_API_KEY","value":"synthetic-runtime-key"}]\n'
+if [ -f "${TEST_BWS_FAILURE:-/nonexistent}" ]; then
+  echo 'simulated backend failure' >&2
+  exit 2
+fi
+if [ -n "${TEST_BWS_ID:-}" ]; then
+  printf '[{"key":"OPENAI_TUNNEL_API_KEY","value":"synthetic-runtime-key"},{"key":"OPENAI_TUNNEL_ID","value":"%s"}]\\n' "$TEST_BWS_ID"
+else
+  printf '[{"key":"OPENAI_TUNNEL_API_KEY","value":"synthetic-runtime-key"}]\\n'
+fi
 """,
         "security": "#!/bin/sh\necho synthetic-bws-token\n",
         "pgrep": """#!/bin/sh
@@ -148,7 +156,12 @@ case "$1" in
         *) exit 1;;
       esac ;;
     bootstrap)
+      if [ -f "${TEST_FAIL_BOOTSTRAP:-/nonexistent}" ] &&
+         [ "$3" = "$HOME/Library/LaunchAgents/local.skills.mcp.plist" ]; then
+        exit 1
+      fi
       case "$*" in
+        *last-working.plist*) touch "$TEST_SERVICE_RUNNING";;
         *local.skills.mcp*) touch "$TEST_SERVICE_RUNNING";;
         *skillport-mcp*) touch "$TEST_LEGACY_SERVICE_RUNNING";;
       esac ;;
@@ -172,6 +185,8 @@ esac
         "TEST_SERVICE_RUNNING": str(tmp_path / "service-running"),
         "TEST_LEGACY_SERVICE_RUNNING": str(tmp_path / "legacy-service-running"),
         "TEST_SERVICE_CALLS": str(tmp_path / "service-calls"),
+        "TEST_BWS_FAILURE": str(tmp_path / "backend-failure"),
+        "TEST_FAIL_BOOTSTRAP": str(tmp_path / "bootstrap-failure"),
     }
 
     def run():
@@ -278,3 +293,100 @@ def test_switching_to_professional_stops_only_managed_service(isolated_agent, pr
     assert not Path(env["TEST_SERVICE_RUNNING"]).exists()
     assert not (home / f".local/state/local-skills-mcp/{LABEL}.sha256").exists()
     assert any(call.startswith("bootout gui/") and LABEL in call for call in calls())
+
+
+def test_unconfigured_secret_backend_skips_optional_service(isolated_agent):
+    home, env, run, calls = isolated_agent
+    (home / ".config/local-skills-mcp/tunnel-id").unlink()
+
+    result = run()
+
+    assert result.returncode == 0, result.stderr
+    assert not any(call.startswith("bootstrap ") for call in calls())
+    assert not (home / ".local/state/local-skills-mcp").exists()
+
+
+def test_configured_service_reports_credential_failure(isolated_agent):
+    _, env, run, calls = isolated_agent
+    Path(env["TEST_BWS_FAILURE"]).touch()
+
+    result = run()
+
+    assert result.returncode != 0
+    assert not any(call.startswith("bootstrap ") for call in calls())
+
+
+def test_backend_tunnel_change_restarts_managed_service(isolated_agent):
+    home, env, run, calls = isolated_agent
+    (home / ".config/local-skills-mcp/tunnel-id").unlink()
+    env["TEST_BWS_ID"] = "tunnel_" + "a" * 32
+
+    first = run()
+    assert first.returncode == 0, first.stderr
+    marker = home / f".local/state/local-skills-mcp/{LABEL}.sha256"
+    first_hash = marker.read_text()
+
+    env["TEST_BWS_ID"] = "tunnel_" + "b" * 32
+    second = run()
+
+    assert second.returncode == 0, second.stderr
+    assert marker.read_text() != first_hash
+    assert sum(call.startswith("bootstrap ") for call in calls()) == 2
+    assert sum(call.startswith("bootout ") for call in calls()) == 1
+
+
+def test_secret_based_tunnel_refuses_competing_client(isolated_agent):
+    home, env, run, calls = isolated_agent
+    (home / ".config/local-skills-mcp/tunnel-id").unlink()
+    env["TEST_BWS_ID"] = "tunnel_" + "a" * 32
+    Path(env["TEST_DEMO_RUNNING"]).touch()
+
+    result = run()
+
+    assert result.returncode != 0
+    assert not any(call.startswith("bootstrap ") for call in calls())
+
+
+def test_failed_reload_restores_prior_service_configuration(isolated_agent):
+    home, env, run, calls = isolated_agent
+    first = run()
+    assert first.returncode == 0, first.stderr
+    snapshot = home / ".local/state/local-skills-mcp/last-working.plist"
+    assert snapshot.is_file()
+    old_contents = snapshot.read_text()
+    marker = home / f".local/state/local-skills-mcp/{LABEL}.sha256"
+    old_hash = marker.read_text()
+
+    plist = home / f"Library/LaunchAgents/{LABEL}.plist"
+    plist.write_text(plist.read_text().replace("<integer>120</integer>", "<integer>180</integer>"))
+    Path(env["TEST_FAIL_BOOTSTRAP"]).touch()
+
+    second = run()
+
+    assert second.returncode != 0
+    assert Path(env["TEST_SERVICE_RUNNING"]).exists()
+    assert marker.read_text() == old_hash
+    assert snapshot.read_text() == old_contents
+    assert any("bootstrap " in call and "last-working.plist" in call for call in calls())
+
+
+def test_before_hook_captures_original_managed_plist(isolated_agent, profile_factory):
+    home, env, run, _ = isolated_agent
+    assert run().returncode == 0
+    snapshot = home / ".local/state/local-skills-mcp/last-working.plist"
+    snapshot.unlink()
+    original = (home / f"Library/LaunchAgents/{LABEL}.plist").read_text()
+    profile = profile_factory.render("personal")
+    before = profile_factory.render_hook(
+        profile.config, "personal", "run_before_24-snapshot-local-skills-mcp.sh.tmpl",
+        "snapshot",
+    )
+
+    result = subprocess.run(
+        ["/bin/sh", str(before)], env=env,
+        text=True, capture_output=True, timeout=15,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert snapshot.read_text() == original
+    assert snapshot.stat().st_mode & 0o777 == 0o600

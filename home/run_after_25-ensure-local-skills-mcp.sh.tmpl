@@ -39,34 +39,48 @@ project="$HOME/.local/share/local-skills-mcp"
 if [ ! -f "$project/launch.py" ]; then
   exit 0
 fi
-for tool in uv tunnel-client bws python3; do
+command -v python3 >/dev/null 2>&1 || {
+  echo "Local skills MCP needs python3 to check its configuration." >&2
+  exit 1
+}
+test -r "$HOME/.local/share/dotfiles-secrets/secret_store.py" || exit 1
+test -x "$HOME/.local/bin/local-skills-mcp-launch" || exit 1
+
+# The launcher is the single source of truth for effective tunnel selection.
+# Exit 3 means no tunnel configured; all other failures must remain visible.
+if tunnel_id="$(DOTFILES_SECRETS_ACCOUNT={{ .bwsAccount | quote }} python3 "$project/launch.py" --tunnel-id)"; then
+  :
+else
+  probe_status=$?
+  if [ "$probe_status" -eq 3 ]; then
+    exit 0
+  fi
+  echo "Local skills MCP configuration or credentials could not be verified." >&2
+  exit "$probe_status"
+fi
+
+for tool in uv tunnel-client bws; do
   command -v "$tool" >/dev/null 2>&1 || {
     echo "Local skills MCP requires $tool from personal dotfiles setup." >&2
     exit 1
   }
 done
-test -r "$HOME/.local/share/dotfiles-secrets/secret_store.py" || exit 1
-test -x "$HOME/.local/bin/local-skills-mcp-launch" || exit 1
-
-# The ID comes from per-machine state, a previous local installation or the
-# optional OPENAI_TUNNEL_ID secret. Missing provisioning is a no-op, never a prompt.
-if ! DOTFILES_SECRETS_ACCOUNT={{ .bwsAccount | quote }} python3 "$project/launch.py" --configured >/dev/null 2>&1; then
-  exit 0
-fi
 
 uv sync --project "$project" --frozen --no-dev
 test -x "$project/.venv/bin/python" || exit 1
 plutil -lint "$plist" >/dev/null
-id_file="$HOME/.config/local-skills-mcp/tunnel-id"
-if [ ! -f "$id_file" ]; then
-  id_file="$HOME/.config/skillport-mcp/tunnel-id"
-fi
+# Hash the selected ID even when it came from Bitwarden, not a local file.
+# Store only the digest, never credentials or the raw ID, in the marker.
 current_hash="$(
-  for file in "$plist" "$project/server.py" "$project/launch.py" "$project/uv.lock" "$HOME/.local/share/dotfiles-secrets/secret_store.py" "$id_file"; do
-    [ ! -f "$file" ] || shasum -a 256 "$file"
-  done | shasum -a 256 | awk '{print $1}'
+  (
+    for file in "$plist" "$project/server.py" "$project/launch.py" "$project/uv.lock" "$HOME/.local/share/dotfiles-secrets/secret_store.py"; do
+      shasum -a 256 "$file"
+    done
+    printf '%s' "$tunnel_id" | shasum -a 256
+  ) | shasum -a 256 | awk '{print $1}'
 )"
 previous_hash="$(cat "$marker" 2>/dev/null || true)"
+previous_plist="$HOME/.local/state/local-skills-mcp/last-working.plist"
 
 wait_for_bootout() {
   i=0
@@ -86,9 +100,22 @@ if launchctl print "$service" >/dev/null 2>&1; then
     exit 1
   fi
   if [ "$current_hash" != "$previous_hash" ]; then
+    # Do not stop an active service unless its last working plist is available
+    # for restoration; on a first upgrade, the before-hook captures it.
+    if [ ! -s "$previous_plist" ]; then
+      echo "Cannot safely reload local skills MCP: previous plist backup unavailable." >&2
+      exit 1
+    fi
+    plutil -lint "$previous_plist" >/dev/null
     launchctl bootout "$service"
     wait_for_bootout "$service"
-    launchctl bootstrap "$domain" "$plist"
+    if ! launchctl bootstrap "$domain" "$plist"; then
+      # Revert the service configuration, not the user's managed files.
+      if ! launchctl bootstrap "$domain" "$previous_plist"; then
+        echo "Local skills MCP restoration also failed; inspect launchd." >&2
+      fi
+      exit 1
+    fi
   fi
 else
   # Migrate only the earlier dotfiles-managed instance. Do not take over
@@ -102,24 +129,9 @@ else
     old_running=1
   fi
 
-  # Skip a competing manual tunnel. An owned predecessor will be stopped below.
-  tunnel_id="$(python3 - "$project/launch.py" <<'PY'
-import importlib.util
-import os
-import pathlib
-import sys
-spec = importlib.util.spec_from_file_location("local_skills_launcher", sys.argv[1])
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
-home = pathlib.Path.home()
-for path in (home / ".config/local-skills-mcp/tunnel-id",
-             home / ".config/skillport-mcp/tunnel-id"):
-    if path.is_file():
-        print(path.read_text().strip())
-        break
-PY
-)"
-  if [ "$old_running" -eq 0 ] && [ -n "$tunnel_id" ]; then
+  # The effective tunnel ID was obtained from the launcher above, whether
+  # configured locally or through the shared secrets backend.
+  if [ "$old_running" -eq 0 ]; then
     if pgrep -f 'tunnel-client run' 2>/dev/null | while IFS= read -r pid; do
       ps -p "$pid" -o command= 2>/dev/null
     done | grep -F -- "$tunnel_id" >/dev/null; then
@@ -141,6 +153,11 @@ PY
 fi
 
 mkdir -p "$(dirname "$marker")"
+# Record the last successfully bootstrapped plist for a future safe reload.
+tmp_plist="$(mktemp "$previous_plist.XXXXXX")"
+cp "$plist" "$tmp_plist"
+chmod 600 "$tmp_plist"
+mv "$tmp_plist" "$previous_plist"
 tmp_marker="$(mktemp "$marker.XXXXXX")"
 printf '%s\n' "$current_hash" > "$tmp_marker"
 mv "$tmp_marker" "$marker"

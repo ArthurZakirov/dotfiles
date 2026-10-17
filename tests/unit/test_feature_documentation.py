@@ -16,16 +16,18 @@ SECRETS_HELPER = ROOT / "home/dot_local/share/dotfiles-secrets/secret_store.py"
 
 
 def _runtime_secret_names() -> set[str]:
-    """Inspect the real read_secrets call instead of duplicating its names."""
+    """Discover the runtime configuration keys without duplicating their names."""
     tree = ast.parse(LAUNCHER.read_text())
-    calls = [
-        node for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "read_secrets"
-    ]
-    assert len(calls) == 1
-    return set(ast.literal_eval(calls[0].args[0]))
+    runtime = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "runtime_environment"
+    )
+    return {
+        node.value for node in ast.walk(runtime)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node.value.startswith("OPENAI_TUNNEL_")
+    }
 
 
 def test_openai_secret_setup_stays_aligned_with_runtime():

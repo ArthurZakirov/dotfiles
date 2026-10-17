@@ -161,3 +161,54 @@ def test_unrelated_skill_files_are_not_readable(server):
     (canonical / "config.json").write_text('{"private": true}')
     with pytest.raises(ValueError):
         service.read_skill_resource("python-testing", "config.json")
+
+
+def test_machine_local_tunnel_never_reads_unused_backend_id(monkeypatch, tmp_path):
+    """An invalid unrelated Bitwarden ID must not block a valid local tunnel."""
+    spec = importlib.util.spec_from_file_location("local_skills_launcher", SOURCE / "launch.py")
+    launch = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(launch)
+    path = tmp_path / ".config/local-skills-mcp/tunnel-id"
+    path.parent.mkdir(parents=True)
+    path.write_text("tunnel_" + "b" * 32)
+    calls = []
+
+    def read_secrets(names, account, env):
+        calls.append(names)
+        assert "OPENAI_TUNNEL_ID" not in names
+        return {"OPENAI_TUNNEL_API_KEY": "synthetic-key"}
+
+    monkeypatch.setattr(launch, "credential_provider", lambda _: types.SimpleNamespace(
+        read_secrets=read_secrets,
+        sanitized_environment=lambda env: env.copy(),
+    ))
+
+    runtime, tunnel_id = launch.runtime_environment(tmp_path, "injected-account", {"PATH": "/bin"})
+    assert tunnel_id == "tunnel_" + "b" * 32
+    assert runtime["CONTROL_PLANE_API_KEY"] == "synthetic-key"
+    assert calls == [{"OPENAI_TUNNEL_API_KEY"}]
+
+
+def test_tunnel_probe_distinguishes_missing_configuration_from_backend_failure(monkeypatch, tmp_path):
+    spec = importlib.util.spec_from_file_location("local_skills_launcher", SOURCE / "launch.py")
+    launch = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(launch)
+    monkeypatch.setattr(launch.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(sys, "argv", ["launch.py", "--tunnel-id"])
+    monkeypatch.setenv("DOTFILES_SECRETS_ACCOUNT", "injected-account")
+
+    def read_secrets(names, account, env):
+        return {"OPENAI_TUNNEL_API_KEY": "synthetic-key"}
+
+    provider = types.SimpleNamespace(
+        read_secrets=read_secrets,
+        sanitized_environment=lambda env: env.copy(),
+    )
+    monkeypatch.setattr(launch, "credential_provider", lambda _: provider)
+    assert launch.main() == 3
+
+    def unavailable(names, account, env):
+        raise ValueError("simulated backend failure")
+
+    provider.read_secrets = unavailable
+    assert launch.main() == 1
