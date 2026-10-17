@@ -124,3 +124,27 @@ def test_peekaboo_skill_hook_is_rendered_and_safe_to_skip(
         env={**os.environ, "HOME": str(tmp_path), "DOTFILES_SKIP_OPTIONAL_APPS": "1"},
     )
     assert not (tmp_path / ".agents").exists()
+
+
+@pytest.mark.parametrize("profile", ["personal", "professional"])
+def test_agent_browser_hook_renders_for_both_profiles(
+    profile: str, profile_factory: ChezmoiProfileFixture, tmp_path,
+) -> None:
+    rendered = profile_factory.render(profile)
+    hook = profile_factory.render_hook(
+        rendered.config, profile,
+        "run_after_50-ensure-agent-browser.sh.tmpl", "agent-browser",
+    )
+    content = hook.read_text()
+    assert f'DOTFILES_ROOT="{profile_factory.repository}"' in content
+    assert 'source "$DOTFILES_ROOT/src/agent-browser-skill.sh"' in content
+    assert 'source "$DOTFILES_ROOT/src/homebrew.sh"' in content
+    assert 'ensure_agent_browser_skill' in content
+    assert 'for binary in agent-browser npm npx skills; do' in content
+    assert 'agent-browser install' in content
+    profile_factory.run("/bin/bash", "-n", str(hook))
+    profile_factory.run(
+        "/bin/bash", str(hook),
+        env={**os.environ, "HOME": str(tmp_path), "DOTFILES_SKIP_OPTIONAL_APPS": "1"},
+    )
+    assert not (tmp_path / ".agents").exists()

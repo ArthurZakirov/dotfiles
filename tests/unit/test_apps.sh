@@ -50,10 +50,46 @@ install_missing_formula peekaboo openclaw/tap/peekaboo
 [[ ${#calls[@]} -eq 0 ]]
 unset CLI_INSTALLED
 
+# Vercel's skills CLI is explicitly provisioned (not just fetched by npx).
+skills() { [[ "$1" == --version ]] && [[ "${SKILLS_VERSION_FAIL:-0}" == 0 ]]; }
+npm() { calls+=("npm $*"); [[ "${NPM_FAIL:-0}" == 0 ]]; }
+CLI_INSTALLED=skills
+calls=()
+install_skills_cli
+[[ ${#calls[@]} -eq 0 ]]
+unset CLI_INSTALLED
+install_skills_cli
+[[ "${calls[*]}" == 'npm install --global skills' ]]
+SKILLS_VERSION_FAIL=1
+if install_skills_cli 2>/dev/null; then exit 1; fi
+unset SKILLS_VERSION_FAIL
+NPM_FAIL=1
+if install_skills_cli 2>/dev/null; then exit 1; fi
+unset NPM_FAIL
+calls=()
+
+# npm-backed agent-browser is installed only if missing and verified.
+agent-browser() { [[ "$1" == --version ]] && [[ "${BROWSER_VERSION_FAIL:-0}" == 0 ]]; }
+npm() { calls+=("npm $*"); [[ "${NPM_FAIL:-0}" == 0 ]]; }
+CLI_INSTALLED=agent-browser
+calls=()
+install_agent_browser_cli
+[[ ${#calls[@]} -eq 0 ]]
+unset CLI_INSTALLED
+install_agent_browser_cli
+[[ "${calls[*]}" == 'npm install --global agent-browser' ]]
+BROWSER_VERSION_FAIL=1
+if install_agent_browser_cli 2>/dev/null; then exit 1; fi
+unset BROWSER_VERSION_FAIL
+NPM_FAIL=1
+if install_agent_browser_cli 2>/dev/null; then exit 1; fi
+unset NPM_FAIL
+calls=()
+
 # Missing CLIs use their specified packages.
 install_missing_cli_cask claude claude-code
 install_missing_formula node node
 install_missing_formula peekaboo openclaw/tap/peekaboo
 [[ "${calls[*]}" == 'install --cask claude-code install node install openclaw/tap/peekaboo' ]]
 
-echo 'app installer: 6 skip/install checks passed (no installers executed)'
+echo 'app installer: browser/skills CLIs and 6 skip/install checks passed (no installers executed)'

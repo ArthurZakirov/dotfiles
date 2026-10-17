@@ -23,6 +23,7 @@ curl() {
   done
   ((curl_calls += 1))
   [[ "${curl_fail:-0}" == 0 ]] || return 22
+  [[ "$(dirname "$output")" == "$HOME/.agents/skills/peekaboo" ]]
   printf '%s' "$payload" > "$output"
 }
 skill="$HOME/.agents/skills/peekaboo/SKILL.md"
@@ -43,6 +44,7 @@ next_digest="$(printf '%s' "$next_payload" | shasum -a 256 | awk '{print $1}')"
 curl_fail=1
 if ensure_peekaboo_skill "$url" "$next_digest" 2>/dev/null; then exit 1; fi
 [[ "$(cat "$skill")" == "$payload" ]]
+[[ -z "$(find "$HOME/.agents/skills/peekaboo" -name '.SKILL.md.*' -print -quit)" ]]
 curl_fail=0
 if ensure_peekaboo_skill "$url" "$next_digest" 2>/dev/null; then exit 1; fi
 [[ "$(cat "$skill")" == "$payload" ]]

@@ -1,0 +1,21 @@
+#!/bin/bash
+set -euo pipefail
+
+[[ "$(uname -s)" == Darwin ]] || exit 0
+[[ "${DOTFILES_SKIP_OPTIONAL_APPS:-0}" == 1 ]] && exit 0
+
+DOTFILES_ROOT={{ .chezmoi.workingTree | quote }}
+# Each chezmoi hook runs in its own process, so reestablish Homebrew's PATH.
+source "$DOTFILES_ROOT/src/homebrew.sh"
+configure_homebrew
+for binary in agent-browser npm npx skills; do
+  if ! command -v "$binary" >/dev/null 2>&1; then
+    printf 'Agent Browser: required executable unavailable: %s\n' "$binary" >&2
+    exit 1
+  fi
+done
+
+source "$DOTFILES_ROOT/src/agent-browser-skill.sh"
+ensure_agent_browser_skill
+# The CLI alone is insufficient: Chromium must exist for a new Mac to browse.
+agent-browser install

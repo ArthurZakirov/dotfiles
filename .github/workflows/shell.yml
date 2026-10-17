@@ -44,6 +44,26 @@ jobs:
           DOTFILES_SKIP_OPTIONAL_APPS: "1"
         run: bash ./tests/integration/run_fresh_home.sh
 
+  computer-use-e2e:
+    name: Real computer-use tools and skills (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install real chezmoi and Peekaboo CLIs
+        run: |
+          brew install chezmoi
+          brew install openclaw/tap/peekaboo
+      - name: Install and exercise browser and native Mac agent tooling
+        env:
+          RUN_COMPUTER_USE_E2E: '1'
+        run: bash tests/integration/test_computer_use_real.sh
+
   git-review-e2e:
     name: Real Git review E2E (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

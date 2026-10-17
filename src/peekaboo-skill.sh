@@ -40,7 +40,8 @@ ensure_peekaboo_skill() {
   fi
 
   if [[ "$current_sha256" != "$expected_sha256" ]]; then
-    temporary="$(mktemp)"
+    mkdir -p "$skill_dir"
+    temporary="$(mktemp "$skill_dir/.SKILL.md.XXXXXXXX")"
     if ! curl --fail --location --silent --show-error --max-time 30 \
       --output "$temporary" "$url"; then
       rm -f "$temporary"
@@ -53,7 +54,6 @@ ensure_peekaboo_skill() {
       printf 'Peekaboo skill: upstream checksum mismatch; refusing installation.\n' >&2
       return 1
     fi
-    mkdir -p "$skill_dir"
     chmod 644 "$temporary"
     mv "$temporary" "$skill_file"
   fi
