@@ -1,71 +1,81 @@
-# Local Agent Skills in ChatGPT (personal profile)
+# Local Agent Skills in ChatGPT
 
-[← Features](README.md) · [Setup](../setup.md)
+[← Features](README.md)
 
-This personal-only integration exposes installed `~/.agents/skills` to normal
-ChatGPT chats over a **read-only** FastMCP server and an OpenAI Secure MCP
-Tunnel. It does not install, update, manage or depend on any skill repository or
-skill installer.
+ChatGPT can discover and read the Agent Skills installed in `~/.agents/skills/`.
+The MCP bridge is read-only and **personal-profile only**. Skill installation
+and synchronization are independent of this feature.
 
-```text
-~/.agents/skills/ → local FastMCP → OpenAI tunnel → ChatGPT plugin
-```
+## First-time setup
 
-The MCP server offers `search_skills`, `read_skill` and
-`read_skill_resource`. It reads the local files on each call, including
-supported symlinked skill directories. Tool descriptions encourage discovery,
-but ChatGPT ultimately decides which tool to call.
+Complete these steps for a new OpenAI account or workspace. For a second Mac,
+reuse existing account-side resources where appropriate, but use a separate
+tunnel if both Macs will be connected simultaneously.
 
-## Automated personal-Mac setup
+### 1. Create an OpenAI tunnel and runtime key
 
-The personal-profile dotfiles installer installs the tunnel client, FastMCP
-runtime, and `local.skills.mcp` macOS LaunchAgent automatically. The
-LaunchAgent starts at login and restarts after failures. A repeated
-`chezmoi apply` leaves an unchanged service running; changing the managed
-configuration restarts only that service.
+1. Open [Platform → Tunnels](https://platform.openai.com/settings/organization/tunnels)
+   in the **intended Platform organization**. Create a tunnel or select an
+   existing one; associate it with both the organization and the **ChatGPT
+   workspace** that will use the plugin. Save its `tunnel_id`.
+2. Open the organization's project **API keys** settings and select
+   **Create new secret key**. Create a dedicated runtime key with **Restricted**
+   permissions; grant only the access needed for the tunnel. Copy the key
+   securely when it is displayed.
+3. Confirm the Platform organization has granted **Tunnels Read + Use** to
+   the runtime operator. Creating or editing tunnels additionally requires
+   **Tunnels Read + Manage**. These organization-level permissions are
+   distinct from an API key's endpoint permissions.
 
-The launcher obtains its API key from the [shared secrets infrastructure]
-(secrets-management.md) rather than implementing a feature-specific credential
-store. The server does not inherit that key. No passwords or API keys are kept
-in Git, a LaunchAgent plist or command arguments.
+[OpenAI tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) ·
+[API key permissions](https://help.openai.com/en/articles/9186755-managing-projects-in-the-api-platform)
 
-Tunnel selection is **injected per machine**, never hardcoded: existing local
-tunnel configuration takes precedence, with optional `OPENAI_TUNNEL_ID` from
-the configured secret provider as fallback. The one-time prerequisite is an
-existing OpenAI tunnel attached to the correct workspace, with a restricted
-`OPENAI_TUNNEL_API_KEY` provisioned through the common secrets infrastructure.
-Once available, dotfiles setup needs no feature-specific terminal commands or
-manual launchctl action. Missing external account provisioning results in a
-safe no-op, not a prompt or a broken service.
+### 2. Provision the credentials
 
-The first connection of a *new* custom MCP plugin to a ChatGPT account/workspace
-still requires authorization through ChatGPT's own UI. An existing plugin does
-not need updating when a local `SKILL.md` changes; if the MCP schema changes,
-refresh the plugin's tool catalog.
+Use [shared secrets management](secrets-management.md#add-a-secret-to-the-vault)
+to store the following **in the appropriate accessible project**:
 
-## Scope and security
+| Secret name | Value |
+| --- | --- |
+| `OPENAI_TUNNEL_API_KEY` | Restricted OpenAI runtime key from step 1 |
+| `OPENAI_TUNNEL_ID` (optional) | Tunnel ID, when no machine-local tunnel configuration exists |
 
-- **Personal profile only:** The professional profile does not install the
-  server, secret helper, LaunchAgent or optional tunnel client.
-- **Neutral service label:** `local.skills.mcp`. No computer/user/account name
-  or tunnel ID is compiled into the code or plist.
-- **Skill discovery:** Reads `~/.agents/skills/` by default, independent of how
-  its directories are managed. `LOCAL_SKILLS_ROOT` overrides it for testing.
-- **Resource access:** Reads only text-like files within a selected skill's
-  `references/` directory; rejects traversal, hidden paths and symlinks
-  escaping the selected skill. Files larger than 256 KB are rejected.
-- **Communication:** Requested skill text is sent to ChatGPT. Store no secrets
-  in skills exposed through this integration.
-- **Runtime:** The Mac must be running with its user session logged in for
-  the user LaunchAgent to provide the tunnel.
-- **Troubleshooting:** Read the macOS LaunchAgent status and
-  `~/Library/Logs/local-skills-mcp.err.log`. Credential retrieval failures
-  report redacted errors without dumping backend output.
+Do not paste secret values into the repository, chat, or terminal. The common
+secrets setup handles project access and the Mac's Keychain credential.
 
-Existing local installations are migrated by the chezmoi after-hook without
-requiring users to start or stop shell processes. The running predecessor is
-preserved if the new service cannot start.
+### 3. Connect the plugin in ChatGPT
 
-Official references: [OpenAI Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels),
-[tunnel-client](https://github.com/openai/tunnel-client),
-[FastMCP](https://gofastmcp.com/).
+1. Open [ChatGPT → Plugins](https://chatgpt.com/) in the target workspace.
+2. Select **+ → Add custom MCP server**.
+3. Enter a name (e.g. **Local Agent Skills**) and optional description.
+4. Under **Connection**, select **Tunnel** and choose the tunnel from step 1
+   (or enter its `tunnel_id`).
+5. Choose **Authentication: None** for this read-only local server.
+6. Check **I understand and want to continue**, then select
+   **Create as a plugin**. Inspect the discovered tools.
+7. In a **new normal chat**, select the plugin and ask it to call
+   `search_skills` and `read_skill`. Verify that a real installed
+   `SKILL.md` is returned.
+
+[Official ChatGPT connection instructions](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt)
+
+## What dotfiles does automatically
+
+Once the account-side tunnel and shared credentials exist, the personal
+chezmoi setup installs and maintains the FastMCP server, tunnel client and
+`local.skills.mcp` LaunchAgent. It starts at login and restarts on failure;
+an unchanged re-apply does not restart it. Missing external credentials cause
+a safe no-op. **No feature-specific terminal commands are needed.**
+
+## Boundaries
+
+- The professional profile does not install this bridge.
+- Each call reads current files from `~/.agents/skills/`; no skill repository
+  or installer is required. Reading references is limited to a selected
+  skill's `references/` directory.
+- Skill contents sent through the MCP tools are transmitted to ChatGPT;
+  don't place private credentials inside exposed skills.
+- A changed `SKILL.md` needs no plugin refresh; changed MCP tool definitions
+  may require refreshing the plugin in ChatGPT.
+- The Mac must be running with the user logged in for its LaunchAgent to
+  serve requests.
