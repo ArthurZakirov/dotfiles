@@ -1,0 +1,45 @@
+#!/bin/sh
+# Resolve the Swift compiler, installing a Homebrew toolchain only if needed.
+set -eu
+
+compiler=$(command -v swiftc || true)
+if [ -n "$compiler" ] && "$compiler" -version >/dev/null 2>&1; then
+  printf '%s\n' "$compiler"
+  exit 0
+fi
+
+if command -v xcrun >/dev/null 2>&1; then
+  compiler=$(xcrun --find swiftc 2>/dev/null || true)
+  if [ -n "$compiler" ] && [ -x "$compiler" ] &&
+    "$compiler" -version >/dev/null 2>&1; then
+    printf '%s\n' "$compiler"
+    exit 0
+  fi
+fi
+
+if ! command -v brew >/dev/null 2>&1; then
+  echo 'Cannot provision Swift: Homebrew is not installed.' >&2
+  exit 127
+fi
+
+# Homebrew's Swift formula is keg-only on macOS: do not expect it on PATH.
+prefix=$(brew --prefix swift 2>/dev/null || true)
+found=
+if [ -n "$prefix" ]; then
+  for candidate in "$prefix"/Swift-*.xctoolchain/usr/bin/swiftc "$prefix"/bin/swiftc; do
+    if [ -x "$candidate" ]; then found=$candidate; break; fi
+  done
+fi
+if [ -z "$found" ]; then
+  echo 'Installing Swift toolchain for Hammerspoon microphone diagnostics ...' >&2
+  brew install swift >&2
+  prefix=$(brew --prefix swift)
+  for candidate in "$prefix"/Swift-*.xctoolchain/usr/bin/swiftc "$prefix"/bin/swiftc; do
+    if [ -x "$candidate" ]; then found=$candidate; break; fi
+  done
+fi
+if [ -z "$found" ]; then
+  echo 'Swift installation completed but swiftc could not be found.' >&2
+  exit 127
+fi
+printf '%s\n' "$found"

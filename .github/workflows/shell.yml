@@ -16,6 +16,7 @@ jobs:
       - name: Install shell dependencies for read-only tests
         run: |
           brew bundle install --no-upgrade --file=Brewfile
+          brew install luajit # Run Hammerspoon Lua scenarios against the real Lua modules.
           git clone https://github.com/ohmyzsh/ohmyzsh.git "$HOME/.oh-my-zsh"
           revision=$(sed -n 's/^ohMyZshCommit = "\(.*\)"/\1/p' home/.chezmoidata.toml)
           git -C "$HOME/.oh-my-zsh" checkout --detach "$revision"

@@ -11,6 +11,7 @@ how to use it, and which files manage it.
 | [Zsh configuration](zsh.md) | A shared prompt, history, completion, search, and shell plugins |
 | [Application provisioning](applications.md) | Missing applications and CLI tools installed for each profile |
 | [Desktop Commander remote](desktop-commander.md) | Personal Mac remote access via npm CLI and managed LaunchAgent |
+| [Hammerspoon shortcuts](hammerspoon.md) | Mac window, Spaces and app hotkeys; personal microphone test |
 | [Git review](git-review.md) | Commit and branch diffs in disposable review folders |
 | [Python environments](pysetup.md) | Poetry-lock-based checkout-local virtual environments via `pysetup` |
 
