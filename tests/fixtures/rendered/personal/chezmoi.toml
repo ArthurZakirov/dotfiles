@@ -6,6 +6,7 @@ sourceDir = "<DOTFILES_REPO>"
     bwsAccount = "bws-macbook-air"
 
 [diff]
+    pager = ""
     command = "/bin/bash"
     args = ["<DOTFILES_REPO>/home/dot_local/bin/executable_chezmoi-code-diff"]
     exclude = ["scripts"]

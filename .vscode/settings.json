@@ -3,6 +3,7 @@
     "Brewfile": "ruby",
     "**/.chezmoi.toml.tmpl": "go",
     "**/*.toml.tmpl": "go",
+    "**/*.lua.tmpl": "lua",
     ".chezmoidata.toml": "toml",
     "dot_gitconfig": "properties",
     "dot_zshrc.tmpl": "shellscript",
