@@ -176,7 +176,9 @@ exports.deactivate = () => {};
             assert tab['rightFileExists']
             assert 'null' not in tab['leftUri']
             assert tab['rightUri'].startswith('file:')
-        assert any(tab['active'] for tab in matching)
+        # Chezmoi opens more than these three diffs; the foreground tab may
+        # be a later file, while the required Lua comparisons remain open.
+        assert any(tab['active'] for tab in last['tabs'])
     finally:
         stderr_log.close()
         # Only this disposable VS Code profile on an ephemeral CI runner.
