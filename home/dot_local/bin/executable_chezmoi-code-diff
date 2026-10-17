@@ -1,9 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
-if [[ $# -ne 2 ]]; then
-  echo 'Usage: chezmoi-code-diff ORIGINAL TARGET' >&2
+if [[ $# -ne 2 && $# -ne 3 ]]; then
+  echo 'Usage: chezmoi-code-diff [WORKSPACE] ORIGINAL TARGET' >&2
   exit 2
+fi
+configured_workspace=""
+if [[ $# -eq 3 ]]; then
+  configured_workspace="$1"
+  shift
 fi
 original="$1"
 target="$2"
@@ -64,7 +69,7 @@ target_snapshot="$(snapshot_file "$target" after)"
 #
 # A desktop may have several VS Code windows. Always include the repository
 # workspace so requests go to the right window rather than the last active one.
-workspace="${CHEZMOI_CODE_DIFF_WORKSPACE:-}"
+workspace="${CHEZMOI_CODE_DIFF_WORKSPACE:-${configured_workspace:-}}"
 if [[ -z "$workspace" ]]; then
   source_dir="$(chezmoi source-path 2>/dev/null)" || source_dir="$PWD"
   [[ -d "$source_dir" ]] || source_dir="$PWD"
@@ -75,6 +80,13 @@ fi
 if [[ ! -d "$workspace" ]]; then
   printf 'chezmoi-code-diff: VS Code workspace does not exist: %s\n' "$workspace" >&2
   exit 1
+fi
+if ! command -v code >/dev/null 2>&1; then
+  # A clean Mac may not have VS Code installed yet. Diff must remain readable
+  # before chezmoi apply provisions it; no silent omission or GUI dependency.
+  printf 'chezmoi-code-diff: VS Code CLI missing; showing text diff instead.\n' >&2
+  diff -u "$original_snapshot" "$target_snapshot" || [[ $? -eq 1 ]]
+  exit
 fi
 code --reuse-window --diff "$original_snapshot" "$target_snapshot" "$workspace"
 sleep "${CHEZMOI_CODE_DIFF_SETTLE_SECONDS:-1}"

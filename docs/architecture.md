@@ -11,6 +11,7 @@
 | [Official chezmoi installer](https://www.chezmoi.io/install/) | Installs chezmoi and forwards `init --apply USERNAME`; no custom bootstrap downloader. |
 | [`home/.chezmoi.toml.tmpl`](../home/.chezmoi.toml.tmpl) | Prompts for profile, GitHub username, and optional Bitwarden Keychain account; configures VS Code integration. Credentials stay outside Git. |
 | [`home/run_once_before_00-backup-shell.sh.tmpl`](../home/run_once_before_00-backup-shell.sh.tmpl) | Backs up an existing `.zshrc` before the managed version is applied. |
+| [`home/run_before_01-snapshot-existing-managed.sh.tmpl`](../home/run_before_01-snapshot-existing-managed.sh.tmpl) | Snapshots existing managed files and symlinks before each apply that has changes; source/destination paths derive from chezmoi, not a checkout location. |
 | [`home/run_before_10-install-shell.sh.tmpl`](../home/run_before_10-install-shell.sh.tmpl) | Runs the shell installation process. |
 | [`src/shell-setup.sh`](../src/shell-setup.sh) | Reusable shell, editor, and profile installers; selects personal or professional integrations. |
 | [`src/homebrew.sh`](../src/homebrew.sh) | Installs Homebrew if missing and configures its shell environment. |

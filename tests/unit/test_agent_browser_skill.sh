@@ -34,6 +34,12 @@ ensure_agent_browser_skill
 printf 'local changes' > "$HOME/.agents/skills/agent-browser/SKILL.md"
 if ensure_agent_browser_skill 2>/dev/null; then exit 1; fi
 [[ "$skills_calls" == 1 ]]
+# An explicitly reviewed upstream update can be adopted after clearing the
+# ownership marker, while unreviewed modifications remain protected.
+rm "$HOME/Library/Application Support/dotfiles/agent-browser-skill.sha256"
+ensure_agent_browser_skill
+[[ "$(cat "$HOME/Library/Application Support/dotfiles/agent-browser-skill.sha256")" == "$(printf 'local changes' | shasum -a 256 | awk '{print $1}')" ]]
+[[ "$skills_calls" == 1 ]]
 
 # A skill without Vercel's upstream provenance must not be adopted.
 rm -rf "$HOME/.agents/skills/agent-browser" "$HOME/.claude/skills/agent-browser"

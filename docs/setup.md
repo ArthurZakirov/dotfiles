@@ -84,17 +84,40 @@ For the underlying provisioning sequence, see [Architecture](architecture.md).
    ```
 
    Check the generated file against the backup before continuing.
-4. Review the proposed changes:
+4. Review the proposed changes **before running any install hooks**:
 
    ```sh
-   chezmoi diff
+   chezmoi --no-pager --use-builtin-diff diff --exclude scripts
+   chezmoi --dry-run --verbose apply
    ```
 
-5. **Only when the diff is acceptable**, apply deliberately:
+   Both commands work without VS Code and do not modify the destination.
+   For the visual comparison, `chezmoi diff` opens VS Code diff tabs. Confirm
+   that the tabs actually appear and that their contents are readable; a
+   successful exit code alone cannot confirm the editor displayed them.
+   Compare paths against `chezmoi source-path` before using a secondary checkout.
+5. **Only after reviewing the preview**, apply with interactive confirmation:
 
    ```sh
-   chezmoi apply
+   chezmoi apply --interactive
    ```
+
+   When a managed target differs, an early `run_before` hook first snapshots
+   existing managed files and symlinks to the machine-local
+   `~/Library/Application Support/dotfiles/backups/apply.*` directory.
+   These private backups are deliberately retained for recovery. They cannot
+   undo arbitrary external side effects (package upgrades or service restarts).
+   To avoid disconnecting an active Remote Desktop Commander session, changes
+   to its running LaunchAgent are deferred until the operator explicitly runs
+   the relevant apply with `DOTFILES_ALLOW_SERVICE_INTERRUPTION=1`.
+
+   `apply` invokes hooks with side effects (including package installation and
+   LaunchAgents), even if the managed files are unchanged. On an existing Mac,
+   set `DOTFILES_SKIP_OPTIONAL_APPS=1` for the first apply when you want to
+   postpone optional GUI tooling and service changes. This does **not** skip
+   required shell provisioning or guarantee that any user-approved changes can
+   be rolled back. Review active services, existing file changes, and backups
+   before proceeding. Keep `--force` for explicitly accepted overwrites only.
 
 ## Inspect your installation
 

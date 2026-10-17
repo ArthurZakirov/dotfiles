@@ -20,9 +20,17 @@ Installations are noninteractive and idempotent. Existing skills not recorded as
 coming from `vercel-labs/agent-browser`, or subsequently edited locally, are
 **not overwritten**. An existing official skill is adopted without redownloading.
 Missing Claude links are repaired without reinstalling the canonical skill.
-To request a new upstream skill version deliberately, use `npx skills update -g
-agent-browser -y` and review the resulting file; subsequent chezmoi runs stop
-on a changed digest until you reconcile the local ownership record.
+To update the upstream skill deliberately, run `skills update -g agent-browser -y`
+and review the new `SKILL.md`. Since its digest has changed, subsequent applies
+will refuse to adopt it until you explicitly remove the old marker:
+
+```sh
+rm "$HOME/Library/Application Support/dotfiles/agent-browser-skill.sha256"
+```
+
+The next `chezmoi apply` verifies the upstream provenance recorded by Vercel's
+`skills` installer before accepting the updated file and storing its digest.
+Do not remove the marker to suppress an unknown or unreviewed local change.
 
 The hook also runs `agent-browser install` to provision Chrome for Testing.
 This is a separate browser runtime, not the Chrome profile used for personal

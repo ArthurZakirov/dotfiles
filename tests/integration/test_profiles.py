@@ -148,3 +148,18 @@ def test_agent_browser_hook_renders_for_both_profiles(
         env={**os.environ, "HOME": str(tmp_path), "DOTFILES_SKIP_OPTIONAL_APPS": "1"},
     )
     assert not (tmp_path / ".agents").exists()
+
+
+@pytest.mark.parametrize("profile", ["personal", "professional"])
+def test_preapply_backup_hook_uses_invoking_chezmoi_paths(
+    profile: str, profile_factory: ChezmoiProfileFixture,
+) -> None:
+    rendered = profile_factory.render(profile)
+    hook = profile_factory.render_hook(
+        rendered.config, profile,
+        "run_before_01-snapshot-existing-managed.sh.tmpl", "backup-managed",
+    )
+    source = profile_factory.repository / "home"
+    assert f'{source}' in hook.read_text()
+    assert 'snapshot_existing_managed' in hook.read_text()
+    profile_factory.run("/bin/bash", "-n", str(hook))
