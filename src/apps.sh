@@ -100,6 +100,7 @@ install_personal_apps() {
   install_missing_cli_cask xurl xdevplatform/tap/xurl
   install_missing_formula langsmith langchain-ai/tap/langsmith-cli
   install_desktop_commander_cli
+  install_missing_formula tunnel-client openai/tools/tunnel-client
 }
 
 install_desktop_commander_cli() {

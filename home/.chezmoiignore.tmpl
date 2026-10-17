@@ -1,3 +1,10 @@
 {{ if ne .profile "personal" -}}
 Library/LaunchAgents/com.arthur.desktop-commander-remote.plist
+Library/LaunchAgents/local.skills.mcp.plist
+.local/bin/local-skills-mcp-launch
+.local/bin/local-skills-mcp-server
+.local/share/local-skills-mcp
+.local/share/dotfiles-secrets
 {{ end -}}
+# Runtime virtual environments are generated locally, never copied by chezmoi.
+.local/share/local-skills-mcp/.venv
