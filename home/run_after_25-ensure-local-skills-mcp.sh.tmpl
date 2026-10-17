@@ -33,19 +33,18 @@ if [ "$(uname -s)" != Darwin ] || [ "${DOTFILES_SKIP_OPTIONAL_APPS:-}" = 1 ]; th
   exit 0
 fi
 
+project="$HOME/.local/share/local-skills-mcp"
+# Missing optional provisioning is a no-op even when the tunnel client has not
+# been installed yet (for example in a fresh CI HOME).
+if [ ! -f "$project/launch.py" ]; then
+  exit 0
+fi
 for tool in uv tunnel-client bws python3; do
   command -v "$tool" >/dev/null 2>&1 || {
     echo "Local skills MCP requires $tool from personal dotfiles setup." >&2
     exit 1
   }
 done
-
-project="$HOME/.local/share/local-skills-mcp"
-# On a fresh or partially configured Mac, wait for the regular managed-file
-# phase to provision this optional integration before attempting service setup.
-if [ ! -f "$project/launch.py" ]; then
-  exit 0
-fi
 test -r "$HOME/.local/share/dotfiles-secrets/secret_store.py" || exit 1
 test -x "$HOME/.local/bin/local-skills-mcp-launch" || exit 1
 
