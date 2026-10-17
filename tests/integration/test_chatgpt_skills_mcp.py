@@ -167,6 +167,31 @@ esac
     return home, env, run, calls
 
 
+def test_chezmoi_apply_runs_launchagent_setup_automatically(
+    isolated_agent, profile_factory, tmp_path
+):
+    """A normal chezmoi apply invokes the managed after-hook without manual launchctl."""
+    home, env, _, calls = isolated_agent
+    source = tmp_path / "hook-source"
+    source.mkdir()
+    script = source / "run_after_25-ensure-skillport-mcp.sh"
+    personal = profile_factory.render("personal")
+    rendered = profile_factory.render_hook(
+        personal.config, "personal", "run_after_25-ensure-skillport-mcp.sh.tmpl", "apply"
+    )
+    script.write_text(rendered.read_text())
+    script.chmod(0o755)
+
+    command = ["chezmoi", "--source", str(source), "--destination", str(home), "apply"]
+    first = subprocess.run(command, env=env, text=True, capture_output=True, timeout=25)
+    assert first.returncode == 0, first.stderr
+    assert sum(call.startswith("bootstrap ") for call in calls()) == 1
+
+    repeat = subprocess.run(command, env=env, text=True, capture_output=True, timeout=25)
+    assert repeat.returncode == 0, repeat.stderr
+    assert sum(call.startswith("bootstrap ") for call in calls()) == 1
+
+
 def test_first_apply_and_repeated_apply_do_not_restart_service(isolated_agent):
     home, env, run, calls = isolated_agent
     initial = run()

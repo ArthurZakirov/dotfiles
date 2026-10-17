@@ -51,10 +51,15 @@ and first ChatGPT-chat discovery are still required on each account/workspace.
 5. **Stop any existing foreground demo `tunnel-client run` for that ID**
    before proceeding. Stdio tunnels cannot have multiple active runtimes
    on the same tunnel. With the personal files applied, run `chezmoi apply`
-   after configuration to synchronize the Python environment and register
-   `com.arthur.skillport-mcp` under user launchd. Setup exits without starting
-   a service if no tunnel ID exists. It refuses to take over an unmanaged
-   existing service with the same label.
+   after configuring the tunnel ID. Chezmoi automatically installs the
+   `com.arthur.skillport-mcp` LaunchAgent, synchronizes the frozen Python
+   environment, and registers the service using `launchctl`; **no manual
+   `launchctl bootstrap` or terminal session is needed**. The LaunchAgent
+   starts at login and restarts the tunnel if it exits. Repeated applies
+   leave an unchanged running service alone, while configuration updates
+   reload the managed service. Setup exits without starting a service if
+   no tunnel ID exists. It refuses to take over an unmanaged existing service
+   with the same label.
 6. Inspect the service:
 
    ```sh
