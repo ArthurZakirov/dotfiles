@@ -5,25 +5,20 @@
 Both Mac profiles provision the [Peekaboo](https://github.com/openclaw/Peekaboo)
 CLI with Homebrew in [`src/apps.sh`](../../src/apps.sh). The
 [`run_after_40-ensure-peekaboo-skill.sh.tmpl`](../../home/run_after_40-ensure-peekaboo-skill.sh.tmpl)
-hook installs the **official upstream** `peekaboo` Agent Skill for the installed
-agent ecosystems:
+hook installs the official `peekaboo` skill using `npx --no-install skills add`
+for **Codex only**, in `~/.agents/skills/peekaboo/SKILL.md`. The shared
+[`src/agent-skills.sh`](../../src/agent-skills.sh) uses the globally managed
+`skills` npm package. Upstream provenance is recorded in
+`~/.agents/.skill-lock.json`, while the installed content digest is tracked in
+`~/Library/Application Support/dotfiles/peekaboo-skill.sha256`.
 
-- `~/.agents/skills/peekaboo/SKILL.md` — shared skills location (Codex / SkillPort).
-- `~/.claude/skills/peekaboo` — a symlink to that same skill (Claude Code).
-
-The hook downloads the single upstream skill file from the pinned Peekaboo
-release **v4.9.5**, verifies its SHA-256 before installing, and records the
-installed digest in `~/Library/Application Support/dotfiles/peekaboo-skill.sha256`
-(outside purgeable caches).
-Subsequent applies do not redownload unchanged content. Upgrades must change
-both the release URL and checksum in the hook. The content stays upstream;
-there is no independent in-repository copy to maintain.
-
-Existing unrelated skill directories and symlinks are not overwritten.
-Unrecognized or locally edited `SKILL.md` files cause the setup to fail with a
-diagnostic rather than destroying user changes. A failed download or checksum
-check leaves the previously installed skill intact. The optional app/skill setup
-is skipped under `DOTFILES_SKIP_OPTIONAL_APPS=1` (headless CI).
+Existing skill directories without matching upstream provenance, or skills
+changed since the previous apply, are not overwritten. After deliberately
+updating the skill with `npx --no-install skills update -g peekaboo -y`, inspect
+its contents; only then remove the digest marker to allow the next `apply` to
+adopt the change. Skills are not copied into the repository and no other
+agent's skill location is touched. The optional install is skipped under
+`DOTFILES_SKIP_OPTIONAL_APPS=1` for headless CI.
 
 ## macOS permissions and verification
 

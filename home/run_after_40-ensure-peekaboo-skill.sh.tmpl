@@ -9,12 +9,10 @@ DOTFILES_ROOT={{ .chezmoi.workingTree | quote }}
 # The before-hook's PATH changes do not persist into this process.
 source "$DOTFILES_ROOT/src/homebrew.sh"
 configure_homebrew
-if ! command -v peekaboo >/dev/null 2>&1; then
+if ! command -v peekaboo >/dev/null 2>&1 || ! command -v npx >/dev/null 2>&1; then
   printf 'Peekaboo: CLI missing after application provisioning.\n' >&2
   exit 1
 fi
 
-source "$DOTFILES_ROOT/src/peekaboo-skill.sh"
-ensure_peekaboo_skill \
-  'https://raw.githubusercontent.com/openclaw/Peekaboo/v4.9.5/skills/peekaboo/SKILL.md' \
-  'b1d6891b22acba708bb78cd17407cae01e06d34a1c1842eecd12943b055809b8'
+source "$DOTFILES_ROOT/src/agent-skills.sh"
+ensure_agent_skill peekaboo openclaw/Peekaboo

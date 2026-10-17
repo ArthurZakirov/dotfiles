@@ -15,7 +15,7 @@ for binary in agent-browser npm npx skills; do
   fi
 done
 
-source "$DOTFILES_ROOT/src/agent-browser-skill.sh"
-ensure_agent_browser_skill
+source "$DOTFILES_ROOT/src/agent-skills.sh"
+ensure_agent_skill agent-browser vercel-labs/agent-browser
 # The CLI alone is insufficient: Chromium must exist for a new Mac to browse.
 agent-browser install

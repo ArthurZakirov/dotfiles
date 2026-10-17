@@ -7,20 +7,19 @@ CLI through npm in [`src/apps.sh`](../../src/apps.sh), alongside the standalone
 Vercel [`skills` CLI](https://github.com/vercel-labs/skills) (the package invoked
 by `npx skills`). The
 [`run_after_50-ensure-agent-browser.sh.tmpl`](../../home/run_after_50-ensure-agent-browser.sh.tmpl)
-hook then installs the official **global** `agent-browser` skill using the
-installed `skills add` command for **Codex** and **Claude Code**.
+hook installs the official global `agent-browser` skill using
+`npx --no-install skills add` for **Codex only**.
 
-- `~/.agents/skills/agent-browser/SKILL.md` is the canonical Vercel skill.
-- `~/.claude/skills/agent-browser` points to that same installation.
-- `~/.agents/.skill-lock.json` is npx skills' upstream provenance metadata.
+- `~/.agents/skills/agent-browser/SKILL.md` is the installed Vercel skill.
+- `~/.agents/.skill-lock.json` is the upstream provenance metadata.
 - `~/Library/Application Support/dotfiles/agent-browser-skill.sha256` stores
   the local integrity digest of the installed canonical skill.
 
-Installations are noninteractive and idempotent. Existing skills not recorded as
-coming from `vercel-labs/agent-browser`, or subsequently edited locally, are
-**not overwritten**. An existing official skill is adopted without redownloading.
-Missing Claude links are repaired without reinstalling the canonical skill.
-To update the upstream skill deliberately, run `skills update -g agent-browser -y`
+Installation is noninteractive and idempotent through the shared
+[`src/agent-skills.sh`](../../src/agent-skills.sh). Skills with unrelated
+provenance or locally changed contents are **not overwritten**. An existing
+official skill is reused without redownloading it.
+To update the upstream skill deliberately, run `npx --no-install skills update -g agent-browser -y`
 and review the new `SKILL.md`. Since its digest has changed, subsequent applies
 will refuse to adopt it until you explicitly remove the old marker:
 
@@ -51,8 +50,8 @@ agent-browser snapshot
 agent-browser close
 ```
 
-The `skills` CLI is installed globally, rather than fetched implicitly on
-every `npx` invocation. `npx skills` remains available and equivalent.
+The `skills` CLI is installed globally, and the setup uses `npx --no-install`
+to invoke that managed version without fetching a separate copy.
 
 The installed `SKILL.md` is a **discovery stub**. The version-matched, detailed
 workflow documentation remains in the CLI (`agent-browser skills get core` and
@@ -63,7 +62,7 @@ apps, and [Peekaboo](peekaboo.md) for native macOS UI and final visual checks.
 ## Test fidelity
 
 [`tests/integration/test_computer_use_real.sh`](../../tests/integration/test_computer_use_real.sh)
-provisions the real npm CLI, Vercel npx skill, Peekaboo skill, and Chromium in a
+provisions the real npm CLIs, both official npx skills, and Chromium in a
 disposable HOME and performs browser click/snapshot verification. The macOS CI
 job runs this separately from stubbed and profile-rendering tests. **Never run
 fresh-home provisioning against an already configured Mac's real HOME.**

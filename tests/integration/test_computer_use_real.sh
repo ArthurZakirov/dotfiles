@@ -53,13 +53,14 @@ for hook in run_after_40-ensure-peekaboo-skill.sh.tmpl run_after_50-ensure-agent
 done
 
 [[ -s "$HOME/.agents/skills/peekaboo/SKILL.md" ]]
-[[ -f "$HOME/.claude/skills/peekaboo/SKILL.md" ]]
 [[ -s "$HOME/.agents/skills/agent-browser/SKILL.md" ]]
-[[ -f "$HOME/.claude/skills/agent-browser/SKILL.md" ]]
+[[ ! -e "$HOME/.claude" ]]
 "$npm_config_prefix/bin/skills" list -g --json | grep -q 'agent-browser'
+[[ ! -e "$HOME/.claude" ]]
 node -e '
   const lock=require(process.argv[1]);
-  if(lock.skills?.["agent-browser"]?.source!=="vercel-labs/agent-browser")process.exit(1)
+  if(lock.skills?.["agent-browser"]?.source!=="vercel-labs/agent-browser"
+    || lock.skills?.peekaboo?.source!=="openclaw/Peekaboo")process.exit(1)
 ' "$HOME/.agents/.skill-lock.json"
 "$npm_config_prefix/bin/agent-browser" skills get core >/dev/null
 "$npm_config_prefix/bin/agent-browser" skills get electron >/dev/null
@@ -75,6 +76,4 @@ peekaboo --version >/dev/null
 # Repeated apply must not duplicate skills or damage the browser runtime.
 /bin/bash "$trial/run_after_40-ensure-peekaboo-skill.sh"
 /bin/bash "$trial/run_after_50-ensure-agent-browser.sh"
-[[ -f "$HOME/.claude/skills/agent-browser/SKILL.md" ]]
-[[ -f "$HOME/.claude/skills/peekaboo/SKILL.md" ]]
 echo 'Real macOS computer-use E2E passed: CLIs, skills, Chromium, click, snapshot, repeated apply.'
