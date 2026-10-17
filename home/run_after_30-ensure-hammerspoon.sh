@@ -24,7 +24,9 @@ fi
 
 # Only launch when absent. Never kill, restart, or reload a running instance.
 if ! pgrep -x Hammerspoon >/dev/null 2>&1; then
-  open -a "$app"
+  if ! open -a "$app"; then
+    printf 'Hammerspoon: launch failed; continuing dotfiles setup.\n' >&2
+  fi
 fi
 
 # Non-destructive, time-bounded check. A missing permission or IPC response

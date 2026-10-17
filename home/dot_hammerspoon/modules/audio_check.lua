@@ -103,7 +103,7 @@ local function showCard(output, input)
 
   local outputName = output and output:name() or "Kein Gerät"
   local outputVolume = output and output:outputVolume() or nil
-  local outputMuted = output and output:outputMuted() or nil
+  local outputMuted = output and output:outputMuted()
   local expectedOutputConnected = false
   for _, device in ipairs(hs.audiodevice.allOutputDevices()) do
     if device:name() == EXPECTED_OUTPUT then expectedOutputConnected = true; break end
@@ -139,7 +139,7 @@ local function showCard(output, input)
 
   local inputName = input and input:name() or "Kein Gerät"
   local inputVolume = input and input:inputVolume() or nil
-  local inputMuted = input and input:inputMuted() or nil
+  local inputMuted = input and input:inputMuted()
   addRow(elements, 318, VALID_INPUTS[inputName] == true, "Gerät", inputName)
   addRow(elements, 354, inputVolume ~= nil and inputVolume > 0,
     "Eingangspegel", inputVolume and string.format("%.0f%%", inputVolume) or "Nicht verfügbar")
