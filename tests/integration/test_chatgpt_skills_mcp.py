@@ -1,0 +1,215 @@
+"""Real stdio MCP discovery and isolated chezmoi/launchd lifecycle tests."""
+
+import os
+from pathlib import Path
+import subprocess
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+APP = ROOT / "home/dot_local/share/skillport-mcp"
+LABEL = "com.arthur.skillport-mcp"
+
+
+@pytest.mark.skipif(not (APP / ".venv/bin/python").exists(), reason="Run uv sync for real MCP protocol tests")
+def test_client_discovers_and_reads_live_skills_over_stdio(tmp_path):
+    """Exercise real MCP initialize, tools/list and tools/call at the public boundary."""
+    installed = tmp_path / "installed"
+    installed.mkdir()
+    canonical = tmp_path / "canonical"
+    canonical.mkdir()
+    (canonical / "SKILL.md").write_text(
+        "---\nname: python-testing\ndescription: Python testing\n---\nOriginal instructions\n"
+    )
+    (canonical / "references").mkdir()
+    (canonical / "references/test.md").write_text("Live reference")
+    (installed / "python-testing").symlink_to(canonical, target_is_directory=True)
+    code = r'''
+import asyncio
+import os
+import sys
+from fastmcp import Client
+from fastmcp.client.transports import StdioTransport
+
+async def main():
+    transport = StdioTransport(
+        command=sys.executable, args=[sys.argv[1]],
+        env={"SKILLPORT_SKILLS_ROOT": sys.argv[2]},
+    )
+    async with Client(transport) as client:
+        names = {tool.name for tool in await client.list_tools()}
+        assert names == {"search_skills", "read_skill", "read_skill_resource"}
+        search = await client.call_tool("search_skills", {"query": "Python tests"})
+        assert search.data["skills"][0]["name"] == "python-testing"
+        original = await client.call_tool("read_skill", {"name": "python-testing"})
+        assert "Original instructions" in original.data["instructions"]
+        from pathlib import Path
+        Path(sys.argv[3]).write_text(chr(10).join([
+            "---", "name: python-testing", "description: updated", "---",
+            "Updated instructions", "",
+        ]))
+        changed = await client.call_tool("read_skill", {"name": "python-testing"})
+        assert "Updated instructions" in changed.data["instructions"]
+        reference = await client.call_tool(
+            "read_skill_resource", {"name": "python-testing", "path": "references/test.md"}
+        )
+        assert reference.data["content"] == "Live reference"
+        escaping = await client.call_tool(
+            "read_skill_resource", {"name": "python-testing", "path": "../outside.md"}, raise_on_error=False
+        )
+        assert escaping.is_error
+asyncio.run(main())
+'''
+    proc = subprocess.run(
+        [str(APP / ".venv/bin/python"), "-c", code,
+         str(APP / "server.py"), str(installed), str(canonical / "SKILL.md")],
+        text=True, capture_output=True, timeout=45,
+    )
+    assert proc.returncode == 0, proc.stderr
+
+
+@pytest.mark.parametrize("profile,expected", [("personal", True), ("professional", False)])
+def test_chezmoi_scopes_mcp_integration_to_personal(profile, expected, profile_factory):
+    rendered = profile_factory.render(profile)
+    managed = profile_factory.chezmoi(
+        rendered.config, "managed", "--include", "files"
+    ).splitlines()
+    assert (f"Library/LaunchAgents/{LABEL}.plist" in managed) is expected
+    assert (".local/bin/skillport-mcp-launch" in managed) is expected
+    assert (".local/share/skillport-mcp/server.py" in managed) is expected
+    assert not any("/.venv/" in path for path in managed)
+    hook = profile_factory.render_hook(
+        rendered.config, profile, "run_after_25-ensure-skillport-mcp.sh.tmpl", "mcp"
+    )
+    subprocess.run(["/bin/sh", "-n", str(hook)], check=True)
+
+
+def test_unchosen_tunnel_does_not_start_or_install_dependencies(tmp_path, profile_factory):
+    rendered = profile_factory.render("personal")
+    home = tmp_path / "home"
+    home.mkdir()
+    hook = profile_factory.render_hook(
+        rendered.config, "personal", "run_after_25-ensure-skillport-mcp.sh.tmpl", "mcp"
+    )
+    result = subprocess.run(
+        ["/bin/sh", str(hook)],
+        env={**os.environ, "HOME": str(home), "DOTFILES_SKIP_OPTIONAL_APPS": "0"},
+        text=True, capture_output=True, timeout=15,
+    )
+    assert result.returncode == 0
+    assert not (home / "Library/Caches/chezmoi").exists()
+
+@pytest.fixture
+def isolated_agent(tmp_path, profile_factory):
+    """Exercise the real rendered hook without touching this Mac's launchd."""
+    rendered = profile_factory.render("personal")
+    home = tmp_path / "home"
+    home.mkdir()
+    apply = subprocess.run(
+        ["chezmoi", "--source", str(ROOT / "home"), "--config", str(rendered.config),
+         "--destination", str(home), "apply", "--exclude", "scripts", "--force"],
+        text=True, capture_output=True, timeout=40,
+    )
+    assert apply.returncode == 0, apply.stderr
+    config = home / ".config/skillport-mcp"
+    config.mkdir(parents=True)
+    (config / "tunnel-id").write_text("tunnel_example12345678\n")
+    hook = profile_factory.render_hook(
+        rendered.config, "personal", "run_after_25-ensure-skillport-mcp.sh.tmpl", "launchd"
+    )
+    fakebin = tmp_path / "bin"
+    fakebin.mkdir()
+    for name, script in {
+        "uv": """#!/bin/sh
+mkdir -p "$HOME/.local/share/skillport-mcp/.venv/bin"
+touch "$HOME/.local/share/skillport-mcp/.venv/bin/python"
+chmod +x "$HOME/.local/share/skillport-mcp/.venv/bin/python"
+""",
+        "tunnel-client": "#!/bin/sh\nexit 0\n",
+        "bws": "#!/bin/sh\nexit 0\n",
+        "pgrep": """#!/bin/sh
+[ -f "$TEST_DEMO_RUNNING" ] || exit 1
+echo 424242
+""",
+        "ps": """#!/bin/sh
+echo "tunnel-client run --control-plane.tunnel-id tunnel_example12345678"
+""",
+        "launchctl": """#!/bin/sh
+echo "$*" >> "$TEST_SERVICE_CALLS"
+case "$1" in
+    print) [ -f "$TEST_SERVICE_RUNNING" ];;
+    bootstrap) touch "$TEST_SERVICE_RUNNING";;
+    bootout) rm -f "$TEST_SERVICE_RUNNING";;
+    *) exit 2;;
+esac
+""",
+    }.items():
+        path = fakebin / name
+        path.write_text(script)
+        path.chmod(0o755)
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "PATH": f"{fakebin}:{os.environ['PATH']}",
+        "TEST_DEMO_RUNNING": str(tmp_path / "demo-running"),
+        "TEST_SERVICE_RUNNING": str(tmp_path / "service-running"),
+        "TEST_SERVICE_CALLS": str(tmp_path / "service-calls"),
+    }
+
+    def run():
+        return subprocess.run(["/bin/sh", str(hook)], env=env,
+                              text=True, capture_output=True, timeout=25)
+
+    def calls():
+        path = Path(env["TEST_SERVICE_CALLS"])
+        return path.read_text().splitlines() if path.exists() else []
+
+    return home, env, run, calls
+
+
+def test_first_apply_and_repeated_apply_do_not_restart_service(isolated_agent):
+    home, env, run, calls = isolated_agent
+    initial = run()
+    assert initial.returncode == 0, initial.stderr
+    marker = home / f"Library/Caches/chezmoi/{LABEL}.sha256"
+    assert len(marker.read_text().strip()) == 64
+    again = run()
+    assert again.returncode == 0, again.stderr
+    assert sum(call.startswith("bootstrap ") for call in calls()) == 1
+    assert not any(call.startswith("bootout ") for call in calls())
+    # Only the generated LaunchAgent stores the nonsecret Keychain account.
+    assert "OPENAI_TUNNEL_API_KEY" not in (home / f"Library/LaunchAgents/{LABEL}.plist").read_text()
+
+
+def test_demo_runtime_blocks_second_tunnel_client(isolated_agent):
+    home, env, run, calls = isolated_agent
+    Path(env["TEST_DEMO_RUNNING"]).touch()
+    result = run()
+    assert result.returncode != 0
+    assert not any(call.startswith("bootstrap ") for call in calls())
+    assert not (home / f"Library/Caches/chezmoi/{LABEL}.sha256").exists()
+
+
+def test_unmanaged_active_launch_service_is_not_replaced(isolated_agent):
+    _, env, run, calls = isolated_agent
+    Path(env["TEST_SERVICE_RUNNING"]).touch()
+    result = run()
+    assert result.returncode != 0
+    assert not any(call.startswith("bootout ") for call in calls())
+
+
+def test_switching_to_professional_stops_only_managed_service(isolated_agent, profile_factory):
+    home, env, run, calls = isolated_agent
+    assert run().returncode == 0
+    plist = home / f"Library/LaunchAgents/{LABEL}.plist"
+    plist.unlink()  # The new profile no longer manages this file.
+    professional = profile_factory.render("professional")
+    hook = profile_factory.render_hook(
+        professional.config, "professional", "run_after_25-ensure-skillport-mcp.sh.tmpl", "transition"
+    )
+    result = subprocess.run(["/bin/sh", str(hook)], env=env,
+                            text=True, capture_output=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    assert not Path(env["TEST_SERVICE_RUNNING"]).exists()
+    assert not (home / f"Library/Caches/chezmoi/{LABEL}.sha256").exists()
+    assert any(call.startswith("bootout gui/") and LABEL in call for call in calls())

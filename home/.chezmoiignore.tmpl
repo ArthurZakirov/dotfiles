@@ -1,3 +1,10 @@
 {{ if ne .profile "personal" -}}
 Library/LaunchAgents/com.arthur.desktop-commander-remote.plist
+Library/LaunchAgents/com.arthur.skillport-mcp.plist
+.local/bin/skillport-mcp-configure
+.local/bin/skillport-mcp-launch
+.local/bin/skillport-mcp-server
+.local/share/skillport-mcp
 {{ end -}}
+# Runtime virtual environments are generated locally, never copied by chezmoi.
+.local/share/skillport-mcp/.venv

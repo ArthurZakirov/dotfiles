@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+# Never expose the tunnel runtime credential to the local skill-reading child.
+unset CONTROL_PLANE_API_KEY BWS_ACCESS_TOKEN OPENAI_TUNNEL_API_KEY
+exec "$HOME/.local/share/skillport-mcp/.venv/bin/python" "$HOME/.local/share/skillport-mcp/server.py"

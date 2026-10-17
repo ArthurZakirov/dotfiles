@@ -13,5 +13,6 @@ how to use it, and which files manage it.
 | [Desktop Commander remote](desktop-commander.md) | Personal Mac remote access via npm CLI and managed LaunchAgent |
 | [Git review](git-review.md) | Commit and branch diffs in disposable review folders |
 | [Python environments](pysetup.md) | Poetry-lock-based checkout-local virtual environments via `pysetup` |
+| [ChatGPT local skills](chatgpt-skills-mcp.md) | Read-only FastMCP bridge from installed skills through an OpenAI Secure MCP Tunnel |
 
 To change or add a feature, follow the [development workflow](../development.md).

@@ -16,7 +16,7 @@ run_shell_syntax_checks() {
 run_unit_tests() {
   bash "$repo_root/tests/unit/test_shell_setup_module.sh"
   bash "$repo_root/tests/unit/test_apps.sh"
-  PYTHONDONTWRITEBYTECODE=1 "$repo_root/.venv/bin/pytest" -q "$repo_root/tests/unit/test_pysetup.py"
+  PYTHONDONTWRITEBYTECODE=1 "$repo_root/.venv/bin/pytest" -q "$repo_root/tests/unit/test_pysetup.py" "$repo_root/tests/unit/test_skillport_mcp.py"
   bash "$repo_root/tests/integration/test_vscode_cli.sh"
 }
 

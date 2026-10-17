@@ -1,0 +1,70 @@
+#!/bin/sh
+set -eu
+
+label='com.arthur.skillport-mcp'
+plist="$HOME/Library/LaunchAgents/$label.plist"
+marker="$HOME/Library/Caches/chezmoi/$label.sha256"
+domain="gui/$(id -u)"
+service="$domain/$label"
+
+{{ if eq .profile "personal" -}}
+# No tunnel is configured until the user explicitly opts in per machine.
+if [ "$(uname -s)" != Darwin ] || [ "${DOTFILES_SKIP_OPTIONAL_APPS:-}" = 1 ]; then
+  exit 0
+fi
+config="$HOME/.config/skillport-mcp/tunnel-id"
+if [ ! -s "$config" ]; then
+  exit 0
+fi
+for tool in uv tunnel-client bws; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    echo "SkillPort MCP needs $tool; run the personal installer." >&2
+    exit 1
+  }
+done
+
+project="$HOME/.local/share/skillport-mcp"
+uv sync --project "$project" --frozen --no-dev || exit 1
+test -x "$project/.venv/bin/python" || exit 1
+test -x "$HOME/.local/bin/skillport-mcp-launch" || exit 1
+plutil -lint "$plist" >/dev/null
+current_hash="$(shasum -a 256 "$plist" "$config" "$project/server.py" "$project/launch.py" "$project/uv.lock" | shasum -a 256 | awk '{print $1}')"
+previous_hash="$(cat "$marker" 2>/dev/null || true)"
+
+if launchctl print "$service" >/dev/null 2>&1; then
+  # Do not take ownership of a separately installed service with this label.
+  if [ ! -f "$marker" ]; then
+    echo "SkillPort MCP service exists but is unmanaged; not replacing it." >&2
+    exit 1
+  fi
+  if [ "$current_hash" != "$previous_hash" ]; then
+    launchctl bootout "$domain" "$plist"
+    launchctl bootstrap "$domain" "$plist"
+  fi
+else
+  # A terminal demo on the same tunnel must be stopped first. stdio transport
+  # permits only one active tunnel-client per tunnel ID.
+  tunnel_id="$(cat "$config")"
+  if pgrep -f 'tunnel-client run' 2>/dev/null | while IFS= read -r pid; do
+      ps -p "$pid" -o command= 2>/dev/null
+    done | grep -F -- "$tunnel_id" >/dev/null; then
+    echo "A tunnel-client already uses this tunnel. Stop it before enabling SkillPort MCP." >&2
+    exit 1
+  fi
+  launchctl bootstrap "$domain" "$plist"
+fi
+
+mkdir -p "$(dirname "$marker")"
+tmp_marker="$(mktemp "$marker.XXXXXX")"
+printf '%s\n' "$current_hash" > "$tmp_marker"
+mv "$tmp_marker" "$marker"
+{{ else -}}
+# Only stop services whose marker proves they were previously chezmoi-managed.
+if [ -f "$marker" ]; then
+  if launchctl print "$service" >/dev/null 2>&1; then
+    # The plist may already be ignored/removed after a profile switch.
+    launchctl bootout "$service"
+  fi
+  rm -f "$plist" "$marker"
+fi
+{{ end -}}
