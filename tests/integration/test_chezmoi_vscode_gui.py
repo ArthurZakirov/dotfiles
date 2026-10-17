@@ -62,32 +62,28 @@ def test_real_chezmoi_diff_opens_valid_vscode_diff_tab(tmp_path, scenario):
 const vscode = require('vscode');
 const fs = require('fs');
 async function check() {
+  const report = { activated: true, tabs: [] };
   for (const group of vscode.window.tabGroups.all) {
     for (const tab of group.tabs) {
       if (!(tab.input instanceof vscode.TabInputTextDiff)) continue;
       try {
         const left = await vscode.workspace.openTextDocument(tab.input.original);
         const right = await vscode.workspace.openTextDocument(tab.input.modified);
-        const leftText = left.getText();
-        const rightText = right.getText();
-        // Prefer the intended diff when chezmoi offers several files.
-        if (leftText !== process.env.CHEZMOI_EXPECTED_LEFT ||
-            rightText !== process.env.CHEZMOI_EXPECTED_RIGHT) continue;
-        fs.writeFileSync(process.env.CHEZMOI_VSCODE_REPORT, JSON.stringify({
+        report.tabs.push({
           active: tab.isActive,
-          left: leftText, right: rightText,
+          left: left.getText(), right: right.getText(),
           leftUri: tab.input.original.toString(),
           rightUri: tab.input.modified.toString(),
           leftFileExists: fs.existsSync(tab.input.original.fsPath),
           rightFileExists: fs.existsSync(tab.input.modified.fsPath),
           name: tab.label,
-        }));
-      } catch (e) {
-        fs.writeFileSync(process.env.CHEZMOI_VSCODE_REPORT,
-          JSON.stringify({error: String(e)}));
+        });
+      } catch (error) {
+        report.tabs.push({error: String(error), name: tab.label});
       }
     }
   }
+  fs.writeFileSync(process.env.CHEZMOI_VSCODE_REPORT, JSON.stringify(report));
 }
 function activate(context) {
   const timer = setInterval(() => { void check(); }, 400);
@@ -101,6 +97,7 @@ exports.deactivate = () => {};
     bindir.mkdir()
     wrapper = bindir / 'code'
     wrapper.write_text('#!/bin/sh\n'
+                       'printf "%s\\n" "$@" >> "$CHEZMOI_EDITOR_LAUNCH_LOG"\n'
                        f'exec "{code_cli}" --no-sandbox --disable-gpu '
                        '--disable-workspace-trust '
                        f'--user-data-dir "{profile}" '
@@ -110,36 +107,48 @@ exports.deactivate = () => {};
     env = {**os.environ, 'HOME': str(home),
            'PATH': f'{bindir}:{os.environ["PATH"]}',
            'CHEZMOI_VSCODE_REPORT': str(report),
-           'CHEZMOI_EXPECTED_LEFT': expected_left,
-           'CHEZMOI_EXPECTED_RIGHT': expected_right,
            'CHEZMOI_CODE_DIFF_CACHE': str(tmp_path / 'snapshots'),
            'ELECTRON_DISABLE_SECURITY_WARNINGS': 'true'}
+    log_path = tmp_path / 'chezmoi-stderr.log'
+    launch_log = tmp_path / 'editor-launches.log'
+    env['CHEZMOI_EDITOR_LAUNCH_LOG'] = str(launch_log)
+    stderr_log = log_path.open('w')
     process = subprocess.Popen([
         'chezmoi', '--source', str(source), '--destination', str(home),
         '--config', str(config), 'diff',
         *(['--recursive', str(home / '.hammerspoon')] if scenario != 'new-file' else []),
-    ], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)
+    ], env=env, stdout=subprocess.DEVNULL, stderr=stderr_log, text=True)
     try:
         deadline = time.monotonic() + 75
         last = None
+        matching = None
         while time.monotonic() < deadline:
             if report.exists():
                 last = json.loads(report.read_text())
-                if last.get('left') == expected_left and last.get('right') == expected_right:
+                matching = next((tab for tab in last.get('tabs', [])
+                                 if tab.get('left') == expected_left
+                                 and tab.get('right') == expected_right), None)
+                if matching is not None:
                     break
             if process.poll() is not None:
-                raise AssertionError(f'chezmoi diff ended before editor state: exit={process.returncode}, state={last}')
+                break
             time.sleep(0.4)
-        else:
-            raise AssertionError(f'No valid VS Code diff editor opened: {last}')
-        assert last['active']
-        assert last['left'] == expected_left
-        assert last['right'] == expected_right
-        assert last['leftFileExists']
-        assert last['rightFileExists']
-        assert 'null' not in last['leftUri']
-        assert last['rightUri'].startswith('file:')
+        if matching is None:
+            raise AssertionError(
+                f'No expected VS Code diff opened: report={last}; '
+                f'chezmoi_exit={process.poll()}; '
+                f'editor_invocations={launch_log.read_text() if launch_log.exists() else None}; '
+                f'chezmoi_stderr={log_path.read_text()}'
+            )
+        assert matching['active']
+        assert matching['left'] == expected_left
+        assert matching['right'] == expected_right
+        assert matching['leftFileExists']
+        assert matching['rightFileExists']
+        assert 'null' not in matching['leftUri']
+        assert matching['rightUri'].startswith('file:')
     finally:
+        stderr_log.close()
         # Only this disposable VS Code profile on an ephemeral CI runner.
         from tests.integration.test_git_review_vscode_gui import stop_isolated_vscode
         stop_isolated_vscode(profile)
