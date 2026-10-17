@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[2] / "home/dot_local/bin/executable_macos-shortcuts"
+SCRIPT = Path(__file__).resolve().parents[2] / "src/macos_shortcuts.py"
 loader = SourceFileLoader("macos_shortcuts", str(SCRIPT))
 spec = spec_from_loader(loader.name, loader)
 shortcuts = module_from_spec(spec)
@@ -223,3 +223,75 @@ def test_native_plist_export_is_type_preserving(example_profile):
 
     # Assert
     assert restored == original
+
+
+
+def test_export_accepts_a_quoted_home_path(example_profile, monkeypatch, tmp_path):
+    # Arrange: the shell passes a literal tilde within a quoted argument.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(shortcuts.Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.setattr(shortcuts, "snapshot", lambda: example_profile)
+
+    # Act
+    exit_code = shortcuts.main(["export", "~/mac_shortcuts.json"])
+
+    # Assert
+    assert exit_code == 0
+    assert json.loads((tmp_path / "mac_shortcuts.json").read_text()) == example_profile
+
+
+def test_chezmoi_review_opens_live_vs_managed_in_vscode_only_for_drift(
+    example_profile, monkeypatch,
+):
+    # Arrange
+    desired = copy.deepcopy(example_profile)
+    current = copy.deepcopy(example_profile)
+    current["app_shortcuts"]["com.openai.codex"]["New Window"] = "@~n"
+    current["app_shortcuts"]["com.example.other"] = {"Other": "@a"}
+    observed = []
+
+    def capture_editor(args, check):
+        # Capture the actual editor's input before the temporary files are removed.
+        observed.append((
+            args,
+            json.loads(Path(args[-2]).read_text()),
+            json.loads(Path(args[-1]).read_text()),
+        ))
+
+    monkeypatch.setattr(shortcuts.subprocess, "run", capture_editor)
+
+    # Act
+    assert shortcuts.review(desired, current) == 0
+
+    # Assert
+    assert len(observed) == 1
+    command, left, right = observed[0]
+    assert command[:3] == ["code", "--wait", "--diff"]
+    assert left["app_shortcuts"] == {"com.openai.codex": {"New Window": "@~n"}}
+    assert right == desired
+
+    # Act: the same desired values on the Mac.
+    assert shortcuts.review(desired, desired) == 0
+
+    # Assert
+    assert len(observed) == 1
+
+
+def test_chezmoi_review_targets_login_users_home(
+    example_profile, monkeypatch, tmp_path,
+):
+    # Arrange
+    profile = tmp_path / "shortcut-config.json"
+    profile.write_text(json.dumps(example_profile))
+    monkeypatch.setenv("CHEZMOI_DEST_DIR", str(tmp_path / "isolated-home"))
+    monkeypatch.setenv("CHEZMOI_HOME_DIR", str(tmp_path / "actual-home"))
+    monkeypatch.setattr(
+        shortcuts, "snapshot",
+        lambda: pytest.fail("Preferences read for an unrelated chezmoi destination"),
+    )
+
+    # Act
+    result = shortcuts.main(["review", str(profile)])
+
+    # Assert
+    assert result == 0

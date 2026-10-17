@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 import plistlib
 import re
 import subprocess
@@ -215,6 +216,49 @@ def apply(desired, pending):
             registry.add(domain)
 
 
+def projected_live_profile(desired, current):
+    """Render the live values for managed entries in the normal profile schema."""
+    apps = {}
+    for domain, entries in desired["app_shortcuts"].items():
+        local = current["app_shortcuts"].get(domain, {})
+        values = {title: local[title] for title in entries if title in local}
+        if values:
+            apps[domain] = values
+    accessibility = {x["sybmolichotkey"]: x for x in current["accessibility_hotkeys"]}
+    return {
+        "version": VERSION,
+        "system_hotkeys": {key: current["system_hotkeys"][key]
+                           for key in desired["system_hotkeys"]
+                           if key in current["system_hotkeys"]},
+        "app_shortcuts": apps,
+        "service_shortcuts": {key: current["service_shortcuts"][key]
+                              for key in desired["service_shortcuts"]
+                              if key in current["service_shortcuts"]},
+        "accessibility_hotkeys": [
+            accessibility[entry["sybmolichotkey"]]
+            for entry in desired["accessibility_hotkeys"]
+            if entry["sybmolichotkey"] in accessibility
+        ],
+    }
+
+
+def review(desired, current):
+    """Open the source-of-truth VS Code diff only when managed shortcuts drift."""
+    if not list(changes(desired, current)):
+        return 0
+    with tempfile.TemporaryDirectory(prefix="chezmoi-shortcuts-diff-") as tmp:
+        actual = Path(tmp) / "macOS shortcuts (current).json"
+        expected = Path(tmp) / "macOS shortcuts (managed).json"
+        actual.write_text(json.dumps(projected_live_profile(desired, current), indent=2,
+                                     sort_keys=True) + "\n")
+        expected.write_text(json.dumps(desired, indent=2, sort_keys=True) + "\n")
+        try:
+            subprocess.run(["code", "--wait", "--diff", str(actual), str(expected)], check=True)
+        except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+            raise ShortcutError(f"Cannot open VS Code shortcut diff: {exc}") from exc
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -225,28 +269,38 @@ def main(argv=None):
     restore = commands.add_parser("apply", help="Restore only declared shortcuts")
     restore.add_argument("path", type=Path)
     restore.add_argument("--yes", action="store_true", help="Confirm actual preference writes")
+    gui = commands.add_parser("review", help="Open differences in VS Code (chezmoi hook)")
+    gui.add_argument("path", type=Path)
     args = parser.parse_args(argv)
+    args.path = args.path.expanduser()
 
     if args.command == "export":
         profile = snapshot()
         validate(profile)
         args.path.parent.mkdir(parents=True, exist_ok=True)
         args.path.write_text(json.dumps(profile, indent=2, sort_keys=True) + "\n")
-        print(f"Exported shortcuts to {args.path}")
+        print(f"Exported shortcuts to {args.path.resolve()}")
         return 0
 
+    if args.command == "review" and os.environ.get("CHEZMOI_DEST_DIR") != os.environ.get("CHEZMOI_HOME_DIR"):
+        return 0
     desired = load_profile(args.path)
     current = snapshot()
     pending = list(changes(desired, current))
+    if args.command == "review":
+        return review(desired, current)
+    if args.command == "apply":
+        if not pending:
+            return 0
+        if not args.yes:
+            print("No changes made; pass --yes to write preferences.")
+            return 2
+        apply(desired, pending)
+        print(f"Applied {len(pending)} macOS shortcut settings.")
+        return 0
     for kind, key, value in pending:
         print(f"{kind}: {key}: {json.dumps(value, sort_keys=True)}")
     print(f"{len(pending)} shortcut differences")
-    if args.command == "apply" and pending and not args.yes:
-        print("No changes made; pass --yes to write preferences.")
-        return 2
-    if args.command == "apply" and pending:
-        apply(desired, pending)
-        print("Preferences written. Relaunch affected applications; system shortcuts may require logout.")
     return 0
 
 

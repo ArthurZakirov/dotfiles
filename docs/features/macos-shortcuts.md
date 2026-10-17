@@ -2,59 +2,55 @@
 
 [← Shared features](README.md) · [Development](../development.md)
 
-Manage native macOS keyboard shortcut overrides across Macs using chezmoi.
-The `macos-shortcuts` CLI exports shortcuts to JSON, compares them with the
-desired configuration, and applies reviewed changes.
-
-The version-controlled configuration is
-[`home/dot_config/macos-shortcuts/shortcuts.json`](../../home/dot_config/macos-shortcuts/shortcuts.json),
-initially exported from the source Mac. Review shortcut titles before committing:
-custom menu labels may contain personal information.
+Chezmoi synchronizes macOS keyboard shortcut overrides together with your
+other dotfiles. The desired configuration is stored in
+[`home/dot_config/macos-shortcuts/shortcuts.json`](../../home/dot_config/macos-shortcuts/shortcuts.json).
 
 ## Managed shortcuts
 
-| JSON section | macOS preference | Synchronization |
+| Configuration | macOS preference | Synchronization |
 | --- | --- | --- |
-| `system_hotkeys` | `com.apple.symbolichotkeys` / `AppleSymbolicHotKeys` | Merge enabled states and key bindings by numeric hotkey ID |
-| `app_shortcuts` | `NSUserKeyEquivalents` in each app domain, including global overrides | Merge by application and menu title, registering applications with System Settings |
-| `service_shortcuts` | `pbs` / `NSServicesStatus` | Merge shortcuts by Service ID |
-| `accessibility_hotkeys` | `com.apple.universalaccess` / `UserAssignableHotKeys` | Merge by Apple's `sybmolichotkey` identifier |
+| `system_hotkeys` | `com.apple.symbolichotkeys` / `AppleSymbolicHotKeys` | Enabled states and key bindings by hotkey ID |
+| `app_shortcuts` | `NSUserKeyEquivalents` | Menu shortcuts by application and menu title |
+| `service_shortcuts` | `pbs` / `NSServicesStatus` | Shortcuts by Service ID |
+| `accessibility_hotkeys` | `com.apple.universalaccess` / `UserAssignableHotKeys` | Shortcuts by accessibility-hotkey ID |
 
-The import preserves additional local shortcuts and unrelated preferences.
-For portability, review numeric system-hotkey IDs when transferring settings
+Chezmoi preserves other preferences and locally configured shortcuts outside
+the managed entries. Review numeric hotkey IDs when transferring configurations
 between macOS versions or keyboard layouts.
 
-## Export and compare
-
-After chezmoi installs `~/.local/bin/macos-shortcuts`, create a backup of the
-current Mac's shortcuts and compare them with the managed configuration:
+## Review changes
 
 ```sh
-macos-shortcuts export ~/Desktop/mac-shortcuts-before.json
-macos-shortcuts diff ~/.config/macos-shortcuts/shortcuts.json
+chezmoi diff
 ```
 
-`export` writes the current shortcut settings to the specified JSON file.
-`diff` displays differences for the keys declared in the managed
-configuration. Edit the source JSON in chezmoi to change the shared defaults.
+Chezmoi compares the files it manages and opens their diffs in VS Code. Its
+diff hook also reads your current macOS shortcut settings, compares the
+managed entries against the repository's JSON, and opens a VS Code JSON diff
+whenever the shortcuts differ.
 
-## Apply on another Mac
+The shortcut diff shows **current Mac** on the left and **managed
+configuration** on the right. To adopt a change made in macOS System Settings,
+update the repository's `shortcuts.json` with the desired value.
 
-Follow the repository's
-[synchronization workflow](../setup.md#already-configured-mac-synchronize-safely)
-to update the managed CLI and JSON file. Review the differences, then apply:
+## Apply changes
 
 ```sh
-macos-shortcuts diff ~/.config/macos-shortcuts/shortcuts.json
-macos-shortcuts apply ~/.config/macos-shortcuts/shortcuts.json --yes
+chezmoi apply
 ```
 
-The `--yes` flag explicitly authorizes preference changes for the current
-macOS user. App shortcuts are updated individually. System, Services, and
-Accessibility shortcut changes are merged into freshly exported preference
-domains, preserving their other settings. Apply after finishing any edits in
-System Settings to keep the imported configuration consistent.
+Chezmoi writes the managed files and then applies the desired keyboard
+shortcuts to the current user's macOS preferences. The importer merges
+individual app menu bindings and preserves unrelated preferences when
+updating the system, Services, and Accessibility preference domains.
 
-Relaunch affected applications to activate updated menu shortcuts. Some
-system-wide shortcuts take effect after logging out and back in. Keep the
-exported JSON backup for reviewing or restoring previous bindings.
+Run `chezmoi diff` before applying to review changes. Finish any simultaneous
+keyboard-shortcut edits in System Settings before applying. Relaunch affected
+applications to activate updated menu shortcuts; some system-wide shortcuts
+take effect after logging out and back in.
+
+The [standard synchronization workflow](../setup.md#already-configured-mac-synchronize-safely)
+uses the same two chezmoi commands on each MacBook. When adopting this feature
+on an already configured Mac, follow that workflow's one-time `chezmoi init`
+step to regenerate the chezmoi configuration containing the diff hook.
