@@ -9,6 +9,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only chezmoi hook and script")
 @pytest.mark.parametrize("profile", ["personal", "professional"])
 def test_managed_shortcuts_are_available_to_each_profile(profile, profile_factory):
     # Arrange
