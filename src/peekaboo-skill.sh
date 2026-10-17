@@ -6,7 +6,7 @@ ensure_peekaboo_skill() {
   local url="$1" expected_sha256="$2"
   local skill_dir="$HOME/.agents/skills/peekaboo"
   local skill_file="$skill_dir/SKILL.md"
-  local marker="$HOME/Library/Caches/chezmoi/peekaboo-skill.sha256"
+  local marker="$HOME/Library/Application Support/dotfiles/peekaboo-skill.sha256"
   local claude_skill="$HOME/.claude/skills/peekaboo"
   local claude_target="../../.agents/skills/peekaboo"
   local current_sha256 previous_sha256 temporary download_sha256

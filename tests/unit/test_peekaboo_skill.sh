@@ -27,7 +27,7 @@ curl() {
 }
 skill="$HOME/.agents/skills/peekaboo/SKILL.md"
 link="$HOME/.claude/skills/peekaboo"
-marker="$HOME/Library/Caches/chezmoi/peekaboo-skill.sha256"
+marker="$HOME/Library/Application Support/dotfiles/peekaboo-skill.sha256"
 
 # New installation and idempotent repeat (without network).
 ensure_peekaboo_skill "$url" "$digest"
@@ -46,6 +46,12 @@ if ensure_peekaboo_skill "$url" "$next_digest" 2>/dev/null; then exit 1; fi
 curl_fail=0
 if ensure_peekaboo_skill "$url" "$next_digest" 2>/dev/null; then exit 1; fi
 [[ "$(cat "$skill")" == "$payload" ]]
+
+# Clearing macOS caches must not erase ownership needed for safe upgrades.
+mkdir -p "$HOME/Library/Caches/chezmoi"
+printf "cache entry" > "$HOME/Library/Caches/chezmoi/transient"
+rm -rf "$HOME/Library/Caches"
+[[ "$(cat "$marker")" == "$digest" ]]
 
 # A version bump replaces only a previously managed, unmodified skill.
 payload="$next_payload"

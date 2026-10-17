@@ -112,6 +112,8 @@ def test_peekaboo_skill_hook_is_rendered_and_safe_to_skip(
     content = hook.read_text()
     assert "openclaw/Peekaboo/v4.9.5/skills/peekaboo/SKILL.md" in content
     assert f'DOTFILES_ROOT="{profile_factory.repository}"' in content
+    assert 'source "$DOTFILES_ROOT/src/homebrew.sh"' in content
+    assert content.index("configure_homebrew") < content.index("command -v peekaboo")
     assert 'source "$DOTFILES_ROOT/src/peekaboo-skill.sh"' in content
     profile_factory.run("/bin/bash", "-n", str(hook))
     assert (profile_factory.repository / "home/run_after_40-ensure-peekaboo-skill.sh.tmpl").stat().st_mode & 0o111

@@ -13,7 +13,8 @@ agent ecosystems:
 
 The hook downloads the single upstream skill file from the pinned Peekaboo
 release **v4.9.5**, verifies its SHA-256 before installing, and records the
-installed digest in `~/Library/Caches/chezmoi/peekaboo-skill.sha256`.
+installed digest in `~/Library/Application Support/dotfiles/peekaboo-skill.sha256`
+(outside purgeable caches).
 Subsequent applies do not redownload unchanged content. Upgrades must change
 both the release URL and checksum in the hook. The content stays upstream;
 there is no independent in-repository copy to maintain.

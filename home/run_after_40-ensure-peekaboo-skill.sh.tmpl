@@ -5,12 +5,15 @@ set -euo pipefail
 [[ "$(uname -s)" == Darwin ]] || exit 0
 [[ "${DOTFILES_SKIP_OPTIONAL_APPS:-0}" == 1 ]] && exit 0
 
+DOTFILES_ROOT={{ .chezmoi.workingTree | quote }}
+# The before-hook's PATH changes do not persist into this process.
+source "$DOTFILES_ROOT/src/homebrew.sh"
+configure_homebrew
 if ! command -v peekaboo >/dev/null 2>&1; then
   printf 'Peekaboo: CLI missing after application provisioning.\n' >&2
   exit 1
 fi
 
-DOTFILES_ROOT={{ .chezmoi.workingTree | quote }}
 source "$DOTFILES_ROOT/src/peekaboo-skill.sh"
 ensure_peekaboo_skill \
   'https://raw.githubusercontent.com/openclaw/Peekaboo/v4.9.5/skills/peekaboo/SKILL.md' \
