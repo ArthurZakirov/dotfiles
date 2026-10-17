@@ -1,5 +1,7 @@
 """Start the local skills tunnel using the shared dotfiles credential provider."""
 
+from __future__ import annotations
+
 import importlib.util
 import os
 import re

@@ -1,5 +1,7 @@
 """Reusable read-only secrets access for independent dotfiles integrations."""
 
+from __future__ import annotations
+
 import json
 import os
 import subprocess
