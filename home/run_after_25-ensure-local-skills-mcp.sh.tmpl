@@ -1,0 +1,181 @@
+#!/bin/sh
+set -eu
+
+label='local.skills.mcp'
+plist="$HOME/Library/LaunchAgents/$label.plist"
+marker="$HOME/.local/state/local-skills-mcp/$label.sha256"
+domain="gui/$(id -u)"
+service="$domain/$label"
+
+# Discover a previously installed local service from its existing plist.
+# Its historical launcher name is compatibility metadata, not a dependency.
+# The old label's user-specific prefix is never assumed or hardcoded.
+legacy_label=''
+legacy_plist=''
+legacy_marker=''
+legacy_service=''
+for candidate in "$HOME"/Library/LaunchAgents/com.*.skillport-mcp.plist; do
+  [ -f "$candidate" ] || continue
+  if grep -Fq '/.local/bin/skillport-mcp-launch' "$candidate"; then
+    if [ -n "$legacy_label" ]; then
+      echo "Multiple historical MCP services detected; not changing either." >&2
+      exit 1
+    fi
+    legacy_plist="$candidate"
+    legacy_label="$(basename "$candidate" .plist)"
+    legacy_marker="$HOME/Library/Caches/chezmoi/$legacy_label.sha256"
+    legacy_service="$domain/$legacy_label"
+  fi
+done
+
+{{ if eq .profile "personal" -}}
+if [ "$(uname -s)" != Darwin ] || [ "${DOTFILES_SKIP_OPTIONAL_APPS:-}" = 1 ]; then
+  exit 0
+fi
+
+project="$HOME/.local/share/local-skills-mcp"
+# Missing optional provisioning is a no-op even when the tunnel client has not
+# been installed yet (for example in a fresh CI HOME).
+if [ ! -f "$project/launch.py" ]; then
+  exit 0
+fi
+command -v python3 >/dev/null 2>&1 || {
+  echo "Local skills MCP needs python3 to check its configuration." >&2
+  exit 1
+}
+test -r "$HOME/.local/share/dotfiles-secrets/secret_store.py" || exit 1
+test -x "$HOME/.local/bin/local-skills-mcp-launch" || exit 1
+
+# The launcher is the single source of truth for effective tunnel selection.
+# Exit 3 means no tunnel configured; all other failures must remain visible.
+if tunnel_id="$(DOTFILES_SECRETS_ACCOUNT={{ .bwsAccount | quote }} python3 "$project/launch.py" --tunnel-id)"; then
+  :
+else
+  probe_status=$?
+  if [ "$probe_status" -eq 3 ]; then
+    exit 0
+  fi
+  echo "Local skills MCP configuration or credentials could not be verified." >&2
+  exit "$probe_status"
+fi
+
+for tool in uv tunnel-client bws; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    echo "Local skills MCP requires $tool from personal dotfiles setup." >&2
+    exit 1
+  }
+done
+
+uv sync --project "$project" --frozen --no-dev
+test -x "$project/.venv/bin/python" || exit 1
+plutil -lint "$plist" >/dev/null
+# Hash the selected ID even when it came from Bitwarden, not a local file.
+# Store only the digest, never credentials or the raw ID, in the marker.
+current_hash="$(
+  (
+    for file in "$plist" "$project/server.py" "$project/launch.py" "$project/uv.lock" "$HOME/.local/share/dotfiles-secrets/secret_store.py"; do
+      shasum -a 256 "$file"
+    done
+    printf '%s' "$tunnel_id" | shasum -a 256
+  ) | shasum -a 256 | awk '{print $1}'
+)"
+previous_hash="$(cat "$marker" 2>/dev/null || true)"
+previous_plist="$HOME/.local/state/local-skills-mcp/last-working.plist"
+
+wait_for_bootout() {
+  i=0
+  while launchctl print "$1" >/dev/null 2>&1; do
+    if [ "$i" -ge 20 ]; then
+      echo "Timed out waiting for launchd service to stop: $1" >&2
+      return 1
+    fi
+    sleep 0.5
+    i=$((i + 1))
+  done
+}
+
+if launchctl print "$service" >/dev/null 2>&1; then
+  if [ ! -f "$marker" ]; then
+    echo "Local skills MCP service exists but is unmanaged; leaving it untouched." >&2
+    exit 1
+  fi
+  if [ "$current_hash" != "$previous_hash" ]; then
+    # Do not stop an active service unless its last working plist is available
+    # for restoration; on a first upgrade, the before-hook captures it.
+    if [ ! -s "$previous_plist" ]; then
+      echo "Cannot safely reload local skills MCP: previous plist backup unavailable." >&2
+      exit 1
+    fi
+    plutil -lint "$previous_plist" >/dev/null
+    launchctl bootout "$service"
+    wait_for_bootout "$service"
+    if ! launchctl bootstrap "$domain" "$plist"; then
+      # Revert the service configuration, not the user's managed files.
+      if ! launchctl bootstrap "$domain" "$previous_plist"; then
+        echo "Local skills MCP restoration also failed; inspect launchd." >&2
+      fi
+      exit 1
+    fi
+  fi
+else
+  # Migrate only the earlier dotfiles-managed instance. Do not take over
+  # unknown services or interrupt other clients sharing the tunnel.
+  old_running=0
+  if launchctl print "$legacy_service" >/dev/null 2>&1; then
+    if [ ! -f "$legacy_marker" ]; then
+      echo "An unmanaged predecessor is active; leaving it untouched." >&2
+      exit 1
+    fi
+    old_running=1
+  fi
+
+  # The effective tunnel ID was obtained from the launcher above, whether
+  # configured locally or through the shared secrets backend.
+  if [ "$old_running" -eq 0 ]; then
+    if pgrep -f 'tunnel-client run' 2>/dev/null | while IFS= read -r pid; do
+      ps -p "$pid" -o command= 2>/dev/null
+    done | grep -F -- "$tunnel_id" >/dev/null; then
+      echo "Another tunnel-client uses this ID; preserving the existing connection." >&2
+      exit 1
+    fi
+  fi
+
+  if [ "$old_running" -eq 1 ]; then
+    launchctl bootout "$legacy_service"
+    wait_for_bootout "$legacy_service"
+  fi
+  if ! launchctl bootstrap "$domain" "$plist"; then
+    if [ "$old_running" -eq 1 ]; then
+      launchctl bootstrap "$domain" "$legacy_plist" || true
+    fi
+    exit 1
+  fi
+fi
+
+mkdir -p "$(dirname "$marker")"
+# Record the last successfully bootstrapped plist for a future safe reload.
+tmp_plist="$(mktemp "$previous_plist.XXXXXX")"
+cp "$plist" "$tmp_plist"
+chmod 600 "$tmp_plist"
+mv "$tmp_plist" "$previous_plist"
+tmp_marker="$(mktemp "$marker.XXXXXX")"
+printf '%s\n' "$current_hash" > "$tmp_marker"
+mv "$tmp_marker" "$marker"
+if [ -f "$legacy_marker" ] && ! launchctl print "$legacy_service" >/dev/null 2>&1; then
+  rm -f "$legacy_plist" "$legacy_marker"
+fi
+{{ else -}}
+# Switching to professional removes only services owned by this dotfiles setup.
+for managed in "$label" "$legacy_label"; do
+  case "$managed" in
+    "$label") owned_marker="$marker"; managed_plist="$plist" ;;
+    *) owned_marker="$legacy_marker"; managed_plist="$legacy_plist" ;;
+  esac
+  if [ -f "$owned_marker" ]; then
+    if launchctl print "$domain/$managed" >/dev/null 2>&1; then
+      launchctl bootout "$domain/$managed"
+    fi
+    rm -f "$managed_plist" "$owned_marker"
+  fi
+done
+{{ end -}}

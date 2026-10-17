@@ -53,8 +53,7 @@ fi
    chezmoi execute-template '{{ .profile }}'
    ```
 
-4. For the personal profile, configure your Bitwarden Secrets Manager Keychain account separately if needed.
-5. If you had a previous `~/.zshrc`, check the backup in `~/Library/Application Support/dotfiles/backups/` before deleting anything.
+4. If you had a previous `~/.zshrc`, check the backup in `~/Library/Application Support/dotfiles/backups/` before deleting anything.
 
 For the underlying provisioning sequence, see [Architecture](architecture.md).
 

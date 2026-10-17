@@ -1,0 +1,26 @@
+#!/bin/sh
+set -eu
+
+{{ if eq .profile "personal" -}}
+if [ "$(uname -s)" != Darwin ] || [ "${DOTFILES_SKIP_OPTIONAL_APPS:-}" = 1 ]; then
+  exit 0
+fi
+
+label='local.skills.mcp'
+plist="$HOME/Library/LaunchAgents/$label.plist"
+marker="$HOME/.local/state/local-skills-mcp/$label.sha256"
+previous_plist="$HOME/.local/state/local-skills-mcp/last-working.plist"
+service="gui/$(id -u)/$label"
+
+# Chezmoi runs this BEFORE replacing the managed plist. Only snapshot a
+# service proven to be ours; never overwrite an existing rollback snapshot.
+if [ -f "$marker" ] && [ -f "$plist" ] && [ ! -e "$previous_plist" ] &&
+   launchctl print "$service" >/dev/null 2>&1; then
+  plutil -lint "$plist" >/dev/null
+  mkdir -p "$(dirname "$previous_plist")"
+  temp="$(mktemp "$previous_plist.XXXXXX")"
+  cp "$plist" "$temp"
+  chmod 600 "$temp"
+  mv "$temp" "$previous_plist"
+fi
+{{ end -}}
