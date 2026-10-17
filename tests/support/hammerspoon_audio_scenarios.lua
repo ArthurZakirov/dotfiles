@@ -94,12 +94,17 @@ if scenario == "mute" then
   local expected_input = mute == "unknown" and "Wird durch Mikrofontest geprüft" or expected_label
   assert(input_row.text == expected_input,
     "Expected input " .. expected_input .. ", got " .. tostring(input_row.text))
-  if mute == "unknown" then
-    assert(row.textColor.blue, "Unknown status should not be green")
-  elseif mute == "unmuted" then
-    assert(row.textColor.green, "Unmuted status should be green")
-  else
-    assert(row.textColor.red, "Muted status should be red")
+  -- Check which channel dominates, not mere presence of RGB keys: all
+  -- three status colors have all three numeric (truthy) channels.
+  local expected_channel = ({ unknown = "blue", unmuted = "green", muted = "red" })[mute]
+  for _, status_row in ipairs({ row, input_row }) do
+    local color = status_row.textColor
+    for _, channel in ipairs({ "red", "green", "blue" }) do
+      if channel ~= expected_channel then
+        assert(color[expected_channel] > color[channel],
+          "Expected " .. expected_channel .. " status to dominate " .. channel)
+      end
+    end
   end
 elseif scenario == "restart_pending" then
   press()

@@ -34,6 +34,7 @@ local function fire(delay)
   error("Timer " .. delay .. " missing")
 end
 local poller
+local windowSpace = 20
 hs = {
   hotkey = {
     bind = function(_, key, fn) bindings[key] = fn end,
@@ -46,7 +47,7 @@ hs = {
     spacesForScreen = function() return { 10, 20 } end,
     spaceType = function() return "user" end,
     activeSpaceOnScreen = function() return 20 end,
-    windowSpaces = function() return { 20 } end,
+    windowSpaces = function() return { windowSpace } end,
   },
   alert = { show = function(message) error("Unexpected alert: " .. message) end },
   mouse = {
@@ -78,8 +79,8 @@ hs = {
   },
   timer = {
     doAfter = after,
-    waitUntil = function(_, callback)
-      poller = { stopped = false, complete = callback }
+    waitUntil = function(condition, callback)
+      poller = { stopped = false, condition = condition, complete = callback }
       function poller:stop() self.stopped = true end
       return poller
     end,
@@ -92,9 +93,12 @@ assert(events.down == 1, "Window must be grabbed")
 fire(0.15)
 assert(events.key == 1, "Space move shortcut must be triggered")
 assert(poller, "Window move must be monitored")
+assert(not poller.condition(), "Unchanged Space must not complete the move")
 if scenario == "move_failed" then
   fire(2) -- No Space change; fallback releases the grabbed mouse.
 elseif scenario == "move_succeeded" then
+  windowSpace = 10
+  assert(poller.condition(), "A changed Space must satisfy the completion predicate")
   poller.complete()
   fire(2) -- A later fallback must not repeat the release.
 else

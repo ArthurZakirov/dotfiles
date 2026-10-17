@@ -76,9 +76,11 @@ def test_apply_fails_when_new_hotkeys_cannot_be_verified(tmp_path, fake_commands
     executable(fake_commands, "uname", "echo Darwin\n")
     executable(fake_commands, "launchctl", 'test "$1" = print\n')
     failing = executable(fake_commands, "activate", "exit 9\n")
+    setup = executable(fake_commands, "swift-setup", "exit 0\n")
     env = {
         **os.environ,
         "PATH": f"{fake_commands}:{os.environ['PATH']}",
+        "HAMMERSPOON_SWIFTC_HELPER": str(setup),
         "HAMMERSPOON_ACTIVATE_BIN": str(failing),
         "HAMMERSPOON_APP_PATH": str(app),
         "DOTFILES_SKIP_OPTIONAL_APPS": "0",
