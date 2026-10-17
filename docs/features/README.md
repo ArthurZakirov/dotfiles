@@ -15,6 +15,8 @@ how to use it, and which files manage it.
 
 - **[Git review](git-review.md)** — Commit and branch diffs in disposable review folders.
 - **[Python environments](pysetup.md)** — Poetry-lock-based checkout-local virtual environments via `pysetup`.
+- **[Peekaboo computer use](peekaboo.md)** — Native macOS UI automation and Codex skill.
+- **[Agent Browser automation](agent-browser.md)** — Browser/Electron automation, Chromium runtime, and Codex skill.
 
 ## Shared infrastructure
 

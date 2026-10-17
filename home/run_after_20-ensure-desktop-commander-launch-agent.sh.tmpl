@@ -26,6 +26,11 @@ previous_hash="$(cat "$marker" 2>/dev/null || true)"
 if launchctl print "$service" >/dev/null 2>&1; then
   # A missing marker means active configuration is unknown: reconcile it.
   if [ "$previous_hash" != "$current_hash" ]; then
+    if [ "${DOTFILES_ALLOW_SERVICE_INTERRUPTION:-0}" != 1 ]; then
+      echo "Desktop Commander LaunchAgent changed, but the running connection was preserved." >&2
+      echo "Review the plist and explicitly set DOTFILES_ALLOW_SERVICE_INTERRUPTION=1 to restart it." >&2
+      exit 0
+    fi
     launchctl bootout "$domain" "$plist"
     launchctl bootstrap "$domain" "$plist"
   fi
@@ -45,6 +50,11 @@ marker="$HOME/Library/Caches/chezmoi/$label.sha256"
 if [ -f "$marker" ]; then
   domain="gui/$(id -u)"
   if launchctl print "$domain/$label" >/dev/null 2>&1; then
+    if [ "${DOTFILES_ALLOW_SERVICE_INTERRUPTION:-0}" != 1 ]; then
+      echo "Desktop Commander agent belongs to the previous profile; leaving the running service intact." >&2
+      echo "Set DOTFILES_ALLOW_SERVICE_INTERRUPTION=1 for an intentional profile migration." >&2
+      exit 0
+    fi
     launchctl bootout "$domain" "$plist"
   fi
   rm -f "$plist" "$marker"

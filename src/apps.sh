@@ -43,6 +43,28 @@ install_missing_formula() {
   brew install "$formula"
 }
 
+install_skills_cli() {
+  if ! command -v skills >/dev/null 2>&1; then
+    echo 'Installing: Vercel skills CLI (npm)'
+    npm install --global skills || return 1
+  fi
+  skills --version >/dev/null 2>&1 || {
+    echo 'Vercel skills CLI failed its version check.' >&2
+    return 1
+  }
+}
+
+install_agent_browser_cli() {
+  if ! command -v agent-browser >/dev/null 2>&1; then
+    echo 'Installing: agent-browser (npm)'
+    npm install --global agent-browser || return 1
+  fi
+  agent-browser --version >/dev/null 2>&1 || {
+    echo 'Agent Browser CLI failed its version check.' >&2
+    return 1
+  }
+}
+
 install_common_apps() {
   install_missing_cask alt-tab 'AltTab.app'
   install_missing_cask betterdisplay 'BetterDisplay.app'
@@ -57,6 +79,9 @@ install_common_apps() {
   install_missing_cask logitune 'LogiTune.app' 'Logi Tune.app'
   install_missing_cask docker-desktop 'Docker.app'
   install_missing_formula node node
+  install_skills_cli
+  install_agent_browser_cli
+  install_missing_formula peekaboo openclaw/tap/peekaboo
   install_missing_cask raycast 'Raycast.app'
   install_missing_cask rectangle 'Rectangle.app'
   install_missing_cask visual-studio-code 'Visual Studio Code.app'

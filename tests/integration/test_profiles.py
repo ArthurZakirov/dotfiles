@@ -1,5 +1,8 @@
 """Behavioral tests for both machine profiles; low-level setup lives in fixtures."""
 
+import os
+import shlex
+
 import pytest
 
 from tests.support.chezmoi_profile import ChezmoiProfileFixture, RenderedProfile
@@ -96,3 +99,70 @@ def test_desktop_commander_launch_agent_is_personal_only(
         )
         profile_factory.run("/bin/sh", "-n", str(hook))
         assert ("launchctl bootstrap" in hook.read_text()) is expected
+
+
+@pytest.mark.parametrize("profile", ["personal", "professional"])
+def test_peekaboo_skill_hook_is_rendered_and_safe_to_skip(
+    profile: str, profile_factory: ChezmoiProfileFixture, tmp_path,
+) -> None:
+    rendered = profile_factory.render(profile)
+    hook = profile_factory.render_hook(
+        rendered.config, profile,
+        "run_after_40-ensure-peekaboo-skill.sh.tmpl", "peekaboo",
+    )
+    content = hook.read_text()
+    assert "ensure_agent_skill peekaboo openclaw/Peekaboo" in content
+    assignment = next(line for line in content.splitlines() if line.startswith("DOTFILES_ROOT="))
+    assert shlex.split(assignment) == [f"DOTFILES_ROOT={profile_factory.repository}"]
+    assert 'source "$DOTFILES_ROOT/src/homebrew.sh"' in content
+    assert content.index("configure_homebrew") < content.index("command -v peekaboo")
+    assert 'source "$DOTFILES_ROOT/src/agent-skills.sh"' in content
+    profile_factory.run("/bin/bash", "-n", str(hook))
+    assert (profile_factory.repository / "home/run_after_40-ensure-peekaboo-skill.sh.tmpl").stat().st_mode & 0o111
+
+    # Headless profile rendering must not install tools or contact GitHub.
+    profile_factory.run(
+        "/bin/bash", str(hook),
+        env={**os.environ, "HOME": str(tmp_path), "DOTFILES_SKIP_OPTIONAL_APPS": "1"},
+    )
+    assert not (tmp_path / ".agents").exists()
+
+
+@pytest.mark.parametrize("profile", ["personal", "professional"])
+def test_agent_browser_hook_renders_for_both_profiles(
+    profile: str, profile_factory: ChezmoiProfileFixture, tmp_path,
+) -> None:
+    rendered = profile_factory.render(profile)
+    hook = profile_factory.render_hook(
+        rendered.config, profile,
+        "run_after_50-ensure-agent-browser.sh.tmpl", "agent-browser",
+    )
+    content = hook.read_text()
+    assignment = next(line for line in content.splitlines() if line.startswith("DOTFILES_ROOT="))
+    assert shlex.split(assignment) == [f"DOTFILES_ROOT={profile_factory.repository}"]
+    assert 'source "$DOTFILES_ROOT/src/agent-skills.sh"' in content
+    assert 'source "$DOTFILES_ROOT/src/homebrew.sh"' in content
+    assert 'ensure_agent_skill agent-browser vercel-labs/agent-browser' in content
+    assert 'for binary in agent-browser npm npx skills; do' in content
+    assert 'agent-browser install' in content
+    profile_factory.run("/bin/bash", "-n", str(hook))
+    profile_factory.run(
+        "/bin/bash", str(hook),
+        env={**os.environ, "HOME": str(tmp_path), "DOTFILES_SKIP_OPTIONAL_APPS": "1"},
+    )
+    assert not (tmp_path / ".agents").exists()
+
+
+@pytest.mark.parametrize("profile", ["personal", "professional"])
+def test_preapply_backup_hook_uses_invoking_chezmoi_paths(
+    profile: str, profile_factory: ChezmoiProfileFixture,
+) -> None:
+    rendered = profile_factory.render(profile)
+    hook = profile_factory.render_hook(
+        rendered.config, profile,
+        "run_before_01-snapshot-existing-managed.sh.tmpl", "backup-managed",
+    )
+    source = profile_factory.repository / "home"
+    assert f'{source}' in hook.read_text()
+    assert 'snapshot_existing_managed' in hook.read_text()
+    profile_factory.run("/bin/bash", "-n", str(hook))

@@ -1,0 +1,12 @@
+#!/bin/bash
+set -euo pipefail
+
+# Back up changed destination state before package/service provisioning.
+# The generated paths refer to the invoking chezmoi source, not a fixed clone.
+DOTFILES_ROOT={{ .chezmoi.workingTree | quote }}
+source "$DOTFILES_ROOT/src/backup-managed.sh"
+snapshot_existing_managed \
+  {{ .chezmoi.configFile | quote }} \
+  {{ .chezmoi.sourceDir | quote }} \
+  {{ .chezmoi.workingTree | quote }} \
+  {{ .chezmoi.destDir | quote }}

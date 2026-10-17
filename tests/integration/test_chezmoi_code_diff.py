@@ -94,6 +94,68 @@ def test_default_workspace_is_repository_root_not_nested_chezmoi_source(
     assert Path(args[4]) != source
 
 
+def test_explicit_workspace_works_in_arbitrary_non_git_checkout(tmp_path, code_stub):
+    """The generated config, not an unrelated default checkout, owns the tab."""
+    workspace = tmp_path / "clones and worktrees" / "portable chezmoi checkout"
+    workspace.mkdir(parents=True)
+    source = tmp_path / "managed"
+    source.write_text("expected\n")
+    env = dict(code_stub)
+    del env["CHEZMOI_CODE_DIFF_WORKSPACE"]
+    subprocess.run(
+        ["/bin/bash", str(SCRIPT), str(workspace), "/dev/null", str(source)],
+        env=env, check=True,
+    )
+    args = recorded_args(env)
+    assert args[-1] == str(workspace)
+    assert Path(args[-2]).read_text() == "expected\n"
+
+
+def test_configured_chezmoi_diff_targets_its_own_checkout(tmp_path, code_stub):
+    """A full chezmoi diff uses its configured workspace even outside git."""
+    checkout = tmp_path / "unrelated clone with spaces"
+    source = checkout / "home"
+    source.mkdir(parents=True)
+    (source / "dot_example").write_text("expected new content\n")
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    (destination / ".example").write_text("previous local content\n")
+    config = tmp_path / "config.toml"
+    config.write_text('[diff]\ncommand = "/bin/bash"\n'
+                      f'args = ["{SCRIPT}", "{checkout}"]\n')
+    env = dict(code_stub)
+    del env["CHEZMOI_CODE_DIFF_WORKSPACE"]
+    result = subprocess.run([
+        "chezmoi", "--source", str(source), "--destination", str(destination),
+        "--working-tree", str(checkout), "--config", str(config), "diff",
+    ], env=env, text=True, capture_output=True, timeout=20)
+    assert result.returncode == 0, result.stderr
+    args = recorded_args(env)
+    assert args[-1] == str(checkout)
+    assert Path(args[3]).read_text() == "expected new content\n"
+    assert (destination / ".example").read_text() == "previous local content\n"
+
+
+def test_missing_code_cli_shows_readable_text_diff_without_gui(tmp_path):
+    """A fresh Mac can preview dotfiles before VS Code is installed."""
+    before = tmp_path / "old"
+    after = tmp_path / "new"
+    before.write_text("existing\n")
+    after.write_text("managed\n")
+    env = {**os.environ,
+           "HOME": str(tmp_path),
+           "PATH": "/usr/bin:/bin",
+           "CHEZMOI_CODE_DIFF_CACHE": str(tmp_path / "cache")}
+    result = subprocess.run(
+        ["/bin/bash", str(SCRIPT), str(tmp_path), str(before), str(after)],
+        env=env, capture_output=True, text=True, timeout=12,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "-existing" in result.stdout
+    assert "+managed" in result.stdout
+    assert "VS Code CLI missing" in result.stderr
+
+
 def test_existing_files_are_snapshotted_before_launching_editor(tmp_path, code_stub):
     source = tmp_path / "before"
     target = tmp_path / "after"

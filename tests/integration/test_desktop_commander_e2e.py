@@ -68,8 +68,9 @@ esac
            'TEST_CALLS': str(tmp_path / 'calls'),
            'TEST_RUNNING': str(tmp_path / 'running')}
 
-    def apply(optional_skip=False, check=True):
-        run_env = {**env, 'DOTFILES_SKIP_OPTIONAL_APPS': '1' if optional_skip else '0'}
+    def apply(optional_skip=False, check=True, allow_interrupt=False):
+        run_env = {**env, 'DOTFILES_SKIP_OPTIONAL_APPS': '1' if optional_skip else '0',
+                   'DOTFILES_ALLOW_SERVICE_INTERRUPTION': '1' if allow_interrupt else '0'}
         return subprocess.run(['/bin/sh', str(script)], env=run_env, text=True,
                               capture_output=True, check=check)
 
@@ -97,21 +98,28 @@ def test_repeated_apply_does_not_restart_service(agent):
     assert not any(c.startswith('bootout ') for c in calls())
 
 
-def test_untracked_service_is_reconciled_on_first_apply(agent):
+def test_untracked_service_requires_explicit_reconciliation(agent):
     home, _, running, apply, calls = agent
     running.touch()
     apply()
+    assert running.exists()
+    assert not any(c.startswith('bootout ') for c in calls())
+    assert not (home / 'Library/Caches/chezmoi' / f'{LABEL}.sha256').exists()
+    apply(allow_interrupt=True)
     assert running.exists()
     assert sum(c.startswith('bootout ') for c in calls()) == 1
     assert sum(c.startswith('bootstrap ') for c in calls()) == 1
     assert (home / 'Library/Caches/chezmoi' / f'{LABEL}.sha256').exists()
 
 
-def test_changed_managed_plist_triggers_one_restart(agent):
+def test_changed_managed_plist_restart_requires_explicit_permission(agent):
     _, plist, running, apply, calls = agent
     apply()
     plist.write_text(plist.read_text().replace('<key>ProcessType</key>', '<!-- updated -->\n  <key>ProcessType</key>'))
     apply()
+    assert running.exists()
+    assert not any(c.startswith('bootout ') for c in calls())
+    apply(allow_interrupt=True)
     assert running.exists()
     assert sum(c.startswith('bootout ') for c in calls()) == 1
     assert sum(c.startswith('bootstrap ') for c in calls()) == 2
@@ -209,7 +217,7 @@ def test_fresh_home_chezmoi_apply_creates_plist_before_launch(profile, tmp_path,
     assert not (home / 'Library/Caches/chezmoi').exists()
 
 
-def test_professional_transition_stops_only_previously_managed_service(agent, profile_factory):
+def test_professional_transition_preserves_then_explicitly_stops_service(agent, profile_factory):
     home, plist, running, apply, calls = agent
     apply()
     professional = profile_factory.render('professional')
@@ -223,6 +231,10 @@ def test_professional_transition_stops_only_previously_managed_service(agent, pr
            'PATH': str(fake_bin) + os.pathsep + os.environ['PATH'],
            'TEST_CALLS': str(home.parent / 'calls'),
            'TEST_RUNNING': str(home.parent / 'running')}
+    subprocess.run(['/bin/sh', str(script)], env=env, check=True)
+    assert running.exists() and plist.exists()
+    assert not any(c.startswith('bootout ') for c in calls())
+    env['DOTFILES_ALLOW_SERVICE_INTERRUPTION'] = '1'
     subprocess.run(['/bin/sh', str(script)], env=env, check=True)
     assert not running.exists()
     assert not plist.exists()
@@ -249,13 +261,16 @@ def test_professional_transition_preserves_unmanaged_service(agent, profile_fact
     assert calls() == []
 
 
-def test_lost_marker_reconciles_loaded_agent(agent):
+def test_lost_marker_defers_reconciliation_until_explicit_permission(agent):
     home, _, running, apply, calls = agent
     apply()
     marker = home / 'Library/Caches/chezmoi' / f'{LABEL}.sha256'
     marker.unlink()
     apply()
     assert running.exists()
+    assert not any(c.startswith('bootout ') for c in calls())
+    assert not marker.exists()
+    apply(allow_interrupt=True)
     assert sum(c.startswith('bootout ') for c in calls()) == 1
     assert sum(c.startswith('bootstrap ') for c in calls()) == 2
     assert len(marker.read_text().strip()) == 64

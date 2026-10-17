@@ -8,7 +8,7 @@ sourceDir = "<DOTFILES_REPO>"
 [diff]
     pager = ""
     command = "/bin/bash"
-    args = ["<DOTFILES_REPO>/home/dot_local/bin/executable_chezmoi-code-diff"]
+    args = ["<DOTFILES_REPO>/home/dot_local/bin/executable_chezmoi-code-diff", "<DOTFILES_REPO>"]
     exclude = ["scripts"]
 
 [edit]
