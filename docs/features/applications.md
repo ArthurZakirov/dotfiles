@@ -19,5 +19,8 @@ The personal profile calls
 a separate npm installation is defined by
 [`install_desktop_commander_cli`](../../src/apps.sh#L80-L90).
 
+The [Peekaboo integration](peekaboo.md) installs the CLI here and deploys its
+official agent skill with a separate idempotent chezmoi hook.
+
 To change the application inventory, edit [`src/apps.sh`](../../src/apps.sh)
 and run the [development validation](../development.md#step-4--write-tests-and-run-them).

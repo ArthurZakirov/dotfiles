@@ -1,0 +1,17 @@
+#!/bin/bash
+set -euo pipefail
+
+# Optional GUI tooling cannot be installed in headless CI.
+[[ "$(uname -s)" == Darwin ]] || exit 0
+[[ "${DOTFILES_SKIP_OPTIONAL_APPS:-0}" == 1 ]] && exit 0
+
+if ! command -v peekaboo >/dev/null 2>&1; then
+  printf 'Peekaboo: CLI missing after application provisioning.\n' >&2
+  exit 1
+fi
+
+DOTFILES_ROOT={{ .chezmoi.workingTree | quote }}
+source "$DOTFILES_ROOT/src/peekaboo-skill.sh"
+ensure_peekaboo_skill \
+  'https://raw.githubusercontent.com/openclaw/Peekaboo/v4.9.5/skills/peekaboo/SKILL.md' \
+  'b1d6891b22acba708bb78cd17407cae01e06d34a1c1842eecd12943b055809b8'

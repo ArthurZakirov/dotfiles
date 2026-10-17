@@ -57,6 +57,7 @@ install_common_apps() {
   install_missing_cask logitune 'LogiTune.app' 'Logi Tune.app'
   install_missing_cask docker-desktop 'Docker.app'
   install_missing_formula node node
+  install_missing_formula peekaboo openclaw/tap/peekaboo
   install_missing_cask raycast 'Raycast.app'
   install_missing_cask rectangle 'Rectangle.app'
   install_missing_cask visual-studio-code 'Visual Studio Code.app'

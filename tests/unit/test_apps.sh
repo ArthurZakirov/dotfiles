@@ -43,9 +43,17 @@ install_missing_formula codex codex
 [[ ${#calls[@]} -eq 0 ]]
 unset CLI_INSTALLED
 
+# Peekaboo already available on PATH is not reinstalled.
+CLI_INSTALLED=peekaboo
+calls=()
+install_missing_formula peekaboo openclaw/tap/peekaboo
+[[ ${#calls[@]} -eq 0 ]]
+unset CLI_INSTALLED
+
 # Missing CLIs use their specified packages.
 install_missing_cli_cask claude claude-code
 install_missing_formula node node
-[[ "${calls[*]}" == 'install --cask claude-code install node' ]]
+install_missing_formula peekaboo openclaw/tap/peekaboo
+[[ "${calls[*]}" == 'install --cask claude-code install node install openclaw/tap/peekaboo' ]]
 
-echo 'app installer: 5 skip/install checks passed (no installers executed)'
+echo 'app installer: 6 skip/install checks passed (no installers executed)'
