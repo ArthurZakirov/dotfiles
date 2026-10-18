@@ -54,7 +54,7 @@ def codex_is_running() -> bool:
     pgrep = shutil.which("pgrep")
     if pgrep is None:
         raise RuntimeError("Cannot check running Codex processes: pgrep unavailable")
-    for name in ("ChatGPT", "codex"):
+    for name in ("ChatGPT", "Codex", "codex"):
         process = subprocess.run(
             [pgrep, "-x", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )

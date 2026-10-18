@@ -316,13 +316,16 @@ def test_first_apply_bootstraps_voice_config_without_uv(profile_factory, profile
     assert config.read_bytes() == current
 
 
-def test_codex_modify_diff_remains_visible_while_app_running_and_apply_defers(profile_factory, tmp_path):
+@pytest.mark.parametrize("active_process", ["ChatGPT", "Codex", "codex"])
+def test_codex_modify_diff_remains_visible_while_app_running_and_apply_defers(
+    profile_factory, tmp_path, active_process
+):
     config = prepare_codex_home(tmp_path)
     initial = config.read_bytes()
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     pgrep = fake_bin / "pgrep"
-    pgrep.write_text("#!/bin/sh\nexit 0\n")
+    pgrep.write_text(f'#!/bin/sh\n[ "$2" = "{active_process}" ]\n')
     pgrep.chmod(0o755)
     env = {"PATH": f"{fake_bin}:{os.environ['PATH']}"}
 
