@@ -7,6 +7,8 @@
     ".chezmoidata.toml": "toml",
     "dot_gitconfig": "properties",
     "dot_zshrc.tmpl": "shellscript",
-    "run_*.sh.tmpl": "shellscript"
+    "run_*.sh.tmpl": "shellscript",
+    "**/*.json.tmpl": "json",
+    "**/.chezmoiignore.tmpl": "go"
   }
 }

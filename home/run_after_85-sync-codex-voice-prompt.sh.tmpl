@@ -1,0 +1,12 @@
+#!/bin/bash
+set -euo pipefail
+
+# Codex owns config.toml, except for the versioned Live Voice prompt.
+DOTFILES_ROOT={{ .chezmoi.workingTree | quote }}
+source "$DOTFILES_ROOT/src/homebrew.sh"
+configure_homebrew
+
+codex_home={{ (printf "%s/.codex" .chezmoi.homeDir) | quote }}
+uv run --no-project --script "$codex_home/config-toml/sync-voice-prompt.py" \
+  --config "$codex_home/config.toml" \
+  --prompt "$codex_home/config-toml/realtime-voice-backend-prompt.md"

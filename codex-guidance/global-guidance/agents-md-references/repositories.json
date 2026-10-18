@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "repositories": [
+    {
+      "name": "self-source",
+      "source": "ArthurZakirov/self-source",
+      "role": "Private personal source of truth for reusable life context used in forms, emails, registrations, local research, and related workflows; not a skill pack or agent-setup repository.",
+      "checkout": {
+        "kind": "skillport-sibling",
+        "directory": "self-source"
+      },
+      "refresh": true,
+      "skills": false
+    },
+    {
+      "name": "SkillPort",
+      "source": "ArthurZakirov/SkillPort",
+      "role": "Public infrastructure for packaging, installing, synchronizing, and refreshing skill repositories across agent harnesses and machines.",
+      "checkout": {
+        "kind": "skillport-root"
+      },
+      "refresh": true,
+      "skills": true
+    },
+    {
+      "name": "ProofStack",
+      "source": "ArthurZakirov/ProofStack",
+      "role": "Public skills for turning private work evidence into public-safe career and portfolio material.",
+      "checkout": {
+        "kind": "skillport-sibling",
+        "directory": "ProofStack"
+      },
+      "refresh": true,
+      "skills": true
+    },
+    {
+      "name": "HumanRuntime",
+      "source": "ArthurZakirov/HumanRuntime",
+      "role": "Public skills and approved context for nutrition, ergonomics, laundry, and other human operating routines.",
+      "checkout": {
+        "kind": "skillport-sibling",
+        "directory": "HumanRuntime"
+      },
+      "refresh": true,
+      "skills": false
+    },
+    {
+      "name": "OpportunityOS",
+      "source": "ArthurZakirov/OpportunityOS",
+      "role": "Public skills for job, housing, registration, outreach, application, and other opportunity workflows that load only relevant private facts.",
+      "checkout": {
+        "kind": "skillport-sibling",
+        "directory": "OpportunityOS"
+      },
+      "refresh": true,
+      "skills": true
+    },
+    {
+      "name": "SystemSmith",
+      "source": "ArthurZakirov/SystemSmith",
+      "role": "Public reusable engineering methods for code, agents, architecture, documentation, security, communication, and information design.",
+      "checkout": {
+        "kind": "skillport-sibling",
+        "directory": "SystemSmith"
+      },
+      "refresh": true,
+      "skills": true
+    },
+    {
+      "name": "Scaled-Apartment-Planner",
+      "source": "ArthurZakirov/Scaled-Apartment-Planner",
+      "role": "Application source for interactive apartment-layout planning; it is not a skill pack.",
+      "checkout": {
+        "kind": "skillport-sibling",
+        "directory": "Scaled-Apartment-Planner"
+      },
+      "refresh": true,
+      "skills": false
+    },
+    {
+      "name": "arthur-zakirov",
+      "source": "ArthurZakirov/arthur-zakirov",
+      "role": "Private application and content source for the personal website and blog; it is not a skill pack.",
+      "checkout": {
+        "kind": "skillport-sibling",
+        "directory": "arthur-zakirov"
+      },
+      "refresh": true,
+      "skills": false
+    },
+    {
+      "name": "ArthurZakirov",
+      "source": "ArthurZakirov/ArthurZakirov",
+      "role": "Public GitHub profile content; it is not a skill pack.",
+      "checkout": {
+        "kind": "skillport-sibling",
+        "directory": "ArthurZakirov"
+      },
+      "refresh": true,
+      "skills": false
+    }
+  ]
+}

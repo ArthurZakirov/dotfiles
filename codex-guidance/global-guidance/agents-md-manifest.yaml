@@ -1,0 +1,30 @@
+version: 2
+components:
+  - path: agents-md-components/workspace-and-agent-system/workspace-and-agent-system.md
+    children:
+      - path: agents-md-components/workspace-and-agent-system/git-workflow.md
+      - path: agents-md-components/workspace-and-agent-system/external-system-access.md
+      - path: agents-md-components/workspace-and-agent-system/managed-repositories-skills-global-rules.md
+      - path: agents-md-components/workspace-and-agent-system/agent-behavior-lifecycle.md
+  - path: agents-md-components/runtime-and-interaction/runtime-and-interaction.md
+    children:
+      - path: agents-md-components/runtime-and-interaction/chatgpt-runtime-mode-identification.md
+      - path: agents-md-components/runtime-and-interaction/interaction-mode-behavior.md
+      - path: agents-md-components/runtime-and-interaction/delegated-chat-naming.md
+  - path: agents-md-components/reasoning-and-agent-behavior/reasoning-and-agent-behavior.md
+    children:
+      - path: agents-md-components/reasoning-and-agent-behavior/problem-intent-and-proposed-solutions.md
+      - path: agents-md-components/reasoning-and-agent-behavior/unresolved-implementation-decisions.md
+      - path: agents-md-components/reasoning-and-agent-behavior/requirements-scope-validation.md
+      - path: agents-md-components/reasoning-and-agent-behavior/effort-scope-checkpoints.md
+      - path: agents-md-components/reasoning-and-agent-behavior/evidence-grounding.md
+      - path: agents-md-components/reasoning-and-agent-behavior/behavior-feedback-debugging.md
+      - path: agents-md-components/reasoning-and-agent-behavior/execution-algorithm.md
+  - path: agents-md-components/information-presentation/information-presentation.md
+    children:
+      - path: agents-md-components/information-presentation/relevance.md
+      - path: agents-md-components/information-presentation/anchoring.md
+      - path: agents-md-components/information-presentation/representation.md
+      - path: agents-md-components/information-presentation/structural-semantic-coherence.md
+      - path: agents-md-components/information-presentation/visual-semantics.md
+      - path: agents-md-components/information-presentation/chat-response-presentation.md

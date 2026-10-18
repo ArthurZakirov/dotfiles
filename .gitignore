@@ -6,3 +6,26 @@ __pycache__/
 # Poetry in-project virtual environment
 .venv/
 poetry.toml
+
+# Codex secrets, volatile state, and npx-managed skills must not enter Git.
+home/dot_codex/auth.json
+home/dot_codex/langsmith.json
+home/dot_codex/.env*
+home/dot_codex/**/.env*
+home/dot_codex/config.toml
+home/dot_codex/skills/
+home/dot_codex/plugins/
+home/dot_codex/vendor_imports/
+home/dot_codex/cache/
+home/dot_codex/sessions/
+home/dot_codex/archived_sessions/
+home/dot_codex/attachments/
+home/dot_codex/generated_images/
+home/dot_codex/installation_id
+home/dot_codex/.codex-global-state.json
+home/dot_codex/*sqlite*
+home/dot_codex/*.db*
+home/dot_codex/*.lock
+home/dot_codex/*.bak*
+home/dot_codex/**/__pycache__/
+home/dot_codex/**/*.pyc
