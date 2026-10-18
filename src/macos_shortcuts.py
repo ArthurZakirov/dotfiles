@@ -229,14 +229,25 @@ def load_profile(path):
     return profile
 
 
+def native_values_equal(left, right):
+    """Compare preference values recursively, including their plist-compatible types."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return (left.keys() == right.keys() and
+                all(native_values_equal(left[key], right[key]) for key in left))
+    if isinstance(left, list):
+        return (len(left) == len(right) and
+                all(native_values_equal(a, b) for a, b in zip(left, right)))
+    return left == right
+
+
 def changes(desired, current):
     """Yield only differences for explicitly declared keys; never delete extra entries."""
     for key, value in desired["system_hotkeys"].items():
         native = without_action(value)
         actual = current["system_hotkeys"].get(key)
-        if (actual != native or
-                (isinstance(actual, dict) and
-                 type(actual.get("enabled")) is not type(native["enabled"]))):
+        if not native_values_equal(actual, native):
             yield ("system", key, native)
     for domain, shortcuts in desired["app_shortcuts"].items():
         actual = current["app_shortcuts"].get(domain, {})

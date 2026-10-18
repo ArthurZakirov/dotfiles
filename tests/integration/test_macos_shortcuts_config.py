@@ -123,6 +123,11 @@ def test_chezmoi_diff_and_apply_synchronize_live_shortcuts(
         "enabled": "1",
         "value": {"type": "standard", "parameters": ["32", "49", "786432"]},
     }
+    # The live plist also uses a Boolean where the managed shortcut expects integer 0.
+    nested_id = "179"
+    nested = prefs["com.apple.symbolichotkeys"]["AppleSymbolicHotKeys"][nested_id]
+    assert nested["value"]["parameters"][2] == 0
+    nested["value"]["parameters"][2] = False
     for name, content in prefs.items():
         (domain_dir / f"{name}.plist").write_bytes(plistlib.dumps(content))
     home = tmp_path / "home"
@@ -235,6 +240,10 @@ with open(os.environ["FAKE_CODE_LOG"], "a") as stream:
     assert input_source["enabled"] is True
     assert input_source["value"]["parameters"] == [32, 49, 786432]
     assert all(type(n) is int for n in input_source["value"]["parameters"])
+    nested_after = plistlib.loads(
+        (domain_dir / "com.apple.symbolichotkeys.plist").read_bytes()
+    )["AppleSymbolicHotKeys"][nested_id]["value"]["parameters"][2]
+    assert type(nested_after) is int and nested_after == 0
     # The final diff must use the logging editor again, so a leftover drift
     # cannot silently fall back to text while the log stays unchanged.
     fake_code.write_text(logging_code)

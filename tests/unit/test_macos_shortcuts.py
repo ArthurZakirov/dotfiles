@@ -148,6 +148,26 @@ def test_comparison_detects_enabled_type_drift(
     assert type(pending[0][2]["enabled"]) is type(managed_enabled)
 
 
+@pytest.mark.parametrize(("managed_parameter", "live_parameter"), [
+    (0, False), (1, True), (0, 0.0), (1, 1.0),
+])
+def test_comparison_detects_nested_parameter_type_drift(
+    example_profile, managed_parameter, live_parameter,
+):
+    # Arrange: a native Boolean or float must not masquerade as an integer.
+    example_profile["system_hotkeys"]["15"]["value"]["parameters"][0] = managed_parameter
+    current = copy.deepcopy(example_profile)
+    current["system_hotkeys"]["15"]["value"]["parameters"][0] = live_parameter
+    shortcuts.validate(example_profile)
+
+    # Act
+    pending = list(shortcuts.changes(example_profile, current))
+
+    # Assert
+    assert pending == [("system", "15", example_profile["system_hotkeys"]["15"])]
+    assert type(pending[0][2]["value"]["parameters"][0]) is int
+
+
 def test_comparison_ignores_unmanaged_shortcuts(example_profile):
     # Arrange
     current = copy.deepcopy(example_profile)
