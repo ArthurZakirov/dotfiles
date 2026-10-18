@@ -7,7 +7,6 @@
 # Codex owns generated runtime/authentication state; never include it in chezmoi.
 # Derived from ~/.codex/.vscode/settings.json (UI visibility is not ownership).
 .codex/auth.json
-.codex/config.toml
 .codex/.codex-global-state.json
 .codex/.personality_migration
 .codex/.sandbox_migration

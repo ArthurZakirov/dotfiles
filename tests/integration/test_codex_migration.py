@@ -40,6 +40,7 @@ def test_apply_owns_only_deployed_codex_artifacts(profile_factory, profile):
         ".codex/keybindings.json",
         ".codex/config-toml/realtime-voice-backend-prompt.md",
         ".codex/config-toml/sync-voice-prompt.py",
+        ".codex/config.toml",
     ):
         assert expected in paths
 
@@ -47,7 +48,6 @@ def test_apply_owns_only_deployed_codex_artifacts(profile_factory, profile):
     assert not any(p.startswith(".codex/skills/") for p in paths)
     assert not any(p.startswith(".codex/plugins/") for p in paths)
     assert ".codex/auth.json" not in paths
-    assert ".codex/config.toml" not in paths
     assert not any("config.template.toml" in p or "render-config.py" in p for p in paths)
     assert (".codex/langsmith.json" in paths) == (profile == "personal")
     assert ".codex/hooks.json" in paths
@@ -98,21 +98,20 @@ def test_generated_guidance_is_reproducible_without_any_other_repository():
     )
 
 
-def run_prompt_sync(config: Path, prompt: Path) -> subprocess.CompletedProcess[str]:
-    # uv uses the pinned PEP 723 dependency; no global pip installation.
+def render_prompt(config: str, prompt: Path, **env: str) -> subprocess.CompletedProcess[str]:
+    # The same pinned renderer is called by the native chezmoi modify script.
     return subprocess.run(
         [
             "uv", "run", "--no-project", "--script",
             str(SOURCE / "config-toml/sync-voice-prompt.py"),
-            "--config", str(config), "--prompt", str(prompt),
+            "--prompt", str(prompt),
         ],
-        text=True, capture_output=True,
+        input=config, text=True, capture_output=True, env={**os.environ, **env},
     )
 
 
 @pytest.mark.parametrize("existing_prompt", ["single-line", "multiline", "missing"])
-def test_voice_prompt_sync_preserves_local_codex_preferences(tmp_path, existing_prompt):
-    config = tmp_path / "config.toml"
+def test_voice_prompt_render_preserves_local_codex_preferences(tmp_path, existing_prompt):
     prompt_path = tmp_path / "prompt.md"
     prompt = 'First line\nQuoted """ text and \\ backslashes\nUnicode: 🐈\n'
     prompt_path.write_text(prompt, encoding="utf-8")
@@ -121,7 +120,7 @@ def test_voice_prompt_sync_preserves_local_codex_preferences(tmp_path, existing_
         "multiline": 'experimental_realtime_ws_backend_prompt = """\nold prompt\nwith many lines\n"""\n',
         "missing": "",
     }[existing_prompt]
-    existing = (
+    original = (
         '# Codex still owns these settings.\n'
         'model = "gpt-6" # chosen in Desktop\n'
         + value
@@ -134,14 +133,12 @@ def test_voice_prompt_sync_preserves_local_codex_preferences(tmp_path, existing_
         '\n[desktop]\n'
         'show-context-window-usage = true\n'
     )
-    config.write_text(existing, encoding="utf-8")
-    config.chmod(0o600)
-    before = tomllib.loads(existing)
+    before = tomllib.loads(original)
 
-    result = run_prompt_sync(config, prompt_path)
+    result = render_prompt(original, prompt_path)
 
     assert result.returncode == 0, result.stderr
-    updated = config.read_text(encoding="utf-8")
+    updated = result.stdout
     assert tomllib.loads(updated) == {**before, "experimental_realtime_ws_backend_prompt": prompt}
     for unrelated_line in (
         '# Codex still owns these settings.',
@@ -154,174 +151,231 @@ def test_voice_prompt_sync_preserves_local_codex_preferences(tmp_path, existing_
         'show-context-window-usage = true',
     ):
         assert unrelated_line in updated
-    assert stat.S_IMODE(config.stat().st_mode) == 0o600
+    if existing_prompt != "missing":
+        # The renderer does not touch the rest of the file, even at text level.
+        prefix = original.split('experimental_realtime_ws_backend_prompt')[0]
+        assert updated.startswith(prefix)
+        suffix = original[original.index('\n[plugins.'):]
+        assert updated.endswith(suffix)
 
-    # Unchanged syncs must not rewrite a live file.
-    previous = config.stat().st_mtime_ns
-    repeated = run_prompt_sync(config, prompt_path)
+    repeated = render_prompt(updated, prompt_path)
     assert repeated.returncode == 0, repeated.stderr
-    assert config.stat().st_mtime_ns == previous
-    assert config.read_text(encoding="utf-8") == updated
+    assert repeated.stdout == updated
 
 
-def test_voice_prompt_sync_creates_only_prompt_in_new_home(tmp_path):
-    config = tmp_path / "config.toml"
+def test_voice_prompt_render_handles_missing_and_invalid_config(tmp_path):
     prompt_path = tmp_path / "prompt.md"
     prompt_path.write_text("Versioned prompt\n", encoding="utf-8")
 
-    result = run_prompt_sync(config, prompt_path)
-
-    assert result.returncode == 0, result.stderr
-    assert tomllib.loads(config.read_text()) == {
+    new = render_prompt("", prompt_path)
+    assert new.returncode == 0, new.stderr
+    assert tomllib.loads(new.stdout) == {
         "experimental_realtime_ws_backend_prompt": "Versioned prompt\n"
     }
-    assert stat.S_IMODE(config.stat().st_mode) == 0o600
+
+    invalid = render_prompt('[projects."broken"\ntrust_level = "trusted"\n', prompt_path)
+    assert invalid.returncode != 0
+    assert invalid.stdout == ""
+
+    prompt_path.write_text("")
+    empty_prompt = render_prompt('model = "local"\n', prompt_path)
+    assert empty_prompt.returncode != 0
+    assert empty_prompt.stdout == ""
 
 
-def test_voice_prompt_sync_rejects_invalid_config_without_modifying_it(tmp_path):
-    config = tmp_path / "config.toml"
-    prompt_path = tmp_path / "prompt.md"
-    content = '[projects."broken"\ntrust_level = "trusted"\n'
-    config.write_text(content, encoding="utf-8")
-    prompt_path.write_text("Versioned prompt\n", encoding="utf-8")
+def chezmoi_codex_command(profile_factory, profile: str, dest: Path, *args: str,
+                         env: dict | None = None) -> subprocess.CompletedProcess[str]:
+    rendered = profile_factory.render(profile)
+    return subprocess.run(
+        [
+            "chezmoi", "--source", str(ROOT / "home"),
+            "--config", str(rendered.config), "--destination", str(dest),
+            *args,
+        ],
+        env={**os.environ, **(env or {})}, text=True, capture_output=True,
+    )
 
-    result = run_prompt_sync(config, prompt_path)
 
-    assert result.returncode != 0
-    assert config.read_text(encoding="utf-8") == content
-    assert not list(tmp_path.glob(".config.toml-*"))
-
-
+def prepare_codex_home(tmp_path: Path) -> Path:
+    config = tmp_path / ".codex/config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        '# Local UI preferences stay intact.\n'
+        'experimental_realtime_ws_backend_prompt = "original voice prompt"\n'
+        '[desktop]\nshow-context-window-usage = true\n'
+        '[projects."/tmp/private repository"]\ntrust_level = "trusted"\n'
+        '[mcp_servers.private]\ncommand = "private-command"\n',
+        encoding="utf-8",
+    )
+    config.chmod(0o600)
+    return config
 
 
 @pytest.mark.parametrize("profile", ["personal", "professional"])
-def test_chezmoi_hook_updates_config_in_isolated_home(profile_factory, profile, tmp_path):
-    rendered = profile_factory.render(profile)
-    codex_home = tmp_path / ".codex"
-    config = codex_home / "config.toml"
-    source_files = SOURCE / "config-toml"
-    installed = codex_home / "config-toml"
-    installed.mkdir(parents=True)
-    for name in ("sync-voice-prompt.py", "realtime-voice-backend-prompt.md"):
-        shutil.copy2(source_files / name, installed / name)
-    config.write_text(
-        'model = "machine-local"\n[projects."/tmp/only-this-mac"]\ntrust_level = "trusted"\n',
-        encoding="utf-8",
+def test_normal_chezmoi_diff_and_apply_include_active_voice_prompt(profile_factory, profile, tmp_path):
+    config = prepare_codex_home(tmp_path)
+    initial = config.read_text()
+    prompt = (SOURCE / "config-toml/realtime-voice-backend-prompt.md").read_text()
+    # The installed Markdown can be current even though Codex's active TOML
+    # was later edited through its UI; this is the original visibility gap.
+    installed_prompt = config.parent / "config-toml/realtime-voice-backend-prompt.md"
+    installed_prompt.parent.mkdir(parents=True)
+    installed_prompt.write_text(prompt)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / "pgrep").write_text("#!/bin/sh\nexit 1\n")
+    (fake_bin / "pgrep").chmod(0o755)
+    env = {"PATH": f"{fake_bin}:{os.environ['PATH']}"}
+
+    diff = chezmoi_codex_command(
+        profile_factory, profile, tmp_path, "--use-builtin-diff", "--no-pager",
+        "diff", str(config), env=env,
     )
-    hook_source = (ROOT / "home/run_after_85-sync-codex-voice-prompt.sh.tmpl").read_text()
-    # A fresh machine has no running Codex. Stub just the process probe
-    # so this isolated fixture does not depend on the host's open applications.
+
+    assert diff.returncode == 0, diff.stderr
+    assert "diff --git a/.codex/config.toml b/.codex/config.toml" in diff.stdout
+    assert "-experimental_realtime_ws_backend_prompt" in diff.stdout
+    assert "+experimental_realtime_ws_backend_prompt" in diff.stdout
+    assert config.read_text() == initial
+
+    apply = chezmoi_codex_command(
+        profile_factory, profile, tmp_path, "apply", "--exclude", "scripts",
+        str(config), env=env,
+    )
+
+    assert apply.returncode == 0, apply.stderr
+    assert stat.S_IMODE(config.stat().st_mode) == 0o600
+    after = tomllib.loads(config.read_text())
+    before = tomllib.loads(initial)
+    assert after == {**before, "experimental_realtime_ws_backend_prompt": prompt}
+
+    repeat_diff = chezmoi_codex_command(
+        profile_factory, profile, tmp_path, "--use-builtin-diff", "--no-pager",
+        "diff", str(config), env=env,
+    )
+    assert repeat_diff.returncode == 0, repeat_diff.stderr
+    assert repeat_diff.stdout == ""
+
+    # Codex's own UI can subsequently add a plugin without registering any
+    # version-controlled change; re-applying must leave it untouched.
+    new_gui_setting = '\n[plugins."installed-in-UI"]\nenabled = true\n'
+    config.write_text(config.read_text() + new_gui_setting)
+    machine_local_state = config.read_bytes()
+    unchanged_diff = chezmoi_codex_command(
+        profile_factory, profile, tmp_path, "--use-builtin-diff", "--no-pager",
+        "diff", str(config), env=env,
+    )
+    assert unchanged_diff.returncode == 0, unchanged_diff.stderr
+    assert unchanged_diff.stdout == ""
+    unchanged_apply = chezmoi_codex_command(
+        profile_factory, profile, tmp_path, "apply", "--exclude", "scripts",
+        str(config), env=env,
+    )
+    assert unchanged_apply.returncode == 0, unchanged_apply.stderr
+    assert config.read_bytes() == machine_local_state
+
+
+@pytest.mark.parametrize("profile", ["personal", "professional"])
+def test_first_apply_bootstraps_voice_config_without_uv(profile_factory, profile, tmp_path):
+    # The official chezmoi installer precedes Homebrew/uv on a fresh Mac.
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / "chezmoi").symlink_to(shutil.which("chezmoi"))
+    env = {"PATH": f"{fake_bin}:/usr/bin:/bin"}
+    config = tmp_path / ".codex/config.toml"
+    config.parent.mkdir(parents=True)
+    prompt = (SOURCE / "config-toml/realtime-voice-backend-prompt.md").read_text()
+
+    preview = chezmoi_codex_command(
+        profile_factory, profile, tmp_path, "--use-builtin-diff", "--no-pager",
+        "diff", str(config), env=env,
+    )
+    assert preview.returncode == 0, preview.stderr
+    assert "diff --git a/.codex/config.toml" in preview.stdout
+    assert not config.exists()
+
+    apply = chezmoi_codex_command(
+        profile_factory, profile, tmp_path, "apply", "--exclude", "scripts",
+        str(config), env=env,
+    )
+
+    assert apply.returncode == 0, apply.stderr
+    assert tomllib.loads(config.read_text()) == {
+        "experimental_realtime_ws_backend_prompt": prompt
+    }
+    assert stat.S_IMODE(config.stat().st_mode) == 0o600
+
+    # Without the parser dependency, existing settings must never be rewritten.
+    current = config.read_bytes()
+    rejected = chezmoi_codex_command(
+        profile_factory, profile, tmp_path, "--use-builtin-diff", "--no-pager",
+        "diff", str(config), env=env,
+    )
+    assert rejected.returncode != 0
+    assert "needs uv" in rejected.stderr
+    assert config.read_bytes() == current
+
+
+def test_codex_modify_diff_remains_visible_while_app_running_and_apply_defers(profile_factory, tmp_path):
+    config = prepare_codex_home(tmp_path)
+    initial = config.read_bytes()
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     pgrep = fake_bin / "pgrep"
-    pgrep.write_text("#!/bin/sh\nexit 1\n")
+    pgrep.write_text("#!/bin/sh\nexit 0\n")
     pgrep.chmod(0o755)
-    env = {**os.environ, "HOME": str(tmp_path),
-           "PATH": f"{fake_bin}:{os.environ['PATH']}"}
-    render = subprocess.run(
-        [
-            "chezmoi", "--source", str(ROOT / "home"),
-            "--config", str(rendered.config), "--destination", str(tmp_path),
-            "execute-template",
-        ],
-        input=hook_source, env=env, text=True, capture_output=True,
+    env = {"PATH": f"{fake_bin}:{os.environ['PATH']}"}
+
+    diff = chezmoi_codex_command(
+        profile_factory, "personal", tmp_path, "--use-builtin-diff", "--no-pager",
+        "diff", str(config), env=env,
     )
-    assert render.returncode == 0, render.stderr
-    assert f'{tmp_path}/.codex' in render.stdout
+    assert diff.returncode == 0, diff.stderr
+    assert "diff --git a/.codex/config.toml" in diff.stdout
 
-    applied = subprocess.run(["bash"], input=render.stdout, env=env, text=True, capture_output=True)
-
-    assert applied.returncode == 0, applied.stderr
-    result = tomllib.loads(config.read_text())
-    assert result["experimental_realtime_ws_backend_prompt"] == (
-        source_files / "realtime-voice-backend-prompt.md"
-    ).read_text()
-    assert result["model"] == "machine-local"
-    assert result["projects"]["/tmp/only-this-mac"]["trust_level"] == "trusted"
-
-
-@pytest.mark.parametrize("running", [True, False])
-def test_voice_prompt_sync_defers_while_codex_is_running(tmp_path, running):
-    config = tmp_path / "config.toml"
-    prompt = tmp_path / "prompt.md"
-    old = 'model = "existing"\n'
-    config.write_text(old)
-    prompt.write_text("New prompt\n")
-    fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
-    probe = fake_bin / "pgrep"
-    probe.write_text("#!/bin/sh\nexit " + ("0" if running else "1") + "\n")
-    probe.chmod(0o755)
-
-    result = subprocess.run(
-        [
-            "uv", "run", "--no-project", "--script",
-            str(SOURCE / "config-toml/sync-voice-prompt.py"),
-            "--defer-while-active", "--config", str(config), "--prompt", str(prompt),
-        ],
-        env={**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}"},
-        text=True, capture_output=True,
+    apply = chezmoi_codex_command(
+        profile_factory, "personal", tmp_path, "apply", "--exclude", "scripts",
+        str(config), env=env,
     )
+    assert apply.returncode == 0, apply.stderr
+    assert "Deferred Codex Live Voice prompt sync" in apply.stderr
+    assert config.read_bytes() == initial
+
+    still_pending = chezmoi_codex_command(
+        profile_factory, "personal", tmp_path, "--use-builtin-diff", "--no-pager",
+        "diff", str(config), env=env,
+    )
+    assert "diff --git a/.codex/config.toml" in still_pending.stdout
+
+
+def test_chezmoi_gui_diff_shows_only_the_readable_voice_prompt(profile_factory, tmp_path):
+    config = prepare_codex_home(tmp_path)
+    script_bin = tmp_path / "bin"
+    script_bin.mkdir()
+    code_log = tmp_path / "code_args.txt"
+    fake_code = script_bin / "code"
+    fake_code.write_text('#!/bin/sh\nprintf "%s\n" "$@" > "$CODE_ARGS_LOG"\n')
+    fake_code.chmod(0o755)
+    cache = tmp_path / "diff-cache"
+    env = {
+        "PATH": f"{script_bin}:{os.environ['PATH']}",
+        "CODE_ARGS_LOG": str(code_log),
+        "CHEZMOI_CODE_DIFF_CACHE": str(cache),
+        "CHEZMOI_CODE_DIFF_SETTLE_SECONDS": "0",
+    }
+
+    result = chezmoi_codex_command(profile_factory, "personal", tmp_path, "diff",
+                                   str(config), env=env)
 
     assert result.returncode == 0, result.stderr
-    if running:
-        assert "Deferred" in result.stdout
-        assert config.read_text() == old
-    else:
-        assert "Updated" in result.stdout
-        assert tomllib.loads(config.read_text())["experimental_realtime_ws_backend_prompt"] == "New prompt\n"
-
-
-def test_voice_prompt_sync_defers_when_codex_starts_during_update(tmp_path):
-    config = tmp_path / "config.toml"
-    prompt = tmp_path / "prompt.md"
-    old = 'model = "existing"\n'
-    config.write_text(old)
-    prompt.write_text("New prompt\n")
-    fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
-    counter = tmp_path / "probe-count"
-    probe = fake_bin / "pgrep"
-    probe.write_text(
-        '#!/bin/sh\n'
-        'count=$(cat "$PGREP_COUNT_FILE" 2>/dev/null || echo 0)\n'
-        'count=$((count + 1))\n'
-        'echo "$count" > "$PGREP_COUNT_FILE"\n'
-        '[ "$count" -eq 3 ]\n'
-    )
-    probe.chmod(0o755)
-
-    result = subprocess.run(
-        [
-            "uv", "run", "--no-project", "--script",
-            str(SOURCE / "config-toml/sync-voice-prompt.py"),
-            "--defer-while-active", "--config", str(config), "--prompt", str(prompt),
-        ],
-        env={**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}",
-             "PGREP_COUNT_FILE": str(counter)},
-        text=True, capture_output=True,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "Deferred" in result.stdout
-    assert config.read_text() == old
-    assert not list(tmp_path.glob(".config.toml-*"))
-
-
-def test_voice_prompt_sync_preserves_symlinked_config(tmp_path):
-    config = tmp_path / "config.toml"
-    real_config = tmp_path / "original.toml"
-    real_config.write_text('model = "local"\n')
-    config.symlink_to(real_config)
-    prompt = tmp_path / "prompt.md"
-    prompt.write_text("Versioned prompt\n")
-
-    result = run_prompt_sync(config, prompt)
-
-    assert result.returncode != 0
-    assert config.is_symlink()
-    assert real_config.read_text() == 'model = "local"\n'
-
+    args = code_log.read_text().splitlines()
+    assert args[:2] == ["--reuse-window", "--diff"]
+    before, after = Path(args[2]), Path(args[3])
+    assert before.name == after.name == "realtime-voice-backend-prompt.md"
+    assert before.read_text() == "original voice prompt"
+    assert after.read_text() == (SOURCE / "config-toml/realtime-voice-backend-prompt.md").read_text()
+    assert "private-command" not in before.read_text() + after.read_text()
+    assert config.read_text().startswith('# Local UI preferences stay intact.')
 
 
 

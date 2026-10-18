@@ -1,0 +1,24 @@
+#!/bin/bash
+set -euo pipefail
+
+# A native chezmoi modify script: stdin is the machine-local config, stdout
+# is its target state. Diff and apply use the same one-field TOML renderer.
+repository={{ .chezmoi.workingTree | quote }}
+
+# First-boot chezmoi runs before Homebrew's uv provisioning. Only for an
+# entirely empty config, initialize the one managed key using TOML-compatible
+# JSON string quoting. Never attempt to rewrite existing settings without uv.
+if ! command -v uv >/dev/null 2>&1; then
+  if [[ -n "$(cat)" ]]; then
+    echo "Codex config.toml needs uv to safely modify an existing configuration." >&2
+    exit 1
+  fi
+  cat <<'NEW_CODEX_CONFIG'
+experimental_realtime_ws_backend_prompt = {{ include "dot_codex/config-toml/realtime-voice-backend-prompt.md" | toJson }}
+NEW_CODEX_CONFIG
+  exit 0
+fi
+
+exec uv run --no-project --script \
+  "$repository/home/dot_codex/config-toml/sync-voice-prompt.py" \
+  --prompt "$repository/home/dot_codex/config-toml/realtime-voice-backend-prompt.md"

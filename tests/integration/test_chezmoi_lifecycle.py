@@ -20,6 +20,11 @@ def test_full_managed_tree_diff_apply_and_upgrade(profile, tmp_path, profile_fac
     home.mkdir()
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
+    # The isolated HOME represents a fresh machine without a running Codex.
+    # The real developer Mac may have ChatGPT Desktop open during the test.
+    pgrep = bin_dir / "pgrep"
+    pgrep.write_text("#!/bin/sh\nexit 1\n")
+    pgrep.chmod(0o755)
     log = tmp_path / "diff-invocations"
     code = bin_dir / "code"
     code.write_text(

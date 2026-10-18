@@ -15,7 +15,8 @@ files only**, not a second installation inside `~/.codex/`.
 | `.vscode/settings.json` | [`home/dot_codex/dot_vscode/settings.json`](../../home/dot_codex/dot_vscode/settings.json) | Shared VS Code Explorer visibility settings. |
 | `keybindings.json` | [`home/dot_codex/keybindings.json`](../../home/dot_codex/keybindings.json) | Shared desktop-app keyboard shortcuts (not VS Code shortcuts). |
 | `config-toml/realtime-voice-backend-prompt.md` | [`home/dot_codex/config-toml/realtime-voice-backend-prompt.md`](../../home/dot_codex/config-toml/realtime-voice-backend-prompt.md) | Version-controlled Live Voice prompt source. |
-| `config-toml/sync-voice-prompt.py` | [`home/dot_codex/config-toml/sync-voice-prompt.py`](../../home/dot_codex/config-toml/sync-voice-prompt.py) | Synchronizes the prompt into the local Codex configuration without replacing other settings. |
+| `config-toml/sync-voice-prompt.py` | [`home/dot_codex/config-toml/sync-voice-prompt.py`](../../home/dot_codex/config-toml/sync-voice-prompt.py) | Shared, pinned TOML renderer used internally by chezmoi. |
+| `config.toml` (one key only) | [`home/dot_codex/modify_private_config.toml.tmpl`](../../home/dot_codex/modify_private_config.toml.tmpl) | Native chezmoi modifier: changes only the Live Voice prompt, preserving machine-local settings. |
 | `hooks.json` | [`home/dot_codex/hooks.json.tmpl`](../../home/dot_codex/hooks.json.tmpl) | Shared hook registration and configuration. |
 | `hooks-json/` | [`home/dot_codex/hooks-json/`](../../home/dot_codex/hooks-json/) | Shared hook scripts and supporting files. |
 | `langsmith.json` | [`home/dot_codex/private_langsmith.json`](../../home/dot_codex/private_langsmith.json) | Personal profile only; installed with private (0600) permissions. |
@@ -73,26 +74,35 @@ silently overwrite it during `chezmoi apply`.
 
 ## Machine-local Codex state
 
-**`~/.codex/config.toml` remains owned by Codex.** Project trust, MCP servers,
-plugin choices, model and sandbox permissions, and desktop preferences can all be
-changed by Codex or the desktop app. They are not copied back into Dotfiles or
-overwritten by `chezmoi apply`.
+**Codex still owns `~/.codex/config.toml`, except for
+`experimental_realtime_ws_backend_prompt`.** Project trust, MCP servers,
+plugin choices, model and sandbox permissions, and desktop preferences stay
+machine-local and may be edited through the Codex or Desktop UI. None of those
+values are copied into Dotfiles or overwritten by chezmoi.
 
-The sole exception is `experimental_realtime_ws_backend_prompt`. Edit the
-[versioned Markdown prompt](../../home/dot_codex/config-toml/realtime-voice-backend-prompt.md)
-in Dotfiles, commit/push it, and run `chezmoi apply` on each Mac. The
-[after-apply hook](../../home/run_after_85-sync-codex-voice-prompt.sh.tmpl)
-uses `uv` with a pinned `tomlkit` dependency to update **only that TOML key**.
-Existing multiline values are parsed rather than matched by line or regex;
-other settings and comments remain untouched. The updater validates the result
-and writes atomically, or fails without modifying an invalid config.
-Because Codex does not share a file lock with the updater, synchronization
-**defers while ChatGPT Desktop or Codex processes are running**. Close those
-apps and rerun `chezmoi apply` to install a newer prompt; other managed files
-still apply normally. If Codex changes the prompt through its UI, the next
-successful sync restores the versioned value; all other UI changes stay local.
-No full-config template, automatic reverse synchronization, or project-specific
-trust replication exists.
+The built-in [`modify_` source](../../home/dot_codex/modify_private_config.toml.tmpl)
+passes the current `config.toml` to the
+[pinned TOML renderer](../../home/dot_codex/config-toml/sync-voice-prompt.py).
+That renderer updates **only the Live Voice prompt** using the
+[versioned Markdown source](../../home/dot_codex/config-toml/realtime-voice-backend-prompt.md),
+validates all other parsed settings are unchanged, and preserves unrelated
+formatting and comments. It reads and writes through standard input/output;
+chezmoi performs the actual file update with private (0600) permissions.
+A first install can initialize a missing `config.toml` without `uv`; editing
+an existing config requires `uv`, which is included in the Brewfile.
+
+**The usual `chezmoi diff` now includes pending changes to the active
+`config.toml`**, even when the installed Markdown file is already up to date
+or the prompt was edited through the Desktop UI. The existing VS Code diff
+adapter displays those changes as a readable Markdown comparison, without
+caching or opening unrelated local TOML settings.
+
+`chezmoi apply` updates the prompt only if Codex and ChatGPT Desktop are not
+running. Otherwise, the modifier leaves the active config unchanged and
+reports that the update was deferred; `chezmoi diff` continues showing the
+pending change. Close the apps and run `chezmoi apply` again. No full-file
+template, automatic reverse synchronization, or project-trust replication is
+introduced.
 
 Skills are managed by `npx skills`, not chezmoi. Authentication, sessions,
 plugin installations, databases, cache, backups, and temporary data remain
