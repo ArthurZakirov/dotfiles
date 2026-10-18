@@ -86,9 +86,13 @@ uses `uv` with a pinned `tomlkit` dependency to update **only that TOML key**.
 Existing multiline values are parsed rather than matched by line or regex;
 other settings and comments remain untouched. The updater validates the result
 and writes atomically, or fails without modifying an invalid config.
-If Codex changes the prompt through its UI, the next apply restores the
-versioned value; all other UI changes stay local. No full-config template,
-automatic reverse synchronization, or project-specific trust replication exists.
+Because Codex does not share a file lock with the updater, synchronization
+**defers while ChatGPT Desktop or Codex processes are running**. Close those
+apps and rerun `chezmoi apply` to install a newer prompt; other managed files
+still apply normally. If Codex changes the prompt through its UI, the next
+successful sync restores the versioned value; all other UI changes stay local.
+No full-config template, automatic reverse synchronization, or project-specific
+trust replication exists.
 
 Skills are managed by `npx skills`, not chezmoi. Authentication, sessions,
 plugin installations, databases, cache, backups, and temporary data remain

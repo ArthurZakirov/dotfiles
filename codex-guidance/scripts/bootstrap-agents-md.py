@@ -65,8 +65,9 @@ def _sync_runtime_agents(sources: dict[str, Path], destination_dir: Path,
             continue
         if destination.exists():
             existing = destination.read_text(encoding="utf-8", errors="replace")
-            generated = existing.startswith(RUNTIME_AGENT_MARKER) or source.suffix == ".json" and recorded_owner == layer_set
-            same_owner = _content_layer_set(existing) == layer_set or source.suffix == ".json" and recorded_owner == layer_set
+            json_owner = source.suffix == ".json" and recorded_owner is not None and recorded_owner == layer_set
+            generated = existing.startswith(RUNTIME_AGENT_MARKER) or json_owner
+            same_owner = _content_layer_set(existing) == layer_set or json_owner
             if not replace and not (generated and same_owner):
                 raise ValueError(f"Runtime guidance ownership differs; reconcile before --replace-existing: {destination}")
         planned.append((destination, content))
@@ -85,6 +86,13 @@ def _sync_runtime_agents(sources: dict[str, Path], destination_dir: Path,
     for destination, content in planned:
         print(f"{'Would install' if dry_run else 'Install'} runtime guidance: {destination}")
         if not dry_run:
+            if replace and destination.exists():
+                existing = destination.read_text(encoding="utf-8", errors="replace")
+                if not existing.startswith(RUNTIME_AGENT_MARKER):
+                    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+                    backup = destination_dir.parent / "guidance-backups" / stamp / "agents-md-references" / destination.name
+                    backup.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(destination, backup)
             _atomic_write(destination, content)
     for destination in stale:
         print(f"{'Would remove' if dry_run else 'Remove'} stale runtime guidance: {destination}")
@@ -185,7 +193,7 @@ def _apply_plans(plans: list[tuple[Path, str, bool, bool]], replace: bool,
                 backup = destination.parent / "guidance-backups" / stamp / destination.name
                 backup.parent.mkdir(parents=True, exist_ok=True)
                 if destination.is_symlink():
-                    _atomic_write(backup, destination.read_text(encoding="utf-8"))
+                    _atomic_write(backup, f"symlink -> {os.readlink(destination)}\n")
                 else:
                     shutil.copy2(destination, backup)
             destination.unlink()
@@ -457,9 +465,12 @@ def install_layered(manifest: Path, agents_home: Path, claude_home: Path,
     # CODEX_HOME. Source paths are displayed as repo-relative code, never as
     # Markdown links that would be broken after chezmoi installs AGENTS.md.
     checkout_root = Path(__file__).resolve().parents[2]
-    manifest_links = [layer.manifest.relative_to(checkout_root).as_posix() for layer in layers]
+    def display_source(path: Path) -> str:
+        return path.relative_to(checkout_root).as_posix() if path.is_relative_to(checkout_root) else path.as_posix()
+
+    manifest_links = [display_source(layer.manifest) for layer in layers]
     manifest_link = manifest_links[0]
-    component_links = [component.path.relative_to(checkout_root).as_posix() for component in components]
+    component_links = [display_source(component.path) for component in components]
     regenerate_link = Path(__file__).resolve().with_name("regenerate-agents-md.py").relative_to(checkout_root).as_posix()
     protected_sources = {component.path for component in components} | {layer.manifest for layer in layers}
     if len(layers) == 1:

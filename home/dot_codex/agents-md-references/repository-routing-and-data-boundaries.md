@@ -35,7 +35,7 @@ Personal does not automatically mean private. Publication depends on concrete pr
 
 - Google Drive is Arthur's canonical store for PDF documents. Use `PDF Documents` for administrative or official material such as forms, contracts, scanned letters, correspondence, and documents for authorities, companies, landlords, or other institutions. Use `PDF Personal` for personal material such as handwritten notes, book notes, and other private scans. Do not mix the two categories.
 - A Git repository or the current working directory is not a document store. Never infer that a repository or folder is suitable for personal documents from its name, including names such as `ArthurZakirov` or `arthur-zakirov`.
-- If PDF manipulation requires local files, including PyPDF2 merging, rendering, conversion, or form processing, use an actual temporary workspace outside Git repositories. Treat downloaded inputs, page renders, intermediate PDFs, and drafts as temporary artifacts.
+- If PDF manipulation requires local files, including merging, rendering, conversion, or form processing, use the gitignored `self-source/.local-workspace/documents/` staging area defined in the [personal document workflow](personal-document-workflow.md). Treat downloaded inputs, page renders, intermediate PDFs, and drafts as temporary artifacts; never commit them.
 - Save the intended final PDF to the correct Google Drive folder and remove the temporary local artifacts after the final document is safely stored. Do not leave durable duplicate PDFs scattered across local project folders.
 
 ## Repository routing

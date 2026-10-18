@@ -55,6 +55,30 @@ def test_apply_owns_only_deployed_codex_artifacts(profile_factory, profile):
     assert ".codex/hooks-json/bedtime-device-guard/config.json" in paths
 
 
+
+@pytest.mark.parametrize("profile", ["personal", "professional"])
+def test_hook_outputs_keep_executable_and_private_modes(profile_factory, profile, tmp_path):
+    rendered = profile_factory.render(profile)
+    paths = (
+        tmp_path / ".codex/hooks-json/bedtime-device-guard/bedtime_guard.py",
+        tmp_path / ".codex/hooks-json/bedtime-device-guard/config.json",
+    )
+    paths[0].parent.mkdir(parents=True)
+    result = subprocess.run(
+        [
+            "chezmoi", "--source", str(ROOT / "home"),
+            "--config", str(rendered.config), "--destination", str(tmp_path),
+            "apply", "--exclude", "scripts", *map(str, paths),
+        ],
+        text=True, capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert stat.S_IMODE(paths[0].stat().st_mode) == 0o755
+    assert stat.S_IMODE(paths[1].stat().st_mode) == 0o600
+
+
+
 def test_canonical_guidance_is_only_in_the_repository():
     assert (CANONICAL / "global-guidance/agents-md-manifest.yaml").is_file()
     assert (CANONICAL / "scripts/bootstrap-agents-md.py").is_file()
@@ -185,7 +209,15 @@ def test_chezmoi_hook_updates_config_in_isolated_home(profile_factory, profile, 
         encoding="utf-8",
     )
     hook_source = (ROOT / "home/run_after_85-sync-codex-voice-prompt.sh.tmpl").read_text()
-    env = {**os.environ, "HOME": str(tmp_path)}
+    # A fresh machine has no running Codex. Stub just the process probe
+    # so this isolated fixture does not depend on the host's open applications.
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    pgrep = fake_bin / "pgrep"
+    pgrep.write_text("#!/bin/sh\nexit 1\n")
+    pgrep.chmod(0o755)
+    env = {**os.environ, "HOME": str(tmp_path),
+           "PATH": f"{fake_bin}:{os.environ['PATH']}"}
     render = subprocess.run(
         [
             "chezmoi", "--source", str(ROOT / "home"),
@@ -206,6 +238,74 @@ def test_chezmoi_hook_updates_config_in_isolated_home(profile_factory, profile, 
     ).read_text()
     assert result["model"] == "machine-local"
     assert result["projects"]["/tmp/only-this-mac"]["trust_level"] == "trusted"
+
+
+@pytest.mark.parametrize("running", [True, False])
+def test_voice_prompt_sync_defers_while_codex_is_running(tmp_path, running):
+    config = tmp_path / "config.toml"
+    prompt = tmp_path / "prompt.md"
+    old = 'model = "existing"\n'
+    config.write_text(old)
+    prompt.write_text("New prompt\n")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    probe = fake_bin / "pgrep"
+    probe.write_text("#!/bin/sh\nexit " + ("0" if running else "1") + "\n")
+    probe.chmod(0o755)
+
+    result = subprocess.run(
+        [
+            "uv", "run", "--no-project", "--script",
+            str(SOURCE / "config-toml/sync-voice-prompt.py"),
+            "--defer-while-active", "--config", str(config), "--prompt", str(prompt),
+        ],
+        env={**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}"},
+        text=True, capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    if running:
+        assert "Deferred" in result.stdout
+        assert config.read_text() == old
+    else:
+        assert "Updated" in result.stdout
+        assert tomllib.loads(config.read_text())["experimental_realtime_ws_backend_prompt"] == "New prompt\n"
+
+
+def test_voice_prompt_sync_defers_when_codex_starts_during_update(tmp_path):
+    config = tmp_path / "config.toml"
+    prompt = tmp_path / "prompt.md"
+    old = 'model = "existing"\n'
+    config.write_text(old)
+    prompt.write_text("New prompt\n")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    counter = tmp_path / "probe-count"
+    probe = fake_bin / "pgrep"
+    probe.write_text(
+        '#!/bin/sh\n'
+        'count=$(cat "$PGREP_COUNT_FILE" 2>/dev/null || echo 0)\n'
+        'count=$((count + 1))\n'
+        'echo "$count" > "$PGREP_COUNT_FILE"\n'
+        '[ "$count" -eq 3 ]\n'
+    )
+    probe.chmod(0o755)
+
+    result = subprocess.run(
+        [
+            "uv", "run", "--no-project", "--script",
+            str(SOURCE / "config-toml/sync-voice-prompt.py"),
+            "--defer-while-active", "--config", str(config), "--prompt", str(prompt),
+        ],
+        env={**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}",
+             "PGREP_COUNT_FILE": str(counter)},
+        text=True, capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Deferred" in result.stdout
+    assert config.read_text() == old
+    assert not list(tmp_path.glob(".config.toml-*"))
 
 
 def test_voice_prompt_sync_preserves_symlinked_config(tmp_path):

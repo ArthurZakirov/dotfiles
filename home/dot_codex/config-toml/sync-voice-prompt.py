@@ -10,7 +10,9 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import shutil
 import stat
+import subprocess
 import tempfile
 import tomllib
 
@@ -19,7 +21,23 @@ import tomlkit
 PROMPT_KEY = "experimental_realtime_ws_backend_prompt"
 
 
-def sync_prompt(config_path: Path, prompt_path: Path) -> bool:
+def codex_is_running() -> bool:
+    """Avoid replacing a config while non-cooperating Codex writers are active."""
+    pgrep = shutil.which("pgrep")
+    if pgrep is None:
+        raise RuntimeError("Cannot verify Codex is stopped: pgrep unavailable")
+    for executable in ("ChatGPT", "codex"):
+        process = subprocess.run(
+            [pgrep, "-x", executable], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        if process.returncode == 0:
+            return True
+        if process.returncode != 1:
+            raise RuntimeError(f"Cannot check running {executable} processes")
+    return False
+
+
+def sync_prompt(config_path: Path, prompt_path: Path, *, defer_while_active: bool = False) -> bool | None:
     prompt = prompt_path.read_text(encoding="utf-8")
     if not prompt.strip():
         raise ValueError("the versioned Live Voice prompt is empty")
@@ -37,6 +55,8 @@ def sync_prompt(config_path: Path, prompt_path: Path) -> bool:
 
     if before.get(PROMPT_KEY) == prompt:
         return False
+    if defer_while_active and codex_is_running():
+        return None
 
     previous_item = document.get(PROMPT_KEY)
     document[PROMPT_KEY] = tomlkit.string(prompt, multiline=True)
@@ -69,6 +89,9 @@ def sync_prompt(config_path: Path, prompt_path: Path) -> bool:
         elif not config_path.exists() or config_path.read_bytes() != original:
             raise RuntimeError("Codex changed config.toml during synchronization")
 
+        # Recheck immediately before replacement: Codex does not share our locks.
+        if defer_while_active and codex_is_running():
+            return None
         os.replace(temporary_name, config_path)
     finally:
         if os.path.exists(temporary_name):
@@ -85,9 +108,16 @@ def main() -> None:
         type=Path,
         default=codex_home / "config-toml/realtime-voice-backend-prompt.md",
     )
+    parser.add_argument(
+        "--defer-while-active", action="store_true",
+        help="Skip the update while ChatGPT Desktop or Codex processes can write configuration",
+    )
     args = parser.parse_args()
-    changed = sync_prompt(args.config, args.prompt)
-    print("Updated Codex Live Voice prompt." if changed else "Codex Live Voice prompt already current.")
+    changed = sync_prompt(args.config, args.prompt, defer_while_active=args.defer_while_active)
+    if changed is None:
+        print("Deferred Codex Live Voice prompt sync: quit ChatGPT Desktop and Codex CLI, then rerun chezmoi apply.")
+    else:
+        print("Updated Codex Live Voice prompt." if changed else "Codex Live Voice prompt already current.")
 
 
 if __name__ == "__main__":

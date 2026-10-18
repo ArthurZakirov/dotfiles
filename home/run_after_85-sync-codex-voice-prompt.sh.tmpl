@@ -8,5 +8,6 @@ configure_homebrew
 
 codex_home={{ (printf "%s/.codex" .chezmoi.homeDir) | quote }}
 uv run --no-project --script "$codex_home/config-toml/sync-voice-prompt.py" \
+  --defer-while-active \
   --config "$codex_home/config.toml" \
   --prompt "$codex_home/config-toml/realtime-voice-backend-prompt.md"
