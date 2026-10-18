@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "start": "21:00",
+  "end": "05:00",
+  "timezone": "Europe/Berlin"
+}

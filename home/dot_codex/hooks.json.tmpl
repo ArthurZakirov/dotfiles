@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"{{ .chezmoi.homeDir }}/.codex/hooks-json/bedtime-device-guard/bedtime_guard.py\" --config \"{{ .chezmoi.homeDir }}/.codex/hooks-json/bedtime-device-guard/config.json\" --managed-by codex-bedtime-device-guard",
+            "commandWindows": "py -3 \"{{ .chezmoi.homeDir }}/.codex/hooks-json/bedtime-device-guard/bedtime_guard.py\" --config \"{{ .chezmoi.homeDir }}/.codex/hooks-json/bedtime-device-guard/config.json\" --managed-by codex-bedtime-device-guard",
+            "timeoutSec": 2,
+            "async": false
+          }
+        ]
+      }
+    ]
+  }
+}

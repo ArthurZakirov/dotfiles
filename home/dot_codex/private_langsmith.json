@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "api_url": "https://eu.api.smith.langchain.com",
+  "project": "codex",
+  "metadata": {
+    "team": "agents",
+    "environment": "dev"
+  }
+}

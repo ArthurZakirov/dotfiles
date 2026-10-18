@@ -62,7 +62,6 @@ export EDITOR="code --wait"
 # WORKFLOW COMMANDS & ALIASES
 # ------------------------------------------------------
 alias sync-systemsmith="npx --yes skills add ArthurZakirov/SystemSmith --global --agent codex --skill '*' --yes"
-alias sync-agents-md="curl -fsSL https://raw.githubusercontent.com/ArthurZakirov/AgentDesk/main/scripts/install-global-guidance.sh | sh"
 # Optional integrations become available when AgentDesk/Raycast are installed.
 raycast-quicklinks() {
   local script="$PERSONAL_REPOS_DIR/AgentDesk/scripts/generate_raycast_quicklinks.py"

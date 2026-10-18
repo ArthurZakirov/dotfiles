@@ -13,6 +13,7 @@ how to use it, and which files manage it.
 
 ## Software engineering
 
+- **[Codex configuration and guidance](codex.md)** — Versioned guidance, editor preferences, hook sources, and safely separated per-Mac Codex runtime settings.
 - **[Git review](git-review.md)** — Commit and branch diffs in disposable review folders.
 - **[Python environments](pysetup.md)** — Poetry-lock-based checkout-local virtual environments via `pysetup`.
 - **[Peekaboo computer use](peekaboo.md)** — Native macOS UI automation and Codex skill.

@@ -1,0 +1,66 @@
+[
+  {
+    "command": "composer.cycleReasoningEffort",
+    "key": "Tab Tab"
+  },
+  {
+    "command": "composer.toggleFastMode",
+    "key": "Alt+Tab"
+  },
+  {
+    "command": "composer.togglePlanMode",
+    "key": "Shift+Tab"
+  },
+  {
+    "command": "copyConversationMarkdown",
+    "key": "Command+A"
+  },
+  {
+    "command": "focusMainChat",
+    "key": null
+  },
+  {
+    "command": "forkThread",
+    "key": "Command+Shift+F"
+  },
+  {
+    "command": "globalDictationHold",
+    "key": "Alt+Shift+H"
+  },
+  {
+    "command": "globalDictationSingleTap",
+    "key": null
+  },
+  {
+    "command": "nextRecentThread",
+    "key": null
+  },
+  {
+    "command": "nextThread",
+    "key": "Ctrl+Tab"
+  },
+  {
+    "command": "openSideChat",
+    "key": "Command+Alt+Shift+B"
+  },
+  {
+    "command": "openThreadInNewWindow",
+    "key": "Command+Alt+Shift+N"
+  },
+  {
+    "command": "previousRecentThread",
+    "key": null
+  },
+  {
+    "command": "previousThread",
+    "key": "Ctrl+Shift+Tab"
+  },
+  {
+    "command": "searchChats",
+    "key": "Ctrl+Q"
+  },
+  {
+    "command": "toggleMaximizeSidePanel",
+    "key": "Command+Shift+M"
+  }
+]

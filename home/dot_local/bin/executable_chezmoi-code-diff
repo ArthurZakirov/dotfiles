@@ -58,8 +58,37 @@ snapshot_file() {
   printf '%s\n' "$to"
 }
 
-original_snapshot="$(snapshot_file "$original" before)"
-target_snapshot="$(snapshot_file "$target" after)"
+# The Codex TOML is locally maintained, except for the versioned Live Voice
+# prompt. Display that *one* projected edit as a readable Markdown diff rather
+# than an enormous escaped TOML string. Never cache other local config values.
+if [[ "$original" == */.codex/config.toml || ( "$original" == /dev/null && "${target##*/}" == config.toml ) ]]; then
+  original_snapshot="$snapshot/before/realtime-voice-backend-prompt.md"
+  target_snapshot="$snapshot/after/realtime-voice-backend-prompt.md"
+  mkdir -p "$snapshot/before" "$snapshot/after"
+  python3 - "$original" "$target" "$original_snapshot" "$target_snapshot" <<'PYTHON'
+from pathlib import Path
+import sys
+import tomllib
+
+before_path, after_path, before_md, after_md = sys.argv[1:]
+def read(path: str) -> dict:
+    return tomllib.loads(Path(path).read_text(encoding="utf-8")) if path != "/dev/null" else {}
+
+before = read(before_path)
+after = read(after_path)
+key = "experimental_realtime_ws_backend_prompt"
+if {k: v for k, v in before.items() if k != key} != {k: v for k, v in after.items() if k != key}:
+    raise ValueError("Codex TOML diff contains changes outside the versioned Live Voice prompt")
+for source, destination in ((before, before_md), (after, after_md)):
+    value = source.get(key, "")
+    if not isinstance(value, str):
+        raise ValueError("Codex Live Voice prompt is not a string")
+    Path(destination).write_text(value, encoding="utf-8")
+PYTHON
+else
+  original_snapshot="$(snapshot_file "$original" before)"
+  target_snapshot="$(snapshot_file "$target" after)"
+fi
 # Chezmoi calls this adapter separately for each changed file. Do NOT
 # background `code --wait`: launching 20 independent Code/Electron processes
 # concurrently silently drops diff tabs on an already-running macOS desktop.
