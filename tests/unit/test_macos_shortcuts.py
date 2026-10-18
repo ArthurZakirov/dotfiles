@@ -125,6 +125,29 @@ def test_profiles_preserve_native_modifier_and_string_encoded_hotkeys(example_pr
     assert not list(shortcuts.changes(example_profile, copy.deepcopy(example_profile)))
 
 
+@pytest.mark.parametrize(
+    ("managed_enabled", "live_enabled"),
+    [(1, True), (True, 1), (0, False), (False, 0)],
+)
+def test_comparison_detects_enabled_type_drift(
+    example_profile, managed_enabled, live_enabled,
+):
+    # Arrange: equivalent truth values must not hide a native plist type difference.
+    example_profile["system_hotkeys"]["15"]["enabled"] = managed_enabled
+    current = copy.deepcopy(example_profile)
+    current["system_hotkeys"]["15"]["enabled"] = live_enabled
+    shortcuts.validate(example_profile)
+
+    # Act
+    pending = list(shortcuts.changes(example_profile, current))
+
+    # Assert
+    assert pending == [
+        ("system", "15", example_profile["system_hotkeys"]["15"]),
+    ]
+    assert type(pending[0][2]["enabled"]) is type(managed_enabled)
+
+
 def test_comparison_ignores_unmanaged_shortcuts(example_profile):
     # Arrange
     current = copy.deepcopy(example_profile)
@@ -303,7 +326,9 @@ def test_chezmoi_review_opens_live_vs_managed_in_vscode_only_for_drift(
     assert len(observed) == 1
 
 
-@pytest.mark.parametrize("editor_failure", [FileNotFoundError, subprocess.CalledProcessError])
+@pytest.mark.parametrize("editor_failure", [
+    FileNotFoundError, PermissionError, subprocess.CalledProcessError,
+])
 def test_chezmoi_review_falls_back_to_text_diff_without_editor(
     example_profile, monkeypatch, capsys, editor_failure,
 ):
@@ -315,7 +340,7 @@ def test_chezmoi_review_falls_back_to_text_diff_without_editor(
     def unavailable_editor(*args, **kwargs):
         if editor_failure is subprocess.CalledProcessError:
             raise subprocess.CalledProcessError(127, args[0])
-        raise FileNotFoundError("code is unavailable")
+        raise editor_failure("code is unavailable")
 
     monkeypatch.setattr(shortcuts.subprocess, "run", unavailable_editor)
 

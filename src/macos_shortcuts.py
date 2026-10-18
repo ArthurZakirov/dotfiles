@@ -232,8 +232,12 @@ def load_profile(path):
 def changes(desired, current):
     """Yield only differences for explicitly declared keys; never delete extra entries."""
     for key, value in desired["system_hotkeys"].items():
-        if current["system_hotkeys"].get(key) != without_action(value):
-            yield ("system", key, without_action(value))
+        native = without_action(value)
+        actual = current["system_hotkeys"].get(key)
+        if (actual != native or
+                (isinstance(actual, dict) and
+                 type(actual.get("enabled")) is not type(native["enabled"]))):
+            yield ("system", key, native)
     for domain, shortcuts in desired["app_shortcuts"].items():
         actual = current["app_shortcuts"].get(domain, {})
         for title, shortcut in shortcuts.items():
@@ -339,7 +343,7 @@ def review(desired, current):
         expected.write_text(json.dumps(desired, indent=2, sort_keys=True) + "\n")
         try:
             subprocess.run(["code", "--wait", "--diff", str(actual), str(expected)], check=True)
-        except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        except (OSError, subprocess.CalledProcessError) as exc:
             print(f"VS Code shortcut diff unavailable ({exc}); showing text diff.", file=sys.stderr)
             sys.stdout.writelines(difflib.unified_diff(
                 actual.read_text().splitlines(keepends=True),

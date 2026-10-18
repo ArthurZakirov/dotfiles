@@ -170,6 +170,7 @@ with open(os.environ["FAKE_CODE_LOG"], "a") as stream:
     stream.write(json.dumps(result) + "\\n")
 """)
     fake_code.chmod(0o755)
+    logging_code = fake_code.read_text()
     env = {
         **os.environ,
         "HOME": str(home),
@@ -234,5 +235,8 @@ with open(os.environ["FAKE_CODE_LOG"], "a") as stream:
     assert input_source["enabled"] is True
     assert input_source["value"]["parameters"] == [32, 49, 786432]
     assert all(type(n) is int for n in input_source["value"]["parameters"])
+    # The final diff must use the logging editor again, so a leftover drift
+    # cannot silently fall back to text while the log stays unchanged.
+    fake_code.write_text(logging_code)
     chezmoi("diff")
     assert len(log.read_text().splitlines()) == 1
