@@ -87,6 +87,31 @@ def test_profile_rejects_invalid_configuration(example_profile, invalid):
         shortcuts.validate(example_profile)
 
 
+@pytest.mark.parametrize("enabled", [0.0, 1.0])
+def test_profile_rejects_floating_point_enabled_flag(example_profile, enabled):
+    # Arrange
+    example_profile["system_hotkeys"]["15"]["enabled"] = enabled
+
+    # Act / Assert
+    with pytest.raises(shortcuts.ShortcutError, match="enabled flag"):
+        shortcuts.validate(example_profile)
+
+
+def test_managed_input_source_shortcut_has_native_preference_types():
+    # Arrange
+    source = SCRIPT.parent.parent / "home/dot_config/macos-shortcuts/shortcuts.json"
+    profile = json.loads(source.read_text())
+
+    # Act
+    shortcuts.validate(profile)
+
+    # Assert
+    shortcut = profile["system_hotkeys"]["61"]
+    assert shortcut["enabled"] is True
+    assert shortcut["value"]["parameters"] == [32, 49, 786432]
+    assert all(type(value) is int for value in shortcut["value"]["parameters"])
+
+
 def test_profiles_preserve_native_modifier_and_string_encoded_hotkeys(example_profile):
     # Arrange
     example_profile["system_hotkeys"]["61"] = {
@@ -276,6 +301,35 @@ def test_chezmoi_review_opens_live_vs_managed_in_vscode_only_for_drift(
 
     # Assert
     assert len(observed) == 1
+
+
+@pytest.mark.parametrize("editor_failure", [FileNotFoundError, subprocess.CalledProcessError])
+def test_chezmoi_review_falls_back_to_text_diff_without_editor(
+    example_profile, monkeypatch, capsys, editor_failure,
+):
+    # Arrange
+    desired = copy.deepcopy(example_profile)
+    current = copy.deepcopy(example_profile)
+    current["app_shortcuts"]["com.openai.codex"]["New Window"] = "@~n"
+
+    def unavailable_editor(*args, **kwargs):
+        if editor_failure is subprocess.CalledProcessError:
+            raise subprocess.CalledProcessError(127, args[0])
+        raise FileNotFoundError("code is unavailable")
+
+    monkeypatch.setattr(shortcuts.subprocess, "run", unavailable_editor)
+
+    # Act
+    result = shortcuts.review(desired, current)
+
+    # Assert
+    stdout, stderr = capsys.readouterr()
+    assert result == 0
+    assert "--- macOS shortcuts (current)" in stdout
+    assert "+++ macOS shortcuts (managed)" in stdout
+    assert '"New Window": "@~n"' in stdout
+    assert '"New Window": "@$n"' in stdout
+    assert "showing text diff" in stderr
 
 
 def test_chezmoi_review_targets_login_users_home(

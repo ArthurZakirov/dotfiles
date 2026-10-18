@@ -3,6 +3,7 @@
 
 import argparse
 import copy
+import difflib
 import json
 import os
 import plistlib
@@ -174,7 +175,10 @@ def validate(profile):
     for key, entry in profile["system_hotkeys"].items():
         require(isinstance(key, str) and re.fullmatch(r"[0-9]+", key) is not None,
                 "system hotkey IDs must be numeric")
-        require(isinstance(entry, dict) and entry.get("enabled") in (True, False, 0, 1, "0", "1"),
+        enabled = entry.get("enabled") if isinstance(entry, dict) else None
+        require(type(enabled) is bool or
+                (type(enabled) is int and enabled in (0, 1)) or
+                (type(enabled) is str and enabled in ("0", "1")),
                 f"system hotkey {key} needs an enabled flag")
         require(set(entry) <= {"enabled", "value", "action"}, f"unsupported fields in hotkey {key}")
         if "action" in entry:
@@ -324,7 +328,7 @@ def projected_live_profile(desired, current):
 
 
 def review(desired, current):
-    """Open the source-of-truth VS Code diff only when managed shortcuts drift."""
+    """Show managed shortcut drift in VS Code, falling back to a text diff."""
     if not list(changes(desired, current)):
         return 0
     with tempfile.TemporaryDirectory(prefix="chezmoi-shortcuts-diff-") as tmp:
@@ -336,7 +340,13 @@ def review(desired, current):
         try:
             subprocess.run(["code", "--wait", "--diff", str(actual), str(expected)], check=True)
         except (FileNotFoundError, subprocess.CalledProcessError) as exc:
-            raise ShortcutError(f"Cannot open VS Code shortcut diff: {exc}") from exc
+            print(f"VS Code shortcut diff unavailable ({exc}); showing text diff.", file=sys.stderr)
+            sys.stdout.writelines(difflib.unified_diff(
+                actual.read_text().splitlines(keepends=True),
+                expected.read_text().splitlines(keepends=True),
+                fromfile="macOS shortcuts (current)",
+                tofile="macOS shortcuts (managed)",
+            ))
     return 0
 
 

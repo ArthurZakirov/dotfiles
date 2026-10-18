@@ -44,7 +44,9 @@ chezmoi diff
 Chezmoi compares the files it manages and opens their diffs in VS Code. Its
 diff hook also reads your current macOS shortcut settings, compares the
 managed entries against the repository's JSON, and opens a VS Code JSON diff
-whenever the shortcuts differ.
+whenever the shortcuts differ. When VS Code is unavailable, the hook prints
+a unified text diff, including with the
+`chezmoi --no-pager --use-builtin-diff diff --exclude scripts` recovery command.
 
 The shortcut diff shows **current Mac** on the left and **managed
 configuration** on the right. To adopt a change made in macOS System Settings,

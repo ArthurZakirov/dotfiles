@@ -366,12 +366,12 @@
     },
     "61": {
       "action": "Input Sources: select next input source",
-      "enabled": "1",
+      "enabled": true,
       "value": {
         "parameters": [
-          "32",
-          "49",
-          "786432"
+          32,
+          49,
+          786432
         ],
         "type": "standard"
       }

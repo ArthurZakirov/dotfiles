@@ -118,6 +118,11 @@ def test_chezmoi_diff_and_apply_synchronize_live_shortcuts(
         "enabled": not desired["system_hotkeys"][system_id]["enabled"],
     }
     prefs["com.apple.symbolichotkeys"]["AppleSymbolicHotKeys"][system_id].pop("action")
+    # A legacy exported preference on the source Mac stored input-source values as strings.
+    prefs["com.apple.symbolichotkeys"]["AppleSymbolicHotKeys"]["61"] = {
+        "enabled": "1",
+        "value": {"type": "standard", "parameters": ["32", "49", "786432"]},
+    }
     for name, content in prefs.items():
         (domain_dir / f"{name}.plist").write_bytes(plistlib.dumps(content))
     home = tmp_path / "home"
@@ -199,6 +204,15 @@ with open(os.environ["FAKE_CODE_LOG"], "a") as stream:
     assert right_system[system_id]["action"] == "Spotlight: show search"
     assert left_system[system_id]["enabled"] != right_system[system_id]["enabled"]
 
+    # Act: a failed VS Code CLI still permits the builtin, non-GUI chezmoi diff.
+    fake_code.write_text("#!/bin/sh\nexit 127\n")
+    fallback = chezmoi("--use-builtin-diff", "diff", "--exclude", "scripts")
+    assert '--- macOS shortcuts (current)' in fallback.stdout
+    assert '+++ macOS shortcuts (managed)' in fallback.stdout
+    assert '"New Window": "@~n"' in fallback.stdout
+    assert '"New Window": "@$n"' in fallback.stdout
+    assert 'showing text diff' in fallback.stderr
+
     # Act: chezmoi dry-run leaves the preferences intact; ordinary apply executes the run_after script.
     source_hook = ROOT / "home/run_after_30-apply-macos-shortcuts.sh.tmpl"
     chezmoi("apply", "--dry-run", "--source-path", str(source_hook))
@@ -214,5 +228,11 @@ with open(os.environ["FAKE_CODE_LOG"], "a") as stream:
     )["AppleSymbolicHotKeys"][system_id]
     assert actual_system["enabled"] == desired["system_hotkeys"][system_id]["enabled"]
     assert "action" not in actual_system
+    input_source = plistlib.loads(
+        (domain_dir / "com.apple.symbolichotkeys.plist").read_bytes()
+    )["AppleSymbolicHotKeys"]["61"]
+    assert input_source["enabled"] is True
+    assert input_source["value"]["parameters"] == [32, 49, 786432]
+    assert all(type(n) is int for n in input_source["value"]["parameters"])
     chezmoi("diff")
     assert len(log.read_text().splitlines()) == 1
