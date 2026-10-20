@@ -4,7 +4,7 @@
 
 Browse the software behind DevMac by component type and installation method. For the workflows these components enable, see the [feature index](features/README.md).
 
-**Scope:** `shared` = personal and professional profiles; `personal` = personal profile only. An app being declared for installation does not mean its settings, accounts, or entire runtime are managed. `Brewfile`, [`src/apps.sh`](../src/apps.sh), and the linked managed sources are authoritative; this is a readable snapshot of their intent.
+**Scope:** `shared` = personal and professional profiles; `personal` = personal profile only. An app being declared for installation does not mean its settings, accounts, or entire runtime are managed. `Brewfile`, [`src/apps.sh`](../src/apps.sh), [`src/shell-setup.sh`](../src/shell-setup.sh), and the linked managed sources are authoritative; this is a readable snapshot of their intent.
 
 ## Desktop applications (Homebrew casks)
 
@@ -59,6 +59,16 @@ These tools are installed from the [Brewfile](../Brewfile) or through [`src/apps
 | `@wonderwhy-er/desktop-commander` | Personal | [Remote command/file tooling](features/desktop-commander.md) |
 
 DevMac installs these through [`src/apps.sh`](../src/apps.sh), not the Brewfile. The official **Peekaboo** and **Agent Browser** skills are installed and validated through `npx skills`, separately from the CLI binaries.
+
+## Direct bootstrap and upstream installations
+
+| Component | Scope | Source and installation method | Purpose |
+| --- | --- | --- | --- |
+| Bitwarden Secrets Manager CLI (`bws`) | Personal | [`src/shell-setup.sh`](../src/shell-setup.sh) downloads and runs the [upstream shell installer](https://bws.bitwarden.com/install) if `bws` is missing | [Retrieve runtime secrets](features/secrets-management.md) for personal integrations |
+| Oh My Zsh | Shared | [`src/shell-setup.sh`](../src/shell-setup.sh) clones the upstream repository and checks out the revision pinned in [`home/.chezmoidata.toml`](../home/.chezmoidata.toml) | [Zsh framework](features/zsh.md) |
+| Homebrew bootstrap | Shared | [`src/homebrew.sh`](../src/homebrew.sh) installs Homebrew if absent | Install formulae and casks listed above |
+
+Unlike optional application provisioning, the `bws` installation also runs for personal profiles when `DOTFILES_SKIP_OPTIONAL_APPS=1`.
 
 ## Managed configurations, scripts, and services
 

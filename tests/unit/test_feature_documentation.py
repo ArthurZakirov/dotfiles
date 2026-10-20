@@ -63,3 +63,14 @@ def test_documentation_links_resolve():
                     for heading in headings
                 }
                 assert anchor in slugs, f"{filename}: broken heading link to {target}"
+
+
+def test_direct_bitwarden_cli_installer_is_documented():
+    installer = (ROOT / "src/shell-setup.sh").read_text()
+    assert "install_bitwarden_secrets_manager()" in installer
+    assert "https://bws.bitwarden.com/install" in installer
+
+    for path in (ROOT / "docs/provisioning.md", ROOT / "docs/tool-inventory.md"):
+        page = path.read_text()
+        assert "`bws`" in page, f"{path}: missing direct Bitwarden CLI"
+        assert "src/shell-setup.sh" in page, f"{path}: missing direct installer source"

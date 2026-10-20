@@ -2,19 +2,21 @@
 
 [← Architecture](architecture.md) · [Tool inventory](tool-inventory.md) · [Features](features/README.md)
 
-DevMac uses Homebrew, npm, and managed configuration to assemble its developer environment. This page documents package detection, installation sources, and lifecycle behavior.
+DevMac uses Homebrew, npm, direct upstream installers, and managed configuration to assemble its developer environment. This page documents package detection, installation sources, and lifecycle behavior.
 
 ## Sources of truth
 
 | Source | Responsibility |
 | --- | --- |
 | [`Brewfile`](../Brewfile) | Shared Homebrew CLI dependencies |
-| [`src/apps.sh`](../src/apps.sh) | Detection and installation of shared and profile-specific applications/CLIs |
+| [`src/apps.sh`](../src/apps.sh) | Detection and installation of shared and profile-specific applications/CLIs through Homebrew and npm |
+| [`src/shell-setup.sh`](../src/shell-setup.sh) | Orchestrates setup; installs pinned Oh My Zsh and the personal-profile `bws` CLI directly |
+| [`src/homebrew.sh`](../src/homebrew.sh) | Bootstraps Homebrew when it is missing |
 | [`src/agent-skills.sh`](../src/agent-skills.sh) | Installation, provenance, and integrity checks for supported upstream agent skills |
 | [`home/`](../home/) | Managed configuration, hooks, scripts, and macOS LaunchAgents |
 | [Tool inventory](tool-inventory.md) | Human-readable breakdown by GUI app, package manager, CLI, and managed artifact |
 
-Both Mac profiles run `install_common_apps`; the personal profile additionally runs `install_personal_apps`. Installation helpers check for existing executables or application bundles and skip recognized installations before invoking Homebrew or npm. Detection cannot prove an installed app is configured, authenticated, permitted, or working for the intended task.
+Both Mac profiles run `install_common_apps`; the personal profile additionally runs `install_personal_apps`. Installation helpers check for existing executables or application bundles and skip recognized installations before invoking Homebrew or npm. Separately, the personal-profile setup installs `bws` through the [Bitwarden upstream installer](https://bws.bitwarden.com/install) when the CLI is missing: `src/shell-setup.sh` downloads the shell installer and executes it. This step is not controlled by `DOTFILES_SKIP_OPTIONAL_APPS`. Detection cannot prove an installed app is configured, authenticated, permitted, or working for the intended task.
 
 ## What the installer does not do
 
