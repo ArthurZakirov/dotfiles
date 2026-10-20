@@ -1,38 +1,64 @@
-# 🐚 Mac setup that survives the Mac
+# DevMac
 
-## Motivation
+**An opinionated, AI-ready development experience for macOS.**
 
+AI agents can write code faster than you can review it. When inspecting the changes means setting up an environment, digging through files, and jumping between apps, it's tempting to skim a diff and approve. DevMac brings the tools and shortcuts together to make the work worth doing—and to make switching between windows, displays, and Macs just as easy.
 
+## What DevMac makes effortless
 
+### 🤖 Let agents complete tasks without babysitting
 
+Give an agent a task without becoming its copy-paste assistant. DevMac equips it to inspect files, use browser and desktop apps, and consult proven instructions—so it can work through multi-step tasks while you do something else, involving you when approval or judgment is needed.
 
-### The Problem ❌😩
+| Capability | Detailed feature documentation |
+| --- | --- |
+| Work through browser pages and supported Electron apps | [Agent Browser](docs/features/agent-browser.md) |
+| See and control native macOS interfaces | [Peekaboo](docs/features/peekaboo.md) |
+| Inspect files and run authorized local commands remotely | [Desktop Commander](docs/features/desktop-commander.md) (personal profile) |
+| Read locally installed Agent Skills from ChatGPT | [Local Agent Skills via MCP](docs/features/chatgpt-skills-mcp.md) (personal profile) |
+| Start with field-tested Codex guidance and hooks | [Codex configuration](docs/features/codex.md) |
 
-Losing access to a computer should not mean losing the tools and configurations you've spent hundreds of hours refining. 
+[Agent capabilities, practical workflow, and usage limits →](docs/workflows/agent-capabilities.md)
 
-- Your job can end unexpectedly or as planned
-- Your Mac can break, get stolen, or be forgotten somewhere. 
-- You might upgrade to a new machine. 
+### 🔎 Make keeping up with your agents' work effortless
 
-In each case, starting from scratch means reinstalling tools and rebuilding your workflow—potentially spending weeks or months recovering your former productivity.
+An agent can finish a change before you've even opened the first diff. When getting to the relevant code, tests, and context takes too many steps, a thorough review is often replaced by a quick skim—allowing mistakes and unreviewed changes to reach a pull request or even production.
 
-### The Solution ✅😊
+| Capability | Detailed feature documentation |
+| --- | --- |
+| Inspect changes in isolated, editable VS Code review workspaces | [Git review](docs/features/git-review.md) |
+| Prepare Python environments for review checkouts | [Python environments](docs/features/pysetup.md) |
+| Open repositories and configuration files quickly | [Raycast navigation](docs/features/raycast.md) |
+| Find shell commands and history with fewer keystrokes | [Zsh](docs/features/zsh.md) |
+| Control apps, windows, and Spaces from the keyboard | [Hammerspoon](docs/features/hammerspoon.md) · [macOS keyboard shortcuts](docs/features/macos-shortcuts.md) |
 
-This repository saves and shares your macOS shell and editor setup across Macs. 
-  
+[Code review and fast navigation →](docs/workflows/review-and-navigation.md)
 
-- Improvements on one Mac can be committed and applied to others
-- replacing a Mac means restoring your established setup rather than rebuilding it  
+### 🖥️ Switch effortlessly between windows, monitors, and Macs
 
-Synchronization is explicit with Git and chezmoi, not automatic in the background. 
-## What do you want to do?
+When reaching another window, screen, or computer feels like a chore, it is easier to stay where you are—even when the other workspace would be more useful.
 
-1. **[Set up or synchronize a Mac](docs/setup.md)** — Install the configuration on a new Mac or bring another Mac up to date.
-2. **[Understand how the repository works](docs/architecture.md)** — Explore how templates, profiles, packages, and installation steps fit together.
-3. **[Develop this repository](docs/development.md)** — Make changes, run tests, and validate your work.
+| Capability | Related tools / documentation |
+| --- | --- |
+| Switch windows and arrange them on one screen | AltTab · Rectangle · [Hammerspoon](docs/features/hammerspoon.md) |
+| Move between monitors and Spaces | [Hammerspoon](docs/features/hammerspoon.md) · DisplayLink |
+| Improve scaling and text readability | BetterDisplay |
+| Switch monitor inputs and move between computers | DDPM · Logi Options+ · [Shared configurations](docs/setup.md) |
 
-## 🧩 Shared features
+[Window, display, and multi-Mac workflows →](docs/workflows/workspace-control.md)
 
-See the [feature catalog](docs/features/README.md) for the shared Zsh configuration,
-application provisioning, Desktop Commander remote access, and Git review commands. Each feature has its own
-usage and managed-file documentation under `docs/features/`.
+## Explore
+
+| Want to… | Go to |
+| --- | --- |
+| Find a particular capability and its detailed instructions | [Feature index](docs/features/README.md) |
+| See which apps, CLIs, and configurations are included | [Tool inventory](docs/tool-inventory.md) |
+| Install DevMac on a Mac or safely sync an existing Mac | [Setup guide](docs/setup.md) |
+| Understand what gets installed, changed, or started | [Architecture and safety](docs/architecture.md) |
+| Change configurations, contribute, and run tests | [Development workflow](docs/development.md) |
+
+## Get started
+
+For a new, unconfigured macOS machine, follow the [setup guide](docs/setup.md) for the installation command, profile selection, permissions, and verification. **If you already use chezmoi or have existing local configuration, inspect it before applying changes.**
+
+After setup, explore the [feature index](docs/features/README.md) and complete any relevant permissions or account connections described in the feature guides.

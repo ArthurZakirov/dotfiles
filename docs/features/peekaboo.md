@@ -1,6 +1,6 @@
 # 🖥️ Peekaboo computer use
 
-[← Features](README.md) · [Application provisioning](applications.md)
+[← Features](README.md) · [Application provisioning](../provisioning.md)
 
 Both Mac profiles provision the [Peekaboo](https://github.com/openclaw/Peekaboo)
 CLI with Homebrew in [`src/apps.sh`](../../src/apps.sh). The

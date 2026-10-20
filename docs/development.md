@@ -1,4 +1,4 @@
-# Develop the repository
+# Develop DevMac
 
 [← README](../README.md) · [Architecture](architecture.md)
 

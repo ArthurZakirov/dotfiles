@@ -26,6 +26,3 @@ Inspect service status using
 `launchctl print gui/$(id -u)/com.arthur.desktop-commander-remote`.
 Running `chezmoi update` applies future changes explicitly; no credentials,
 remote connection data, or machine-local authentication material is tracked.
-This migration supersedes the archived pilot in
-[AgentDesk](https://github.com/ArthurZakirov/AgentDesk/tree/chore/park-dotfiles-extras/experiments/parked-dotfiles);
-it intentionally does **not** restore that pilot's placeholder `CLAUDE.md`.
