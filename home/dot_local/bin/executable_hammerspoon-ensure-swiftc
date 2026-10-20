@@ -32,7 +32,12 @@ if [ -n "$prefix" ]; then
 fi
 if [ -z "$found" ]; then
   echo 'Installing Swift toolchain for Hammerspoon microphone diagnostics ...' >&2
-  brew install swift >&2
+  manifest="$HOME/.local/share/dotfiles/brew/hammerspoon-swift.Brewfile"
+  if [ ! -r "$manifest" ]; then
+    echo "Missing managed Swift Brewfile: $manifest" >&2
+    exit 1
+  fi
+  brew bundle install --no-upgrade --file="$manifest" >&2
   prefix=$(brew --prefix swift)
   for candidate in "$prefix"/Swift-*.xctoolchain/usr/bin/swiftc "$prefix"/bin/swiftc; do
     if [ -x "$candidate" ]; then found=$candidate; break; fi

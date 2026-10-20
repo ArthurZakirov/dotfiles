@@ -168,10 +168,11 @@ def test_npm_installer_handles_missing_and_existing_cli(tmp_path, preinstalled):
         cli.write_text('#!/bin/sh\nexit 0\n')
         cli.chmod(0o755)
     env = {**os.environ, 'HOME': str(tmp_path), 'PATH': f"{fake_bin}:/usr/bin:/bin",
+           'DOTFILES_ROOT': str(root),
            'TEST_NPM_CALLS': str(tmp_path / 'npm-calls')}
     result = subprocess.run([
         '/bin/bash', '-c',
-        'source "$1"; install_desktop_commander_cli', 'test', str(root / 'src/apps.sh'), 'present' if preinstalled else 'missing'
+        'source "$1" && install_npm_manifest "$DOTFILES_ROOT/npm/personal.txt" && configure_desktop_commander_cli', 'test', str(root / 'src/apps.sh'), 'present' if preinstalled else 'missing'
     ], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     link = tmp_path / '.local/bin/desktop-commander-remote'

@@ -62,10 +62,10 @@ device warnings without preventing the rest of Hammerspoon from working.
 | Entrypoint and bindings | [`home/dot_hammerspoon/init.lua`](../../home/dot_hammerspoon/init.lua), [`modules/`](../../home/dot_hammerspoon/modules/) |
 | Audio check | [`modules/audio_check.lua`](../../home/dot_hammerspoon/modules/audio_check.lua) |
 | Microphone meter | [Swift source and lazy build wrapper](../../home/dot_hammerspoon/bin/) |
-| Application installation | [`src/apps.sh`](../../src/apps.sh) |
+| Application installation | [`brew/common/gui.Brewfile`](../../brew/common/gui.Brewfile) via [`src/apps.sh`](../../src/apps.sh) |
 | Existing-config migration | [`run_once_before_05-migrate-hammerspoon.sh`](../../home/run_once_before_05-migrate-hammerspoon.sh) |
 | Start, reload and health check | [`run_after_30-ensure-hammerspoon.sh`](../../home/run_after_30-ensure-hammerspoon.sh), [`hammerspoon-activate`](../../home/dot_local/bin/executable_hammerspoon-activate), [`hammerspoon-verify`](../../home/dot_local/bin/executable_hammerspoon-verify) |
-| Swift compiler setup | [`hammerspoon-ensure-swiftc`](../../home/dot_local/bin/executable_hammerspoon-ensure-swiftc) |
+| Swift compiler setup | [`hammerspoon-ensure-swiftc`](../../home/dot_local/bin/executable_hammerspoon-ensure-swiftc) and [on-demand Brewfile](../../home/dot_local/share/dotfiles/brew/hammerspoon-swift.Brewfile) |
 
 If `swiftc` is missing, the first-run hook provisions a Swift toolchain using
 Homebrew. The microphone wrapper also provisions it on demand, including if a

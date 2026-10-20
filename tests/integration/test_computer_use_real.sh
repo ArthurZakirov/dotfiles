@@ -24,23 +24,15 @@ command -v chezmoi >/dev/null
 command -v npm >/dev/null
 command -v npx >/dev/null
 
-# The actual missing-CLI installer is exercised on CI's fresh Mac. On a
-# developer Mac with an existing agent-browser, force an isolated npm install.
-source "$repo_root/src/apps.sh"
-if command -v agent-browser >/dev/null 2>&1; then
-  npm install --global agent-browser
-else
-  install_agent_browser_cli
-fi
+# The real browser and skills packages must exist inside the isolated prefix,
+# even if another copy already happens to be available on the runner's PATH.
+# Read their identities from the same manifest as normal provisioning.
+while read -r command_name package verification; do
+  case "$command_name" in ''|\#*) continue ;; esac
+  npm install --global "$package"
+done < "$repo_root/npm/common.txt"
 [[ -x "$npm_config_prefix/bin/agent-browser" ]]
 "$npm_config_prefix/bin/agent-browser" --version
-
-# The standalone Vercel skills CLI must also survive fresh setup.
-if command -v skills >/dev/null 2>&1; then
-  npm install --global skills
-else
-  install_skills_cli
-fi
 [[ -x "$npm_config_prefix/bin/skills" ]]
 "$npm_config_prefix/bin/skills" --version
 npx --no-install skills --version

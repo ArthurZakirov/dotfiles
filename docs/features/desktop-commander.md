@@ -10,7 +10,7 @@ and marker; unmanaged pre-existing installations remain untouched.
 
 | Component | Managed source |
 | --- | --- |
-| npm CLI installation | [`src/apps.sh`](../../src/apps.sh) (`install_desktop_commander_cli`) |
+| npm CLI installation | [`npm/personal.txt`](../../npm/personal.txt) via [`src/apps.sh`](../../src/apps.sh) (`install_npm_manifest`) |
 | Login service plist | [`home/private_Library/private_LaunchAgents/com.arthur.desktop-commander-remote.plist.tmpl`](../../home/private_Library/private_LaunchAgents/com.arthur.desktop-commander-remote.plist.tmpl) |
 | Bootstrap and reload | [`home/run_after_20-ensure-desktop-commander-launch-agent.sh.tmpl`](../../home/run_after_20-ensure-desktop-commander-launch-agent.sh.tmpl) |
 | Profile exclusion | [`home/.chezmoiignore.tmpl`](../../home/.chezmoiignore.tmpl) |
