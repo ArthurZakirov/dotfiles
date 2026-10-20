@@ -18,7 +18,7 @@ Browse the software behind DevMac by component type and installation method. For
 | Hammerspoon | Shared | [Managed window, Spaces, and application hotkeys](features/hammerspoon.md) |
 | Logi Options+ | Shared | [Mouse/keyboard workflows, including compatible Flow setups](workflows/workspace-control.md) |
 | Logi Tune | Shared | Logitech device and audio settings |
-| Raycast | Shared | [Repository and configuration navigation](features/raycast.md) |
+| Raycast | Shared | Application launcher and search |
 | Warp | Shared | Terminal for shell-based workflows |
 | Visual Studio Code | Shared | [Review workspace and diff navigation](features/git-review.md) |
 | Google Chrome | Shared | Web navigation and developer workflows |
@@ -78,7 +78,6 @@ Unlike optional application provisioning, the `bws` installation also runs for p
 | Local scripts / VS Code integration | Git review, `pysetup`, review UI extension | [Review and isolated Python checkouts](workflows/review-and-navigation.md) |
 | Hammerspoon Lua + activation | Hotkeys, display movement, Spaces, audio checks | [Hammerspoon](features/hammerspoon.md) |
 | macOS preference import/export | Native system, application, service shortcuts | [macOS shortcuts](features/macos-shortcuts.md) |
-| Raycast Script Commands + onboarding hook | Quick access to known configuration files and Repository Manager listing | [Raycast](features/raycast.md); Store installation is interactive |
 | Codex guidance, hooks, selected settings | Codex behavior and prompt customization | [Codex](features/codex.md); other local Codex settings remain unmanaged |
 | LaunchAgent + remote CLI | Desktop Commander at login | [Personal remote access](features/desktop-commander.md) |
 | LaunchAgent + Python MCP server + tunnel client | Read installed Agent Skills through ChatGPT | [Personal skills bridge](features/chatgpt-skills-mcp.md) |

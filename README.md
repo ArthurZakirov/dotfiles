@@ -28,7 +28,7 @@ An agent can finish a change before you've even opened the first diff. When gett
 | --- | --- |
 | Inspect changes in isolated, editable VS Code review workspaces | [Git review](docs/features/git-review.md) |
 | Prepare Python environments for review checkouts | [Python environments](docs/features/pysetup.md) |
-| Open repositories and configuration files quickly | [Raycast navigation](docs/features/raycast.md) |
+| Launch applications quickly | Raycast ([tool inventory](docs/tool-inventory.md#desktop-applications-homebrew-casks)) |
 | Find shell commands and history with fewer keystrokes | [Zsh](docs/features/zsh.md) |
 | Control apps, windows, and Spaces from the keyboard | [Hammerspoon](docs/features/hammerspoon.md) · [macOS keyboard shortcuts](docs/features/macos-shortcuts.md) |
 
