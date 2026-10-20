@@ -35,8 +35,8 @@ On a normal interactive Mac, `chezmoi apply` creates the scripts and opens
 Repository Manager's official Store listing **once per machine**. Confirm
 installation in Raycast, then:
 
-1. In Raycast, open **Settings → Extensions → Script Commands**, add
-   `~/.config/raycast/scripts` as a Script Directory.
+1. In Raycast, open **Settings → Script Commands → Add Script Directory** and
+   select `~/.config/raycast/scripts`.
 2. Open Repository Manager's preferences, set your Git projects path and VS Code
    as editor, and choose **Open in Editor** as its primary action.
 3. Assign `Option+R` to Repository Manager's repository-list command in Raycast.
