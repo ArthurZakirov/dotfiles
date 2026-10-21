@@ -32,22 +32,23 @@ main() {
     personal|professional) ;;
     *) echo "Unsupported Mac profile: $DOTFILES_PROFILE" >&2; return 2 ;;
   esac
-  dotfiles_section "01 / HOMEBREW - REQUIRED DEPENDENCIES"
+  dotfiles_section "01 / DEPENDENCIES"
+  dotfiles_subsection "HOMEBREW / BOOTSTRAP"
   install_homebrew
   configure_homebrew
   install_homebrew_packages
   # GitHub's ephemeral runners test rendering and shell provisioning, not GUI
   # downloads. Regular Macs always execute the full application setup.
   if [[ "${DOTFILES_SKIP_OPTIONAL_APPS:-}" != 1 ]]; then
-    dotfiles_section "02 / SHARED APPLICATIONS AND CLI TOOLS"
+    dotfiles_subsection "COMMON APPLICATIONS AND CLI TOOLS"
     install_optional_dependencies common
     verify_node_toolchain
     run_pending_brew_actions
   fi
-  dotfiles_section "03 / SHELL FRAMEWORK AND REQUIRED TOOLS"
+  dotfiles_subsection "SHELL FRAMEWORK AND GIT"
   install_git_dependencies common || return
   install_git_dependencies "$DOTFILES_PROFILE" || return
   install_manual_dependencies common || return
-  dotfiles_section "04 / PROFILE DEPENDENCIES - $DOTFILES_PROFILE"
+  dotfiles_subsection "PROFILE DEPENDENCIES / $DOTFILES_PROFILE"
   install_profile_dependencies "$DOTFILES_PROFILE"
 }

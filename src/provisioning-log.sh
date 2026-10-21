@@ -6,3 +6,8 @@ dotfiles_section() {
   printf '  %s\n' "$1"
   printf '============================================================\n\n'
 }
+
+# Nested headings are intentionally less prominent than lifecycle phases.
+dotfiles_subsection() {
+  printf "\n  -- %s --\n" "$1"
+}

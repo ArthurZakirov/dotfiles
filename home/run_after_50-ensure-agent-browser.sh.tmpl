@@ -17,9 +17,10 @@ done
 
 if [ -r "$DOTFILES_ROOT/src/provisioning-log.sh" ]; then
   source "$DOTFILES_ROOT/src/provisioning-log.sh"
-  dotfiles_section "BROWSER AUTOMATION - AGENT BROWSER"
 fi
 source "$DOTFILES_ROOT/src/agent-skills.sh"
 source "$DOTFILES_ROOT/src/agent-browser-runtime.sh"
+dotfiles_subsection "NPX SKILLS / AGENT BROWSER"
 ensure_agent_skill agent-browser vercel-labs/agent-browser
+dotfiles_subsection "BROWSER RUNTIME"
 ensure_agent_browser_runtime

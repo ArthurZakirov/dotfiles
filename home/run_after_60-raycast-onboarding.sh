@@ -12,8 +12,10 @@ if [ ! -d /Applications/Raycast.app ] && [ ! -d "$HOME/Applications/Raycast.app"
   exit 0
 fi
 
+printf "\n  -- RAYCAST --\n"
 marker="$HOME/.cache/chezmoi/raycast-repository-manager-store-opened"
 if [ -e "$marker" ]; then
+  echo "Raycast: Repository Manager onboarding already offered."
   exit 0
 fi
 

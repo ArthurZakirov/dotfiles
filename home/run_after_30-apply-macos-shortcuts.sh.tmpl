@@ -6,7 +6,7 @@ set -euo pipefail
 # The importer checks that chezmoi targets the current login user's home.
 if [ -r {{ (printf "%s/src/provisioning-log.sh" .chezmoi.workingTree) | quote }} ]; then
   source {{ (printf "%s/src/provisioning-log.sh" .chezmoi.workingTree) | quote }}
-  dotfiles_section "MACOS KEYBOARD SHORTCUTS"
+  dotfiles_section "MACOS CONFIGURATION"
 fi
 python3 {{ (printf "%s/src/macos_shortcuts.py" .chezmoi.workingTree) | quote }} apply {{ (printf "%s/home/dot_config/macos-shortcuts/shortcuts.json" .chezmoi.workingTree) | quote }} --yes
 {{ end -}}
