@@ -15,22 +15,58 @@ account settings. Raycast Cloud Sync is not needed.
 | --- | --- | --- |
 | Launch installed applications | Raycast's built-in app search | Raycast app installed by DevMac; no extension required |
 | Find Git repositories | [Repository Manager](https://www.raycast.com/francesco_mecchi/repository-manager), a Store extension | Install in Raycast, configure projects path and VS Code, assign `Option+R` |
-| Open configuration files | [Raycast Script Commands](https://manual.raycast.com/script-commands) managed with chezmoi | Register `~/.config/raycast/scripts` once |
-| Other Quicklinks | Keep existing local Raycast Quicklinks | Existing Quicklinks remain unchanged |
+| Open specific files and folders | [Raycast Script Commands](https://manual.raycast.com/script-commands) managed with chezmoi | Register `~/.config/raycast/scripts` once |
 
-The included Script Commands open the following **existing files** in VS Code:
+**Repository Manager lists Git repositories dynamically; it does not provide
+shortcuts to arbitrary files or directories.** Raycast discovers the separately
+managed Script Commands from `~/.config/raycast/scripts`. Register that folder
+once per Mac; subsequent `chezmoi apply` runs update its contents without
+regenerating or importing Quicklinks JSON.
 
-| Raycast command | Path |
+Each command file supplies only its searchable Raycast metadata and a target
+argument. One shared launcher handles file/folder checks and opens the target
+in VS Code. For example, `.zshrc` delegates to:
+
+```bash
+exec "$HOME/.config/raycast/lib/open-target.sh" file "$HOME/.zshrc"
+```
+
+The launcher lives under `~/.config/raycast/lib`, **outside** the registered
+Script Commands directory, so Raycast does not index it as another command.
+It also resolves the `chezmoi dotfiles` repository dynamically.
+
+## Managed file and folder shortcuts
+
+The following eight commands replace the entries in the existing local
+`~/.config/raycast/quicklinks.json`. Their Raycast titles match the original
+Quicklink names, and they open the same destinations in VS Code:
+
+| Raycast command | Destination | Type |
+| --- | --- | --- |
+| `quicklinks.json` | `~/.config/raycast/quicklinks.json` | File |
+| `.local/bin scripts` | `~/.local/bin` | Folder |
+| `.zshrc` | `~/.zshrc` | File |
+| `repos/personal` | `~/Repos/personal` | Folder |
+| `repos` | `~/Repos` | Folder |
+| `config.toml` | `~/.codex/config.toml` | File |
+| `.codex` | `~/.codex` | Folder |
+| `chezmoi dotfiles` | Git root containing `chezmoi source-path` | Folder |
+
+The `chezmoi dotfiles` command resolves the repository root dynamically, so it
+does not depend on a machine-specific checkout or symlink. The repository
+shortcuts use DevMac's `~/Repos` directory convention.
+
+Three additional commands open the config files discussed when designing this
+feature:
+
+| Raycast command | Destination |
 | --- | --- |
-| Open Codex AGENTS.md | `~/.codex/AGENTS.md` |
-| Open Codex config.toml | `~/.codex/config.toml` |
-| Open .zshrc | `~/.zshrc` |
-| Open AWS config | `~/.aws/config` |
-| Open Databricks config | `~/.databrickscfg` |
+| `Open Codex AGENTS.md` | `~/.codex/AGENTS.md` |
+| `Open AWS config` | `~/.aws/config` |
+| `Open Databricks config` | `~/.databrickscfg` |
 
-Missing configuration files produce an error. **The commands never create
-blank credentials/config files.** Machine-specific files and their contents are
-not checked into Git.
+Missing targets produce an error rather than creating blank files or folders.
+Machine-specific configuration and credentials remain outside Git.
 
 ## First-time initialization
 
@@ -66,7 +102,8 @@ marker is not an installation-health indicator. With
 
 | Purpose | Source |
 | --- | --- |
-| Five Script Commands | [`home/dot_config/raycast/scripts/`](../../home/dot_config/raycast/scripts/) |
+| Eleven Raycast command wrappers | [`home/dot_config/raycast/scripts/`](../../home/dot_config/raycast/scripts/) |
+| Shared target-opening launcher | [`home/dot_config/raycast/lib/executable_open-target.sh`](../../home/dot_config/raycast/lib/executable_open-target.sh) |
 | One-time Store onboarding | [`home/run_after_60-raycast-onboarding.sh`](../../home/run_after_60-raycast-onboarding.sh) |
 | Raycast app provisioning | [`src/apps.sh`](../../src/apps.sh) |
 | Tests | [`tests/integration/test_raycast.py`](../../tests/integration/test_raycast.py) |

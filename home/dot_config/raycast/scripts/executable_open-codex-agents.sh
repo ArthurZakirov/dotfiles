@@ -5,12 +5,4 @@
 # @raycast.packageName Configuration Files
 # @raycast.description Open Codex agent instructions in VS Code
 
-set -euo pipefail
-
-target="$HOME/.codex/AGENTS.md"
-if [[ ! -f "$target" ]]; then
-  printf 'File not found: %s\n' "$target" >&2
-  exit 1
-fi
-
-open -a "Visual Studio Code" "$target"
+exec "$HOME/.config/raycast/lib/open-target.sh" file "$HOME/.codex/AGENTS.md"
