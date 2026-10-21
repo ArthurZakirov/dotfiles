@@ -29,7 +29,7 @@ for candidate in "$HOME"/Library/LaunchAgents/com.*.skillport-mcp.plist; do
 done
 
 {{ if eq .profile "personal" -}}
-if [ "$(uname -s)" != Darwin ] || [ "${DOTFILES_SKIP_OPTIONAL_APPS:-}" = 1 ]; then
+if [ "$(uname -s)" != Darwin ]; then
   exit 0
 fi
 

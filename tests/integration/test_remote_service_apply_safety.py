@@ -40,8 +40,7 @@ def test_live_remote_service_survives_apply_by_default(profile, profile_factory,
     env = {**os.environ, "HOME": str(home),
            "PATH": f"{fake_bin}:{os.environ['PATH']}",
            "LAUNCHCTL_LOG": str(live_log),
-           "DOTFILES_SKIP_OPTIONAL_APPS": "0",
-           "DOTFILES_ALLOW_SERVICE_INTERRUPTION": "0"}
+              "DOTFILES_ALLOW_SERVICE_INTERRUPTION": "0"}
     run = subprocess.run(["/bin/sh", str(hook)], env=env,
                          text=True, capture_output=True, timeout=15)
     assert run.returncode == 0, run.stderr
@@ -80,8 +79,7 @@ def test_service_restart_is_explicit(profile_factory, tmp_path):
                          env={**os.environ, "HOME": str(home),
                               "PATH": f"{stub}:{os.environ['PATH']}",
                               "LAUNCHCTL_LOG": str(commands),
-                              "DOTFILES_SKIP_OPTIONAL_APPS": "0",
-                              "DOTFILES_ALLOW_SERVICE_INTERRUPTION": "1"},
+                                                    "DOTFILES_ALLOW_SERVICE_INTERRUPTION": "1"},
                          text=True, capture_output=True, timeout=15)
     assert run.returncode == 0, run.stderr
     assert commands.read_text().splitlines() == ["bootout", "bootstrap"]

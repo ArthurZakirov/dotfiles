@@ -15,7 +15,8 @@ jobs:
           persist-credentials: false
       - name: Install shell dependencies for read-only tests
         run: |
-          brew bundle install --no-upgrade --file=dependencies/brew/required.Brewfile
+          # Test-only runtime prerequisites; application provisioning is exercised with stubs.
+          brew install chezmoi fzf zsh-autosuggestions zsh-syntax-highlighting python uv
           brew install luajit # Run Hammerspoon Lua scenarios against the real Lua modules.
           git clone https://github.com/ohmyzsh/ohmyzsh.git "$HOME/.oh-my-zsh"
           revision=$(cat dependencies/git/common/oh-my-zsh.commit)
@@ -41,10 +42,9 @@ jobs:
           persist-credentials: false
       - name: Install chezmoi for integration test
         run: brew install chezmoi
-      - name: Provision isolated temporary HOME
+      - name: Render and apply managed files in isolated HOME (no installer hooks)
         env:
           DOTFILES_PROFILE: ${{ matrix.profile }}
-          DOTFILES_SKIP_OPTIONAL_APPS: "1"
         run: bash ./tests/integration/run_fresh_home.sh
 
   computer-use-e2e:

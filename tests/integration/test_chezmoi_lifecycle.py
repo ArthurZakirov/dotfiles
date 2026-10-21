@@ -37,8 +37,7 @@ def test_full_managed_tree_diff_apply_and_upgrade(profile, tmp_path, profile_fac
     env = {**os.environ, "HOME": str(home),
            "PATH": f"{bin_dir}:{os.environ['PATH']}",
            "CHEZMOI_DIFF_LOG": str(log),
-           "DOTFILES_SKIP_OPTIONAL_APPS": "1",
-           "CHEZMOI_CODE_DIFF_SETTLE_SECONDS": "0"}
+              "CHEZMOI_CODE_DIFF_SETTLE_SECONDS": "0"}
     config = rendered.config
 
     def command(action, *args):

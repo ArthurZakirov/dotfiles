@@ -1,9 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-# Optional GUI tooling cannot be installed in headless CI.
+# GUI tooling requires macOS; isolated CI exercises rendering without script hooks.
 [[ "$(uname -s)" == Darwin ]] || exit 0
-[[ "${DOTFILES_SKIP_OPTIONAL_APPS:-0}" == 1 ]] && exit 0
 
 DOTFILES_ROOT={{ .chezmoi.workingTree | quote }}
 # The before-hook's PATH changes do not persist into this process.

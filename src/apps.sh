@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install optional apps only when the existing application or CLI is missing.
+# Install profile-scoped apps only when the existing application or CLI is missing.
 # Package identities live in Brewfiles and npm manifests, not in shell code.
 
 app_exists() {
@@ -36,30 +36,40 @@ install_missing_cli_cask() {
 
 install_missing_formula() {
   local command_name="$1" formula="$2"
-  if command -v "$command_name" >/dev/null 2>&1; then
+  if [[ -n "$command_name" ]] && command -v "$command_name" >/dev/null 2>&1; then
     echo "Already installed: $command_name"
     return 0
   fi
   if brew list --formula "$formula" >/dev/null 2>&1; then
-    echo "Already installed: $formula (Homebrew; binary not on PATH)"
+    if [[ -z "$command_name" ]]; then
+      echo "Already installed: $formula (Homebrew)"
+    else
+      echo "Already installed: $formula (Homebrew; binary not on PATH)"
+    fi
     return 0
   fi
   echo "Installing: $formula"
   brew install "$formula"
 }
 
-# The optional Brewfiles use valid brew/cask declarations with annotations.
+# The Brewfiles use valid brew/cask declarations with optional annotations.
 # Keep the command/app checks in Bash: a plain 'brew bundle install' would not
 # preserve the skip behavior for apps that were installed outside Homebrew.
-install_optional_brewfile() {
+install_brew_manifest() {
   local file="$1" line kind package check_type check_value post_action
   local -a app_names
   local pattern='^(brew|cask)[[:space:]]+"([^"]+)"[[:space:]]+#[[:space:]]+(binary|apps):[[:space:]]*(.+)$'
+  local formula_pattern='^brew[[:space:]]+"([^"]+)"$'
   [[ -r "$file" ]] || { echo "Missing Brewfile: $file" >&2; return 1; }
   while IFS= read -r line || [[ -n "$line" ]]; do
     case "$line" in ''|\#*) continue ;; esac
+    # Some formulae (e.g. shell plugins) expose no executable.
+    if [[ "$line" =~ $formula_pattern ]]; then
+      install_missing_formula "" "${BASH_REMATCH[1]}" || return
+      continue
+    fi
     if [[ ! "$line" =~ $pattern ]]; then
-      echo "Invalid optional Brewfile entry in $file: $line" >&2
+      echo "Invalid Brewfile entry in $file: $line" >&2
       return 2
     fi
     kind="${BASH_REMATCH[1]}"
@@ -84,7 +94,7 @@ install_optional_brewfile() {
         install_missing_cask "$package" "${app_names[@]}" || return
         ;;
       *)
-        echo "Unsupported optional Brewfile entry in $file: $line" >&2
+        echo "Unsupported Brewfile entry in $file: $line" >&2
         return 2
         ;;
     esac
@@ -134,13 +144,13 @@ install_npm_manifest() {
 }
 
 # Profile and package membership are declared under dependencies/.
-install_optional_dependencies() {
+install_manifest_dependencies() {
   local scope="$1" category file
   PENDING_BREW_ACTIONS=()
-  for category in gui cli; do
+  for category in cli gui; do
     file="$DOTFILES_ROOT/dependencies/brew/$scope/$category.Brewfile"
     [[ -f "$file" ]] || continue
-    install_optional_brewfile "$file" || return
+    install_brew_manifest "$file" || return
   done
   file="$DOTFILES_ROOT/dependencies/npm/$scope.txt"
   if [[ -f "$file" ]]; then

@@ -1,8 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Never launch a GUI app in optional-app CI or without an active macOS GUI session.
-[[ "${DOTFILES_SKIP_OPTIONAL_APPS:-0}" == "1" ]] && exit 0
+# Never launch a GUI app without an active macOS GUI session.
 [[ "$(uname -s)" == "Darwin" ]] || exit 0
 
 app="${HAMMERSPOON_APP_PATH:-/Applications/Hammerspoon.app}"

@@ -1,11 +1,11 @@
 #!/bin/bash
-# Actual end-to-end provisioning. Must run only on an ephemeral macOS CI runner.
+# Real isolated chezmoi rendering/apply (without running installation or service hooks).
 fixture_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$fixture_root/tests/support/assertions.sh"
 
 require_ephemeral_runner() {
   [[ "${GITHUB_ACTIONS:-}" == true && -n "${RUNNER_TEMP:-}" ]] || {
-    fail "Fresh-home provisioning is permitted only on an ephemeral GitHub Actions runner."
+    fail "Fresh-home rendering is permitted only on an ephemeral GitHub Actions runner."
   }
 }
 
@@ -28,10 +28,10 @@ given_isolated_home() {
   config="$HOME/.config/chezmoi/chezmoi.toml"
 }
 
-when_chezmoi_provisions_machine() {
+when_chezmoi_renders_machine() {
   local args=(
     --source "$source_dir" --destination "$HOME" --config "$config"
-    init --apply
+    init
     --promptChoice "Mac profile=$profile"
     --promptString "GitHub username=$GITHUB_USERNAME"
   )
@@ -47,24 +47,23 @@ when_chezmoi_provisions_machine() {
     git clone --local "$fixture_root" "$source_dir"
   fi
   chezmoi "${args[@]}"
+  chezmoi --source "$source_dir" --destination "$HOME" --config "$config" \
+    apply --exclude scripts --force
 }
 
-then_shared_setup_is_installed() {
+then_shared_setup_is_rendered() {
   assert_file_exists "$HOME/.zshrc"
   assert_file_exists "$config"
-  assert_directory_exists "$HOME/.oh-my-zsh"
   /bin/zsh -n "$HOME/.zshrc"
   assert_file_contains "$config" "profile = \"$profile\""
   assert_file_contains "$config" 'command = "code"'
 }
 
-then_profile_specific_setup_is_installed() {
+then_profile_specific_setup_is_rendered() {
   case "$profile" in
     personal)
       assert_file_contains "$HOME/.zshrc" 'LANGSMITH_TRACING=true'
       assert_file_contains "$HOME/.zshrc" 'bws()'
-      export PATH="$HOME/.local/bin:$PATH"
-      command -v bws >/dev/null || fail "Bitwarden CLI missing after personal setup"
       ;;
     professional)
       assert_file_excludes "$HOME/.zshrc" 'LANGSMITH_TRACING=true'

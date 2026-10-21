@@ -68,9 +68,8 @@ esac
            'TEST_CALLS': str(tmp_path / 'calls'),
            'TEST_RUNNING': str(tmp_path / 'running')}
 
-    def apply(optional_skip=False, check=True, allow_interrupt=False):
-        run_env = {**env, 'DOTFILES_SKIP_OPTIONAL_APPS': '1' if optional_skip else '0',
-                   'DOTFILES_ALLOW_SERVICE_INTERRUPTION': '1' if allow_interrupt else '0'}
+    def apply(check=True, allow_interrupt=False):
+        run_env = {**env, 'DOTFILES_ALLOW_SERVICE_INTERRUPTION': '1' if allow_interrupt else '0'}
         return subprocess.run(['/bin/sh', str(script)], env=run_env, text=True,
                               capture_output=True, check=check)
 
@@ -134,14 +133,6 @@ def test_stopped_agent_is_recovered(agent):
     apply()
     assert running.exists()
     assert sum(c.startswith('bootstrap ') for c in calls()) == 2
-
-
-def test_optional_apps_skip_does_not_start_agent(agent):
-    home, _, running, apply, calls = agent
-    apply(optional_skip=True)
-    assert not running.exists()
-    assert not calls()
-    assert not (home / 'Library/Caches/chezmoi' / f'{LABEL}.sha256').exists()
 
 
 def test_invalid_plist_does_not_touch_running_service(agent):

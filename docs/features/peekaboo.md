@@ -17,8 +17,7 @@ changed since the previous apply, are not overwritten. After deliberately
 updating the skill with `npx --no-install skills update -g peekaboo -y`, inspect
 its contents; only then remove the digest marker to allow the next `apply` to
 adopt the change. Skills are not copied into the repository and no other
-agent's skill location is touched. The optional install is skipped under
-`DOTFILES_SKIP_OPTIONAL_APPS=1` for headless CI.
+agent's skill location is touched. Headless CI validates the rendered configuration with script hooks excluded.
 
 ## macOS permissions and verification
 

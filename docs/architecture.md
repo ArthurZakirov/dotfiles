@@ -17,8 +17,8 @@ DevMac is experienced as a set of developer workflows, but delivered through app
 | [`home/run_before_10-install-shell.sh.tmpl`](../home/run_before_10-install-shell.sh.tmpl) | Runs the shell installation process. |
 | [`src/shell-setup.sh`](../src/shell-setup.sh) | Reusable shell, editor, and profile installers; selects personal or professional integrations. |
 | [`src/homebrew.sh`](../src/homebrew.sh) | Installs Homebrew if missing and configures its shell environment. |
-| [`src/apps.sh`](../src/apps.sh) | Reads optional Homebrew and npm manifests; preserves checks for existing apps and CLI tools. |
-| [`dependencies/`](../dependencies/) | Canonical inventory of required, optional, on-demand, Git and manually installed dependencies, organized by profile and tool type. |
+| [`src/apps.sh`](../src/apps.sh) | Reads profile-scoped Homebrew and npm manifests; preserves checks for existing apps and CLI tools. |
+| [`dependencies/`](../dependencies/) | Canonical inventory of common and personal dependencies, organized by tool type, including feature-specific runtime prerequisites. |
 | [`src/setup-actions.sh`](../src/setup-actions.sh) | Implements package-specific lifecycle actions without deciding which profile owns them. |
 | [`home/dot_zshrc.tmpl`](../home/dot_zshrc.tmpl) | Renders shell history, completion, prompt, Git helpers, fzf, and plugins. |
 | [`home/dot_gitconfig`](../home/dot_gitconfig) | Renders the shared Git aliases and an optional machine-local override. |
@@ -28,9 +28,14 @@ DevMac is experienced as a set of developer workflows, but delivered through app
 The installation hook runs before the managed `~/.zshrc` is applied, so required shell dependencies are available on first shell startup. The backup hook is run-once; the installer hook is idempotent and checks dependencies on subsequent applies.
 
 
-## CI provisioning scope
+## CI validation scope
 
-The GitHub Actions fresh-home jobs set `DOTFILES_SKIP_OPTIONAL_APPS=1` to skip optional GUI downloads and third-party CLIs. They still exercise chezmoi templates, shell hooks, Oh My Zsh, shared Brewfile packages and (for personal) the Bitwarden Secrets Manager CLI. This avoids flaky upstream app download checksums and very slow GUI installs; mocked tests validate application installation decisions, and an isolated integration test verifies the VS Code `code` symlink behavior.
+GitHub Actions `fresh-home` jobs render and apply the full managed file tree to
+ephemeral HOME directories with script hooks excluded, so they do not
+download GUI applications or start services. Installer behavior is tested
+separately using stubs in the `profiles` job. Real integration tests cover
+selected tools and editor workflows. There is no `skip optional apps` mode
+on an ordinary Mac: `chezmoi apply` ensures dependencies declared for its profile.
 
 ## Synchronization and safety
 

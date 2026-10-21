@@ -11,7 +11,7 @@ test_professional_profile_installs_shared_tools_only() {
   main
 
   # THEN the common installers run, without Bitwarden
-  assert_installation_sequence "homebrew configure packages apps node-tools vscode-cli oh-my-zsh"
+  assert_installation_sequence "homebrew configure apps vscode-cli node-tools oh-my-zsh"
 }
 
 test_personal_profile_installs_bitwarden_after_shared_tools() {
@@ -22,7 +22,7 @@ test_personal_profile_installs_bitwarden_after_shared_tools() {
   main
 
   # THEN its profile factory adds the Bitwarden installer
-  assert_installation_sequence "homebrew configure packages apps node-tools vscode-cli oh-my-zsh bitwarden personal-apps"
+  assert_installation_sequence "homebrew configure apps vscode-cli node-tools oh-my-zsh personal-apps bitwarden"
 }
 
 test_personal_factory_calls_bitwarden_installer() {
@@ -33,7 +33,7 @@ test_personal_factory_calls_bitwarden_installer() {
   install_profile_dependencies personal
 
   # THEN only Bitwarden Secrets Manager is requested
-  assert_installation_sequence "bitwarden personal-apps"
+  assert_installation_sequence "personal-apps bitwarden"
 }
 
 test_professional_factory_has_no_additional_tools() {
@@ -47,12 +47,10 @@ test_professional_factory_has_no_additional_tools() {
   assert_installation_sequence ""
 }
 
-test_ci_skips_optional_app_downloads() {
+test_full_profiles_do_not_need_optional_skip_flags() {
   given_profile personal
-  DOTFILES_SKIP_OPTIONAL_APPS=1
   main
-  assert_installation_sequence "homebrew configure packages oh-my-zsh bitwarden"
-  unset DOTFILES_SKIP_OPTIONAL_APPS
+  assert_installation_sequence "homebrew configure apps vscode-cli node-tools oh-my-zsh personal-apps bitwarden"
 }
 
 test_invalid_profile_fails_before_installing_anything() {
@@ -75,7 +73,7 @@ main_tests() {
   test_personal_profile_installs_bitwarden_after_shared_tools
   test_personal_factory_calls_bitwarden_installer
   test_professional_factory_has_no_additional_tools
-  test_ci_skips_optional_app_downloads
+  test_full_profiles_do_not_need_optional_skip_flags
   test_invalid_profile_fails_before_installing_anything
   echo "shell setup: 6 Given/When/Then cases passed (no installers executed)"
 }

@@ -3,7 +3,7 @@
 # on each Mac without touching Raycast's local databases or private history.
 set -eu
 
-if [ "${DOTFILES_SKIP_OPTIONAL_APPS:-0}" = 1 ] || [ "$(uname -s)" != Darwin ]; then
+if [ "$(uname -s)" != Darwin ]; then
   exit 0
 fi
 

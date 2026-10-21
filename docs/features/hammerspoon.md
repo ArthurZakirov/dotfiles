@@ -65,7 +65,7 @@ device warnings without preventing the rest of Hammerspoon from working.
 | Application installation | [`dependencies/brew/common/gui.Brewfile`](../../dependencies/brew/common/gui.Brewfile) via [`src/apps.sh`](../../src/apps.sh) |
 | Existing-config migration | [`run_once_before_05-migrate-hammerspoon.sh`](../../home/run_once_before_05-migrate-hammerspoon.sh) |
 | Start, reload and health check | [`run_after_30-ensure-hammerspoon.sh`](../../home/run_after_30-ensure-hammerspoon.sh), [`hammerspoon-activate`](../../home/dot_local/bin/executable_hammerspoon-activate), [`hammerspoon-verify`](../../home/dot_local/bin/executable_hammerspoon-verify) |
-| Swift compiler setup | [`hammerspoon-ensure-swiftc`](../../home/dot_local/bin/executable_hammerspoon-ensure-swiftc) and [on-demand Brewfile](../../dependencies/brew/common/on-demand/hammerspoon-swift.Brewfile) |
+| Swift compiler setup | [`hammerspoon-ensure-swiftc`](../../home/dot_local/bin/executable_hammerspoon-ensure-swiftc) and [feature-runtime Brewfile](../../dependencies/brew/common/features/hammerspoon-swift.Brewfile) |
 
 If `swiftc` is missing, the first-run hook provisions a Swift toolchain using
 Homebrew. The microphone wrapper also provisions it on demand, including if a

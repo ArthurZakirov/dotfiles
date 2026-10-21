@@ -183,7 +183,6 @@ with open(os.environ["FAKE_CODE_LOG"], "a") as stream:
         "FAKE_PREF_DIR": str(domain_dir),
         "FAKE_CODE_LOG": str(log),
         "MACOS_SHORTCUTS_TEST_LOGIN_HOME": str(home),
-        "DOTFILES_SKIP_OPTIONAL_APPS": "1",
     }
 
     def chezmoi(*args):

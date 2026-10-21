@@ -36,7 +36,7 @@ compatible Chromium executable **before** downloading anything. Existing browser
 runtimes remain in place: a normal chezmoi apply does not implicitly upgrade
 Chrome for Testing. A separate explicit update is required to do that.
 When no browser executable is available, the helper runs agent-browser install.
-The optional hook is skipped by DOTFILES_SKIP_OPTIONAL_APPS=1.
+In isolated CI, installation hooks are not executed; ordinary applies verify the runtime.
 
 ## Verify
 
