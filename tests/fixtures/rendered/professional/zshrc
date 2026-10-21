@@ -62,14 +62,6 @@ export EDITOR="code --wait"
 # WORKFLOW COMMANDS & ALIASES
 # ------------------------------------------------------
 alias sync-systemsmith="npx --yes skills add ArthurZakirov/SystemSmith --global --agent codex --skill '*' --yes"
-# Optional integrations become available when AgentDesk/Raycast are installed.
-raycast-quicklinks() {
-  local script="$PERSONAL_REPOS_DIR/AgentDesk/scripts/generate_raycast_quicklinks.py"
-  [[ -f "$script" ]] || script="$REPOS_DIR/.worktrees/AgentDesk-raycast-quicklinks/scripts/generate_raycast_quicklinks.py"
-  [[ -f "$script" ]] || { print -u2 'Install the AgentDesk Raycast quicklinks script first.'; return 1; }
-  python3 "$script" "$@"
-}
-[[ -f "$HOME/.local/bin/raycast_folder_quicklinks.py" ]] && alias sync-raycast-folder-quicklinks="python3 $HOME/.local/bin/raycast_folder_quicklinks.py"
 
 # LOCAL CONFIGURATION
 # ------------------------------------------------------

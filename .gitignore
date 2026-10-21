@@ -29,3 +29,6 @@ home/dot_codex/*.lock
 home/dot_codex/*.bak*
 home/dot_codex/**/__pycache__/
 home/dot_codex/**/*.pyc
+
+# Raycast exports can contain clipboard history, chats, and credentials.
+*.rayconfig

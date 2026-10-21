@@ -18,7 +18,7 @@ Browse the software behind DevMac by component type and installation method. For
 | Hammerspoon | Shared | [Managed window, Spaces, and application hotkeys](features/hammerspoon.md) |
 | Logi Options+ | Shared | [Mouse/keyboard workflows, including compatible Flow setups](workflows/workspace-control.md) |
 | Logi Tune | Shared | Logitech device and audio settings |
-| Raycast | Shared | Application launcher and search |
+| Raycast | Shared | [Application, repository, and configuration-file navigation](features/raycast.md); Store extension setup remains interactive |
 | Warp | Shared | Terminal for shell-based workflows |
 | Visual Studio Code | Shared | [Review workspace and diff navigation](features/git-review.md) |
 | Google Chrome | Shared | Web navigation and developer workflows |
@@ -78,12 +78,13 @@ Unlike optional application provisioning, the `bws` installation also runs for p
 | Local scripts / VS Code integration | Git review, `pysetup`, review UI extension | [Review and isolated Python checkouts](workflows/review-and-navigation.md) |
 | Hammerspoon Lua + activation | Hotkeys, display movement, Spaces, audio checks | [Hammerspoon](features/hammerspoon.md) |
 | macOS preference import/export | Native system, application, service shortcuts | [macOS shortcuts](features/macos-shortcuts.md) |
+| Raycast Script Commands and onboarding hook | Open existing config files in VS Code; prompt for Repository Manager installation | [Raycast navigation](features/raycast.md) |
 | Codex guidance, hooks, selected settings | Codex behavior and prompt customization | [Codex](features/codex.md); other local Codex settings remain unmanaged |
 | LaunchAgent + remote CLI | Desktop Commander at login | [Personal remote access](features/desktop-commander.md) |
 | LaunchAgent + Python MCP server + tunnel client | Read installed Agent Skills through ChatGPT | [Personal skills bridge](features/chatgpt-skills-mcp.md) |
 | Credential lookup helper | Machine-local secret retrieval | [Bitwarden Secrets Manager setup](features/secrets-management.md) |
 
-**Not installed as a silent managed configuration:** Raycast Store extensions and local Quicklinks; Logitech Flow pairing; monitor input mappings; macOS privacy approvals; ChatGPT plugin/tunnel registration; provider logins; secrets themselves. Refer to the linked feature pages for manual steps.
+**Not installed as a silent managed configuration:** Raycast Store extensions, registered Script Command directories, Raycast hotkeys, and local Quicklinks; Logitech Flow pairing; monitor input mappings; macOS privacy approvals; ChatGPT plugin/tunnel registration; provider logins; secrets themselves. Refer to the linked feature pages for manual steps.
 
 ## Where to audit behavior
 

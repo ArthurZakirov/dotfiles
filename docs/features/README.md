@@ -24,7 +24,7 @@ Explore DevMac by workflow. Some tools support several different capabilities.
 | --- | --- |
 | Inspect changes in isolated, editable VS Code review workspaces | [Git review](git-review.md) |
 | Prepare Python environments for review checkouts | [Python environments](pysetup.md) |
-| Launch applications quickly | Raycast ([installed apps](../tool-inventory.md#desktop-applications-homebrew-casks)) |
+| Find apps, repositories, and configuration files quickly | [Raycast navigation](raycast.md) |
 | Find shell commands and history with fewer keystrokes | [Zsh](zsh.md) |
 | Control apps, windows, and Spaces from the keyboard | [Hammerspoon](hammerspoon.md) · [macOS keyboard shortcuts](macos-shortcuts.md) |
 
