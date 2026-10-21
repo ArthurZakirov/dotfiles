@@ -16,7 +16,8 @@ fi
 
 if [ -r "$DOTFILES_ROOT/src/provisioning-log.sh" ]; then
   source "$DOTFILES_ROOT/src/provisioning-log.sh"
-  dotfiles_section "PEEKABOO SKILL"
+  dotfiles_section "AGENT TOOLING"
 fi
 source "$DOTFILES_ROOT/src/agent-skills.sh"
+dotfiles_subsection "NPX SKILLS / PEEKABOO"
 ensure_agent_skill peekaboo openclaw/Peekaboo

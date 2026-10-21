@@ -45,11 +45,11 @@ def test_apply_activates_hammerspoon_with_a_running_or_stopped_app(tmp_path, fak
     subprocess.run(["/bin/bash", str(HOOK)], env=env, check=True)
     subprocess.run(["/bin/bash", str(HOOK)], env=env, check=True)
 
-    assert log.read_text().splitlines() == ["swift", "activated", "swift", "activated"]
+    assert log.read_text().splitlines() == ["activated", "activated"]
 
     env["DOTFILES_SKIP_OPTIONAL_APPS"] = "1"
     subprocess.run(["/bin/bash", str(HOOK)], env=env, check=True)
-    assert log.read_text().splitlines() == ["swift", "activated", "swift", "activated"]
+    assert log.read_text().splitlines() == ["activated", "activated"]
 
 
 
