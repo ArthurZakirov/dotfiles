@@ -16,6 +16,7 @@ account settings. Raycast Cloud Sync is not needed.
 | Launch installed applications | Raycast's built-in app search | Raycast app installed by DevMac; no extension required |
 | Find Git repositories | [Repository Manager](https://www.raycast.com/francesco_mecchi/repository-manager), a Store extension | Install in Raycast, configure projects path and VS Code, assign `Option+R` |
 | Open specific files and folders | [Raycast Script Commands](https://manual.raycast.com/script-commands) managed with chezmoi | Register `~/.config/raycast/scripts` once |
+| Run shared shell workflows | Four chezmoi-managed Raycast Script Commands | Same registered script directory; macOS Terminal for interactive output |
 
 **Repository Manager lists Git repositories dynamically; it does not provide
 shortcuts to arbitrary files or directories.** Raycast discovers the separately
@@ -68,6 +69,36 @@ feature:
 Missing targets produce an error rather than creating blank files or folders.
 Machine-specific configuration and credentials remain outside Git.
 
+## Shell workflow shortcuts
+
+Four additional managed Script Commands expose the same operations used in the
+DevMac workflow, with searchable names:
+
+| Raycast command | Command executed | Behavior |
+| --- | --- | --- |
+| `chezmoi diff` | `chezmoi diff` | Preview managed changes, including configured editor diffs |
+| `chezmoi apply` | `chezmoi apply` | Apply managed changes, preserving prompts and errors |
+| `chezmoi update` | `chezmoi update` | Update sources and apply, preserving prompts and errors |
+| `sync-systemsmith` | `zsh -ic sync-systemsmith` | Load the interactive Zsh alias from `~/.zshrc` and invoke it |
+
+Each wrapper delegates to the single `~/.config/raycast/lib/run-workflow.sh`
+launcher, which accepts only these four fixed operations and opens a new macOS
+Terminal session. This keeps stdout, prompts, exit information and any editor
+launches visible. **Raycast's silent mode hides only the wrapper's output**;
+the actual command runs in Terminal. No command is triggered during
+`chezmoi apply` itself—only when selected in Raycast.
+
+Terminal.app is used because macOS provides a supported AppleScript `do
+script` command for opening an interactive session. This does not change the
+user's preferred terminal app, and it does not inject keystrokes into an
+existing Warp or VS Code session. A separate Zsh invocation deliberately
+uses the existing `sync-systemsmith` alias as the source of truth; the
+underlying `npx skills add` invocation is not duplicated.
+
+These commands are **not** safe to execute blindly: `chezmoi apply`,
+`chezmoi update` and `sync-systemsmith` can change files or install skills.
+Review the terminal before confirming interactive actions.
+
 ## First-time initialization
 
 On a normal interactive Mac, `chezmoi apply` creates the scripts and opens
@@ -100,8 +131,9 @@ marker is not an installation-health indicator. Raycast must already be installe
 
 | Purpose | Source |
 | --- | --- |
-| Eleven Raycast command wrappers | [`home/dot_config/raycast/scripts/`](../../home/dot_config/raycast/scripts/) |
+| Fifteen Raycast command wrappers | [`home/dot_config/raycast/scripts/`](../../home/dot_config/raycast/scripts/) |
 | Shared target-opening launcher | [`home/dot_config/raycast/lib/executable_open-target.sh`](../../home/dot_config/raycast/lib/executable_open-target.sh) |
+| Shared interactive-workflow launcher | [`home/dot_config/raycast/lib/executable_run-workflow.sh`](../../home/dot_config/raycast/lib/executable_run-workflow.sh) |
 | One-time Store onboarding | [`home/run_after_60-raycast-onboarding.sh`](../../home/run_after_60-raycast-onboarding.sh) |
 | Raycast app provisioning | [`src/apps.sh`](../../src/apps.sh) |
 | Tests | [`tests/integration/test_raycast.py`](../../tests/integration/test_raycast.py) |
