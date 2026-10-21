@@ -65,12 +65,18 @@ def test_documentation_links_resolve():
                 assert anchor in slugs, f"{filename}: broken heading link to {target}"
 
 
-def test_direct_bitwarden_cli_installer_is_documented():
-    installer = (ROOT / "src/shell-setup.sh").read_text()
-    assert "install_bitwarden_secrets_manager()" in installer
-    assert "https://bws.bitwarden.com/install" in installer
+def test_direct_bitwarden_cli_installer_is_declared_once_and_documented():
+    manifest = ROOT / "dependencies/manual/personal.txt"
+    installer = ROOT / "src/setup-actions.sh"
+    orchestrator = ROOT / "src/shell-setup.sh"
 
-    for path in (ROOT / "docs/provisioning.md", ROOT / "docs/tool-inventory.md"):
-        page = path.read_text()
-        assert "`bws`" in page, f"{path}: missing direct Bitwarden CLI"
-        assert "src/shell-setup.sh" in page, f"{path}: missing direct installer source"
+    assert "bitwarden-secrets-manager" in manifest.read_text().splitlines()
+    assert "install_bitwarden_secrets_manager()" in installer.read_text()
+    assert "https://bws.bitwarden.com/install" in installer.read_text()
+    assert "install_manual_dependencies" in orchestrator.read_text()
+
+    provisioning = (ROOT / "docs/provisioning.md").read_text()
+    inventory = (ROOT / "docs/tool-inventory.md").read_text()
+    assert "dependencies/manual/personal.txt" in provisioning
+    assert "src/setup-actions.sh" in provisioning
+    assert "src/setup-actions.sh" in inventory

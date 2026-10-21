@@ -40,6 +40,10 @@ install_missing_formula() {
     echo "Already installed: $command_name"
     return 0
   fi
+  if brew list --formula "$formula" >/dev/null 2>&1; then
+    echo "Already installed: $formula (Homebrew; binary not on PATH)"
+    return 0
+  fi
   echo "Installing: $formula"
   brew install "$formula"
 }
@@ -98,6 +102,10 @@ install_npm_cli() {
       echo "npm is required to install $package." >&2
       return 127
     }
+    if npm list --global --depth=0 "$package" >/dev/null 2>&1; then
+      echo "Already installed: $package (npm; executable $command_name is not on PATH)" >&2
+      return 1
+    fi
     echo "Installing: $package (npm)"
     npm install --global "$package" || return 1
   fi

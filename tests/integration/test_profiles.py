@@ -144,7 +144,8 @@ def test_agent_browser_hook_renders_for_both_profiles(
     assert 'source "$DOTFILES_ROOT/src/homebrew.sh"' in content
     assert 'ensure_agent_skill agent-browser vercel-labs/agent-browser' in content
     assert 'for binary in agent-browser npm npx skills; do' in content
-    assert 'agent-browser install' in content
+    assert 'ensure_agent_browser_runtime' in content
+    assert 'source "$DOTFILES_ROOT/src/agent-browser-runtime.sh"' in content
     profile_factory.run("/bin/bash", "-n", str(hook))
     profile_factory.run(
         "/bin/bash", str(hook),

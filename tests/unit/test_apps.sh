@@ -40,6 +40,10 @@ npm() {
     printf '%s\n' "$test_dir/npm-prefix"
     return 0
   fi
+  if [[ "$1" == list ]]; then
+    [[ "${NPM_GLOBAL_INSTALLED:-}" == "${@: -1}" ]]
+    return
+  fi
   calls+=("npm $*")
   [[ "${NPM_FAIL:-0}" == 0 ]]
 }
@@ -73,6 +77,18 @@ CLI_INSTALLED=skills
 install_npm_cli skills skills version
 [[ ${#calls[@]} -eq 0 ]]
 unset CLI_INSTALLED
+
+# A formula can be installed even if its executable is missing from PATH.
+BREW_INSTALLED=openclaw/tap/peekaboo
+install_missing_formula peekaboo openclaw/tap/peekaboo
+[[ ${#calls[@]} -eq 0 ]]
+unset BREW_INSTALLED
+
+# An npm global package that is installed but missing from PATH must not be reinstalled.
+NPM_GLOBAL_INSTALLED=skills
+if install_npm_cli skills skills version >/dev/null 2>&1; then exit 1; fi
+[[ ${#calls[@]} -eq 0 ]]
+unset NPM_GLOBAL_INSTALLED
 
 # Both profile-independent Brewfile inventories install the exact former packages.
 install_optional_brewfile "$repo_root/dependencies/brew/common/cli.Brewfile"

@@ -4,6 +4,10 @@ set -euo pipefail
 # Back up changed destination state before package/service provisioning.
 # The generated paths refer to the invoking chezmoi source, not a fixed clone.
 DOTFILES_ROOT={{ .chezmoi.workingTree | quote }}
+if [ -r "$DOTFILES_ROOT/src/provisioning-log.sh" ]; then
+  source "$DOTFILES_ROOT/src/provisioning-log.sh"
+  dotfiles_section "PRE-APPLY BACKUP"
+fi
 source "$DOTFILES_ROOT/src/backup-managed.sh"
 snapshot_existing_managed \
   {{ .chezmoi.configFile | quote }} \
