@@ -464,7 +464,7 @@ def install_layered(manifest: Path, agents_home: Path, claude_home: Path,
     # The Dotfiles checkout is the source of truth, not a runtime directory under
     # CODEX_HOME. Source paths are displayed as repo-relative code, never as
     # Markdown links that would be broken after chezmoi installs AGENTS.md.
-    checkout_root = Path(__file__).resolve().parents[2]
+    checkout_root = Path(__file__).resolve().parents[3]
     def display_source(path: Path) -> str:
         return path.relative_to(checkout_root).as_posix() if path.is_relative_to(checkout_root) else path.as_posix()
 
@@ -500,7 +500,7 @@ def install_layered(manifest: Path, agents_home: Path, claude_home: Path,
         f"{source_text}\n\n"
         "| When | Then |\n"
         "| --- | --- |\n"
-        f"| Updating global agent guidance. | Edit the canonical components, manifest, and references in the Dotfiles repository under `codex-guidance/global-guidance/`. Render with `python3 codex-guidance/render.py`, inspect the diff, then apply through chezmoi. |\n"
+        f"| Updating global agent guidance. | Edit the canonical components, manifest, and references in the Dotfiles repository under `src/codex-guidance/global-guidance/`. Render with `python3 src/codex-guidance/render.py`, inspect the diff, then apply through chezmoi. |\n"
         "| Synchronizing across machines. | Manage files from the Dotfiles checkout with chezmoi; use `chezmoi diff` to inspect changes before applying. No second repository is required. |\n"
         "| A rule determines whether a reference file should be opened. | Put that `when` condition in the applicable AGENTS.md component before the reference is loaded. Put only post-load instructions in the referenced file; do not put sibling-routing or progressive-disclosure logic inside the reference. |\n"
         "| Resolving a relative Markdown link or relative path from this global guidance. | Resolve it relative to the directory containing this `AGENTS.md` (`./AGENTS.md`), never relative to the active working directory. |\n\n"

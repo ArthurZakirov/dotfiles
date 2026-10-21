@@ -50,38 +50,38 @@ Use these rules when changing files, working with repositories, accessing extern
 
 This file is generated atomically from the ordered sources declared in:
 
-- AGENTS.md manifest: `codex-guidance/global-guidance/agents-md-manifest.yaml`
+- AGENTS.md manifest: `src/codex-guidance/global-guidance/agents-md-manifest.yaml`
 
 Resolved order:
 
-1. `codex-guidance/global-guidance/agents-md-components/workspace-and-agent-system/workspace-and-agent-system.md`
-2. `codex-guidance/global-guidance/agents-md-components/workspace-and-agent-system/git-workflow.md`
-3. `codex-guidance/global-guidance/agents-md-components/workspace-and-agent-system/external-system-access.md`
-4. `codex-guidance/global-guidance/agents-md-components/workspace-and-agent-system/managed-repositories-skills-global-rules.md`
-5. `codex-guidance/global-guidance/agents-md-components/workspace-and-agent-system/agent-behavior-lifecycle.md`
-6. `codex-guidance/global-guidance/agents-md-components/runtime-and-interaction/runtime-and-interaction.md`
-7. `codex-guidance/global-guidance/agents-md-components/runtime-and-interaction/chatgpt-runtime-mode-identification.md`
-8. `codex-guidance/global-guidance/agents-md-components/runtime-and-interaction/interaction-mode-behavior.md`
-9. `codex-guidance/global-guidance/agents-md-components/runtime-and-interaction/delegated-chat-naming.md`
-10. `codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/reasoning-and-agent-behavior.md`
-11. `codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/problem-intent-and-proposed-solutions.md`
-12. `codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/unresolved-implementation-decisions.md`
-13. `codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/requirements-scope-validation.md`
-14. `codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/effort-scope-checkpoints.md`
-15. `codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/evidence-grounding.md`
-16. `codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/behavior-feedback-debugging.md`
-17. `codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/execution-algorithm.md`
-18. `codex-guidance/global-guidance/agents-md-components/information-presentation/information-presentation.md`
-19. `codex-guidance/global-guidance/agents-md-components/information-presentation/relevance.md`
-20. `codex-guidance/global-guidance/agents-md-components/information-presentation/anchoring.md`
-21. `codex-guidance/global-guidance/agents-md-components/information-presentation/representation.md`
-22. `codex-guidance/global-guidance/agents-md-components/information-presentation/structural-semantic-coherence.md`
-23. `codex-guidance/global-guidance/agents-md-components/information-presentation/visual-semantics.md`
-24. `codex-guidance/global-guidance/agents-md-components/information-presentation/chat-response-presentation.md`
+1. `src/codex-guidance/global-guidance/agents-md-components/workspace-and-agent-system/workspace-and-agent-system.md`
+2. `src/codex-guidance/global-guidance/agents-md-components/workspace-and-agent-system/git-workflow.md`
+3. `src/codex-guidance/global-guidance/agents-md-components/workspace-and-agent-system/external-system-access.md`
+4. `src/codex-guidance/global-guidance/agents-md-components/workspace-and-agent-system/managed-repositories-skills-global-rules.md`
+5. `src/codex-guidance/global-guidance/agents-md-components/workspace-and-agent-system/agent-behavior-lifecycle.md`
+6. `src/codex-guidance/global-guidance/agents-md-components/runtime-and-interaction/runtime-and-interaction.md`
+7. `src/codex-guidance/global-guidance/agents-md-components/runtime-and-interaction/chatgpt-runtime-mode-identification.md`
+8. `src/codex-guidance/global-guidance/agents-md-components/runtime-and-interaction/interaction-mode-behavior.md`
+9. `src/codex-guidance/global-guidance/agents-md-components/runtime-and-interaction/delegated-chat-naming.md`
+10. `src/codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/reasoning-and-agent-behavior.md`
+11. `src/codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/problem-intent-and-proposed-solutions.md`
+12. `src/codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/unresolved-implementation-decisions.md`
+13. `src/codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/requirements-scope-validation.md`
+14. `src/codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/effort-scope-checkpoints.md`
+15. `src/codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/evidence-grounding.md`
+16. `src/codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/behavior-feedback-debugging.md`
+17. `src/codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/execution-algorithm.md`
+18. `src/codex-guidance/global-guidance/agents-md-components/information-presentation/information-presentation.md`
+19. `src/codex-guidance/global-guidance/agents-md-components/information-presentation/relevance.md`
+20. `src/codex-guidance/global-guidance/agents-md-components/information-presentation/anchoring.md`
+21. `src/codex-guidance/global-guidance/agents-md-components/information-presentation/representation.md`
+22. `src/codex-guidance/global-guidance/agents-md-components/information-presentation/structural-semantic-coherence.md`
+23. `src/codex-guidance/global-guidance/agents-md-components/information-presentation/visual-semantics.md`
+24. `src/codex-guidance/global-guidance/agents-md-components/information-presentation/chat-response-presentation.md`
 
 | When | Then |
 | --- | --- |
-| Updating global agent guidance. | Edit the canonical components, manifest, and references in the Dotfiles repository under `codex-guidance/global-guidance/`. Render with `python3 codex-guidance/render.py`, inspect the diff, then apply through chezmoi. |
+| Updating global agent guidance. | Edit the canonical components, manifest, and references in the Dotfiles repository under `src/codex-guidance/global-guidance/`. Render with `python3 src/codex-guidance/render.py`, inspect the diff, then apply through chezmoi. |
 | Synchronizing across machines. | Manage files from the Dotfiles checkout with chezmoi; use `chezmoi diff` to inspect changes before applying. No second repository is required. |
 | A rule determines whether a reference file should be opened. | Put that `when` condition in the applicable AGENTS.md component before the reference is loaded. Put only post-load instructions in the referenced file; do not put sibling-routing or progressive-disclosure logic inside the reference. |
 | Resolving a relative Markdown link or relative path from this global guidance. | Resolve it relative to the directory containing this `AGENTS.md` (`./AGENTS.md`), never relative to the active working directory. |

@@ -26,15 +26,15 @@ files only**, not a second installation inside `~/.codex/`.
 ## Editing global guidance
 
 The canonical manifest, ordered components, references, and Python generator live
-in [`codex-guidance/`](../../codex-guidance/), **outside chezmoi's `home/`
+in [`src/codex-guidance/`](../../src/codex-guidance/), **outside chezmoi's `home/`
 source directory**. Only the resulting `AGENTS.md` and its runtime references
 are installed. To change guidance, edit the canonical source, regenerate the
 checked-in results, inspect the diff, then apply:
 
 ```sh
 # From the Dotfiles Git root, with project Python dependencies installed:
-python3 codex-guidance/render.py
-python3 codex-guidance/render.py --check
+python3 src/codex-guidance/render.py
+python3 src/codex-guidance/render.py --check
 git diff -- home/dot_codex/AGENTS.md home/dot_codex/agents-md-references
 chezmoi --no-pager diff "$HOME/.codex"
 chezmoi apply "$HOME/.codex/AGENTS.md" "$HOME/.codex/agents-md-references"
@@ -53,7 +53,7 @@ is a **complete replacement** for the built-in Codex prompt, not an
 append-only supplement. In particular, it tells the voice frontend to
 explicitly distinguish direct answers, backend handoffs, and backend findings.
 
-For comparison, the [unmodified upstream prompt](../../codex-guidance/upstream/realtime/backend_prompt.md)
+For comparison, the [unmodified upstream prompt](../../src/codex-guidance/upstream/realtime/backend_prompt.md)
 is checked in **for reference only**; chezmoi does not install it. It was
 retrieved from [openai/codex at commit `8c076942`](https://github.com/openai/codex/blob/8c076942cb70fba8e5c4732c23f1faabc4aed484/codex-rs/prompts/templates/realtime/backend_prompt.md).
 The upstream `{{ user_first_name }}` placeholder is intentionally preserved
@@ -66,7 +66,7 @@ Review the differences in VS Code or the terminal:
 
 ```sh
 git diff --no-index -- \
-  codex-guidance/upstream/realtime/backend_prompt.md \
+  src/codex-guidance/upstream/realtime/backend_prompt.md \
   home/dot_codex/config-toml/realtime-voice-backend-prompt.md
 ```
 
