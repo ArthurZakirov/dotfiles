@@ -15,7 +15,7 @@ package/profile membership.
 | Personal only | [`personal/cli.Brewfile`](../dependencies/brew/personal/cli.Brewfile) | [`personal/gui.Brewfile`](../dependencies/brew/personal/gui.Brewfile) | [`personal.txt`](../dependencies/npm/personal.txt) | [`Manual installers`](../dependencies/manual/personal.txt) |
 
 Move a package between profile inventories to change its scope. All packages
-use the same idempotent install-on-missing behavior. There is no separate
+use the same idempotent install-on-missing behavior. The Python entry also declares `min-version: 3.11`; an older system `python3` does not satisfy that manifest requirement. There is no separate
 `required` or `optional` package mode, and no skip-optional-apps flag.
 
 ## Execution and lifecycle
