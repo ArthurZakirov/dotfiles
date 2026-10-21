@@ -14,9 +14,9 @@ import sys
 import tempfile
 
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 TARGET = ROOT / "home" / "dot_codex"
-GUIDANCE = ROOT / "codex-guidance"
+GUIDANCE = Path(__file__).resolve().parent
 
 
 def build() -> dict[Path, bytes]:

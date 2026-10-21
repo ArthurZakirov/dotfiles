@@ -12,7 +12,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "home" / "dot_codex"
-CANONICAL = ROOT / "codex-guidance"
+CANONICAL = ROOT / "src/codex-guidance"
 
 
 def managed(profile_factory, profile: str) -> set[str]:
@@ -85,7 +85,7 @@ def test_canonical_guidance_is_only_in_the_repository():
     assert (CANONICAL / "render.py").is_file()
     assert not (SOURCE / "guidance-source").exists()
     guidance = (SOURCE / "AGENTS.md").read_text(encoding="utf-8")
-    assert "codex-guidance/global-guidance/agents-md-manifest.yaml" in guidance
+    assert "src/codex-guidance/global-guidance/agents-md-manifest.yaml" in guidance
     assert "guidance-source/" not in guidance
     assert (SOURCE / "agents-md-references/codex.md").is_file()
     assert "sync-agents-md" not in (ROOT / "home/dot_zshrc.tmpl").read_text()
@@ -383,7 +383,7 @@ def test_chezmoi_gui_diff_shows_only_the_readable_voice_prompt(profile_factory, 
 
 
 def test_versioned_voice_prompt_distinguishes_live_and_backend():
-    upstream = (ROOT / "codex-guidance/upstream/realtime/backend_prompt.md").read_text()
+    upstream = (ROOT / "src/codex-guidance/upstream/realtime/backend_prompt.md").read_text()
     custom = (SOURCE / "config-toml/realtime-voice-backend-prompt.md").read_text()
 
     assert "The user's name is {{ user_first_name }}" in upstream
