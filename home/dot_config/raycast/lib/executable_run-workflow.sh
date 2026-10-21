@@ -21,12 +21,15 @@ case "$1" in
 esac
 
 # osascript receives the fixed command as an argv value, not embedded AppleScript.
-# Terminal's do script creates a new session with output and stdin visible.
+# Launch without Terminal's default startup window, then create the command
+# session and bring it forward. Activating before do script opens a blank extra
+# window when Terminal was not already running.
 osascript - "$command" <<'APPLESCRIPT'
 on run argv
   tell application "Terminal"
-    activate
+    launch
     do script (item 1 of argv)
+    activate
   end tell
 end run
 APPLESCRIPT

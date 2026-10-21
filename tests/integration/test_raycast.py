@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -344,7 +345,27 @@ def test_workflow_wrapper_opens_terminal_with_exact_fixed_command(name, expected
     assert capture.read_text().splitlines() == ["-", expected]
     applescript = script_capture.read_text()
     assert 'tell application "Terminal"' in applescript
-    assert "do script (item 1 of argv)" in applescript
+    # A cold `activate` first creates Terminal's default blank startup window.
+    # `launch` suppresses that run event; do script creates the one desired window.
+    assert applescript.index("    launch\n") < applescript.index(
+        "    do script (item 1 of argv)\n"
+    ) < applescript.index("    activate\n")
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="AppleScript compiler requires macOS")
+def test_workflow_applescript_compiles_without_launching_terminal(tmp_path):
+    # Compile the real embedded script; never execute it against the active GUI.
+    launcher = WORKFLOW_LAUNCHER.read_text()
+    script = launcher.split("<<'APPLESCRIPT'\n", 1)[1].split("\nAPPLESCRIPT", 1)[0]
+    compiled = tmp_path / "run-workflow.scpt"
+
+    result = subprocess.run(
+        ["osacompile", "-o", str(compiled)],
+        input=script + "\n", capture_output=True, text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert compiled.is_file()
 
 
 @pytest.mark.parametrize("args", [[], ["bad-command"], ["chezmoi-apply", "extra"]])
