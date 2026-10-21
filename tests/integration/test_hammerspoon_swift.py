@@ -47,7 +47,7 @@ def test_swift_toolchain_installs_only_when_compiler_missing(tmp_path, fake_comm
     repo = tmp_path / "source"
     source_dir = repo / "home"
     source_dir.mkdir(parents=True)
-    manifest = repo / "dependencies/brew/common/on-demand/hammerspoon-swift.Brewfile"
+    manifest = repo / "dependencies/brew/common/features/hammerspoon-swift.Brewfile"
     manifest.parent.mkdir(parents=True)
     manifest.write_text('brew "swift"\n')
     executable(fake_commands, "chezmoi", 'echo "$TEST_CHEZMOI_SOURCE_DIR"\n')

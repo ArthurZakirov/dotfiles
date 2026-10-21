@@ -88,7 +88,7 @@ pixel-test the actual rendered colors or verify language-server navigation.
 
 Both profiles receive this feature during normal
 [setup or synchronization](../setup.md). Git and Python 3 are declared in the
-[Brewfile](../../dependencies/brew/required.Brewfile), and the shared shell adds `~/.local/bin` to `PATH`.
+[common CLI manifest](../../dependencies/brew/common/cli.Brewfile), and the shared shell adds `~/.local/bin` to `PATH`.
 
 Chezmoi manages the [global configuration](../../home/dot_gitconfig) at
 `~/.gitconfig` and the

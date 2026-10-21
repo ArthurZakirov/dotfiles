@@ -38,7 +38,7 @@ if [ -z "$found" ]; then
     exit 127
   }
   source_dir="$(chezmoi source-path)" || exit 1
-  manifest="${source_dir%/*}/dependencies/brew/common/on-demand/hammerspoon-swift.Brewfile"
+  manifest="${source_dir%/*}/dependencies/brew/common/features/hammerspoon-swift.Brewfile"
   if [ ! -r "$manifest" ]; then
     echo "Missing managed Swift Brewfile: $manifest" >&2
     exit 1

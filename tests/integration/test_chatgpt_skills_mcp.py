@@ -94,7 +94,7 @@ def test_unchosen_tunnel_does_not_start_or_install_dependencies(tmp_path, profil
     )
     result = subprocess.run(
         ["/bin/sh", str(hook)],
-        env={**os.environ, "HOME": str(home), "DOTFILES_SKIP_OPTIONAL_APPS": "0"},
+        env={**os.environ, "HOME": str(home)},
         text=True, capture_output=True, timeout=15,
     )
     assert result.returncode == 0

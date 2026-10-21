@@ -19,8 +19,10 @@ brew() {
     [[ "${BREW_INSTALLED:-}" == "$3" ]]
   else
     calls+=("$*")
+    if [[ "$1 $2" == "install python" ]]; then CLI_INSTALLED=python3; fi
   fi
 }
+python3() { printf "Python 3.12.0\n"; }
 app_exists() { [[ "${APP_INSTALLED:-}" == "$1" ]]; }
 command() {
   if [[ "$1" == -v ]]; then
@@ -56,7 +58,7 @@ unset BREW_INSTALLED
 
 # A manually installed GUI app is not replaced with a Homebrew cask.
 APP_INSTALLED=AltTab.app
-install_optional_brewfile "$repo_root/dependencies/brew/common/gui.Brewfile" >/dev/null
+install_brew_manifest "$repo_root/dependencies/brew/common/gui.Brewfile" >/dev/null
 [[ " ${calls[*]} " != *'install --cask alt-tab'* ]]
 unset APP_INSTALLED
 calls=()
@@ -78,6 +80,44 @@ install_npm_cli skills skills version
 [[ ${#calls[@]} -eq 0 ]]
 unset CLI_INSTALLED
 
+# Shell plugin formulae have no executable; use Homebrew receipts for idempotence.
+BREW_INSTALLED=zsh-autosuggestions
+install_brew_manifest "$repo_root/dependencies/brew/common/cli.Brewfile" >/dev/null
+[[ " ${calls[*]} " != *'install zsh-autosuggestions'* ]]
+unset BREW_INSTALLED
+calls=()
+
+# An obsolete executable must not masquerade as a satisfied dependency.
+oldpython() { printf 'Python 3.9.10\n'; }
+newpython() { printf 'Python 3.12.5\n'; }
+CLI_INSTALLED=newpython
+install_missing_formula newpython python 3.11
+[[ ${#calls[@]} -eq 0 ]]
+CLI_INSTALLED=oldpython
+if install_missing_formula oldpython python 3.11 >/dev/null 2>&1; then exit 1; fi
+[[ " ${calls[*]} " == *'install python'* ]]
+calls=()
+BREW_INSTALLED=python
+if install_missing_formula oldpython python 3.11 >/dev/null 2>&1; then exit 1; fi
+[[ ${#calls[@]} -eq 0 ]]
+unset BREW_INSTALLED CLI_INSTALLED
+
+# The same minimum-version rule must be enforced when read from a Brewfile.
+versioned="$test_dir/python-versioned.Brewfile"
+printf 'brew "python" # binary: oldpython; min-version: 3.11\n' > "$versioned"
+CLI_INSTALLED=oldpython
+BREW_INSTALLED=python
+if install_brew_manifest "$versioned" >/dev/null 2>&1; then exit 1; fi
+[[ ${#calls[@]} -eq 0 ]]
+unset BREW_INSTALLED
+printf 'brew "python" # binary: newpython; min-version: 3.11\n' > "$versioned"
+CLI_INSTALLED=newpython
+install_brew_manifest "$versioned" >/dev/null
+[[ ${#calls[@]} -eq 0 ]]
+printf 'brew "python" # binary: newpython; min-version: invalid\n' > "$versioned"
+if install_brew_manifest "$versioned" >/dev/null 2>&1; then exit 1; fi
+unset CLI_INSTALLED
+
 # A formula can be installed even if its executable is missing from PATH.
 BREW_INSTALLED=openclaw/tap/peekaboo
 install_missing_formula peekaboo openclaw/tap/peekaboo
@@ -91,20 +131,20 @@ if install_npm_cli skills skills version >/dev/null 2>&1; then exit 1; fi
 unset NPM_GLOBAL_INSTALLED
 
 # Both profile-independent Brewfile inventories install the exact former packages.
-install_optional_brewfile "$repo_root/dependencies/brew/common/cli.Brewfile"
-[[ "${calls[*]}" == 'install --cask codex install --cask claude-code install node install openclaw/tap/peekaboo' ]]
+install_brew_manifest "$repo_root/dependencies/brew/common/cli.Brewfile"
+[[ "${calls[*]}" == 'install chezmoi install git install fzf install zsh-autosuggestions install zsh-syntax-highlighting install python install uv install --cask codex install --cask claude-code install node install openclaw/tap/peekaboo' ]]
 calls=()
 PENDING_BREW_ACTIONS=()
-install_optional_brewfile "$repo_root/dependencies/brew/common/gui.Brewfile"
+install_brew_manifest "$repo_root/dependencies/brew/common/gui.Brewfile"
 [[ "${PENDING_BREW_ACTIONS[*]}" == 'vscode-cli' ]]
 [[ "${calls[*]}" == 'install --cask alt-tab install --cask betterdisplay install --cask displaylink install --cask ddpm install --cask warp install --cask google-drive install --cask hammerspoon install --cask logi-options+ install --cask logitune install --cask docker-desktop install --cask raycast install --cask rectangle install --cask visual-studio-code install --cask google-chrome install --cask claude install --cask chatgpt' ]]
 calls=()
 
 # Personal Brewfile entries stay out of the professional profile.
-install_optional_brewfile "$repo_root/dependencies/brew/personal/cli.Brewfile"
+install_brew_manifest "$repo_root/dependencies/brew/personal/cli.Brewfile"
 [[ "${calls[*]}" == 'install --cask xdevplatform/tap/xurl install langchain-ai/tap/langsmith-cli install openai/tools/tunnel-client' ]]
 calls=()
-install_optional_brewfile "$repo_root/dependencies/brew/personal/gui.Brewfile"
+install_brew_manifest "$repo_root/dependencies/brew/personal/gui.Brewfile"
 [[ "${calls[*]}" == 'install --cask bitwarden install --cask telegram install --cask whatsapp install --cask todoist-app install --cask notion' ]]
 calls=()
 
@@ -133,7 +173,7 @@ configure_desktop_commander_cli
 
 # A malformed manifest fails explicitly instead of silently omitting a package.
 printf 'invalid row\n' > "$test_dir/invalid.Brewfile"
-if install_optional_brewfile "$test_dir/invalid.Brewfile" 2>/dev/null; then exit 1; fi
+if install_brew_manifest "$test_dir/invalid.Brewfile" 2>/dev/null; then exit 1; fi
 printf 'tool package unexpected extra\n' > "$test_dir/invalid-npm.txt"
 if install_npm_manifest "$test_dir/invalid-npm.txt" 2>/dev/null; then exit 1; fi
 
@@ -144,13 +184,13 @@ printf 'cask "relocated-app" # apps: Relocated.app\n' > "$relocated/dependencies
 printf 'desktop-commander @wonderwhy-er/desktop-commander none desktop-commander-link\n' > "$relocated/dependencies/npm/common.txt"
 DOTFILES_ROOT="$relocated"
 calls=()
-install_optional_dependencies professional
+install_manifest_dependencies professional
 [[ ${#calls[@]} -eq 0 ]]
-install_optional_dependencies personal
+install_manifest_dependencies personal
 [[ "${calls[*]}" == 'install --cask relocated-app' ]]
 calls=()
 rm "$HOME/.local/bin/desktop-commander-remote"
-install_optional_dependencies common
+install_manifest_dependencies common
 [[ "${calls[*]}" == 'npm install --global @wonderwhy-er/desktop-commander' ]]
 [[ "$(readlink "$HOME/.local/bin/desktop-commander-remote")" == "$test_dir/npm-prefix/bin/desktop-commander" ]]
 DOTFILES_ROOT="$repo_root"
@@ -161,7 +201,7 @@ calls=()
 calls=()
 app_exists() { return 0; }
 brew() {
-  if [[ "$1" == list ]]; then return 1; fi
+  if [[ "$1" == list ]]; then [[ "$2" == --formula ]]; return; fi
   calls+=("$*")
   return 99
 }
@@ -173,9 +213,9 @@ command() {
   builtin command "$@"
 }
 for iteration in 1 2; do
-  install_optional_dependencies common >/dev/null
-  install_optional_dependencies personal >/dev/null
+  install_manifest_dependencies common >/dev/null
+  install_manifest_dependencies personal >/dev/null
   [[ ${#calls[@]} -eq 0 ]]
 done
 
-echo 'app installer: four Brewfile quadrants, two npm inventories, skip checks and failures passed (all installers stubbed)'
+echo 'app installer: common/personal inventories, idempotence and failures passed (stubbed)'

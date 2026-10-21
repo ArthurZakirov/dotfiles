@@ -68,7 +68,7 @@ DevMac installs these through [`src/apps.sh`](../src/apps.sh), not the Brewfile.
 | Oh My Zsh | Shared | [`src/setup-actions.sh`](../src/setup-actions.sh) clones the upstream repository and checks out the revision pinned in [`dependencies/git/common/oh-my-zsh.commit`](../dependencies/git/common/oh-my-zsh.commit) | [Zsh framework](features/zsh.md) |
 | Homebrew bootstrap | Shared | [`src/homebrew.sh`](../src/homebrew.sh) installs Homebrew if absent | Install formulae and casks listed above |
 
-Unlike optional application provisioning, the `bws` installation also runs for personal profiles when `DOTFILES_SKIP_OPTIONAL_APPS=1`.
+The `bws` installer is scoped to the personal profile and only runs if its CLI is missing.
 
 ## Managed configurations, scripts, and services
 

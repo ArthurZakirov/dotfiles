@@ -97,7 +97,6 @@ else:
         **os.environ,
         "HOME": str(home),
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
-        "DOTFILES_SKIP_OPTIONAL_APPS": "0",
         "HAMMERSPOON_APP_PATH": str(tmp_path / "Hammerspoon.app"),
         "HAMMERSPOON_SWIFTC_HELPER": str(fake_bin / "swift-setup"),
         "HAMMERSPOON_SETUP_NONCE": str(runtime_nonce),

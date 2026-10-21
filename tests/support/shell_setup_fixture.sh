@@ -13,12 +13,11 @@ record_installation() {
 
 install_homebrew() { record_installation homebrew; }
 configure_homebrew() { record_installation configure; }
-install_homebrew_packages() { record_installation packages; }
 run_pending_brew_actions() {
   if [[ "${last_installed_scope:-}" == common ]]; then record_installation vscode-cli; fi
   return 0
 }
-install_optional_dependencies() {
+install_manifest_dependencies() {
   last_installed_scope="$1"
   case "$1" in
     common) record_installation apps ;;
@@ -38,7 +37,6 @@ install_manual_dependencies() {
 install_bitwarden_secrets_manager() { record_installation bitwarden; }
 
 given_profile() {
-  unset DOTFILES_SKIP_OPTIONAL_APPS
   DOTFILES_PROFILE="$1"
   installed_tools=()
 }

@@ -39,7 +39,6 @@ def test_apply_activates_hammerspoon_with_a_running_or_stopped_app(tmp_path, fak
         "HAMMERSPOON_ACTIVATE_BIN": str(activator),
         "HAMMERSPOON_APP_PATH": str(app),
         "HAMMERSPOON_TEST_LOG": str(log),
-        "DOTFILES_SKIP_OPTIONAL_APPS": "0",
     }
 
     subprocess.run(["/bin/bash", str(HOOK)], env=env, check=True)
@@ -47,9 +46,6 @@ def test_apply_activates_hammerspoon_with_a_running_or_stopped_app(tmp_path, fak
 
     assert log.read_text().splitlines() == ["activated", "activated"]
 
-    env["DOTFILES_SKIP_OPTIONAL_APPS"] = "1"
-    subprocess.run(["/bin/bash", str(HOOK)], env=env, check=True)
-    assert log.read_text().splitlines() == ["activated", "activated"]
 
 
 
@@ -64,7 +60,6 @@ def test_gui_launch_skips_when_no_session(tmp_path, fake_commands):
         **os.environ, "PATH": f"{fake_commands}:{os.environ['PATH']}",
         "HAMMERSPOON_APP_PATH": str(app),
         "HAMMERSPOON_TEST_LOG": str(log),
-        "DOTFILES_SKIP_OPTIONAL_APPS": "0",
     }
     subprocess.run(["/bin/bash", str(HOOK)], env=env, check=True)
     assert not log.exists()
@@ -83,7 +78,6 @@ def test_apply_fails_when_new_hotkeys_cannot_be_verified(tmp_path, fake_commands
         "HAMMERSPOON_SWIFTC_HELPER": str(setup),
         "HAMMERSPOON_ACTIVATE_BIN": str(failing),
         "HAMMERSPOON_APP_PATH": str(app),
-        "DOTFILES_SKIP_OPTIONAL_APPS": "0",
     }
 
     result = subprocess.run(["/bin/bash", str(HOOK)], env=env)

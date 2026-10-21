@@ -2,7 +2,7 @@
 
 [← Features](README.md)
 
-`pysetup [checkout-directory]` creates or reuses a checkout-local `.venv` from an **existing, fresh Poetry lockfile**. It requires `pyproject.toml`, `poetry.lock`, and `uv` (installed via the required [Brewfile](../../dependencies/brew/required.Brewfile)). It does **not** resolve or update the project's dependency versions.
+`pysetup [checkout-directory]` creates or reuses a checkout-local `.venv` from an **existing, fresh Poetry lockfile**. It requires `pyproject.toml`, `poetry.lock`, and `uv` (installed via the shared [CLI manifest](../../dependencies/brew/common/cli.Brewfile)). It does **not** resolve or update the project's dependency versions.
 
 - Verifies a cache-miss lock with pinned Poetry 2.4.1 and poetry-plugin-export 1.10.1, then exports all groups with hashes.
 - Uses a content-addressed export cache in `~/Library/Caches/pysetup` and `uv pip sync --require-hashes`.

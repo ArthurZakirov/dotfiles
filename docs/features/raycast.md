@@ -93,9 +93,7 @@ the listing unnecessarily once; later `chezmoi apply` runs do not repeat it.
 
 The marker is local at `~/.cache/chezmoi/raycast-repository-manager-store-opened`.
 If installation was skipped or interrupted, use the Store link above; the
-marker is not an installation-health indicator. With
-`DOTFILES_SKIP_OPTIONAL_APPS=1`, onboarding is deferred until the next normal
-`chezmoi apply`. Raycast must already be installed; installation is managed by
+marker is not an installation-health indicator. Raycast must already be installed; installation is managed by
 [`src/apps.sh`](../../src/apps.sh).
 
 ## Managed sources and data boundaries

@@ -110,13 +110,13 @@ For the underlying provisioning sequence, see [Architecture](architecture.md).
    to its running LaunchAgent are deferred until the operator explicitly runs
    the relevant apply with `DOTFILES_ALLOW_SERVICE_INTERRUPTION=1`.
 
-   `apply` invokes hooks with side effects (including package installation and
-   LaunchAgents), even if the managed files are unchanged. On an existing Mac,
-   set `DOTFILES_SKIP_OPTIONAL_APPS=1` for the first apply when you want to
-   postpone optional GUI tooling and service changes. This does **not** skip
-   required shell provisioning or guarantee that any user-approved changes can
-   be rolled back. Review active services, existing file changes, and backups
-   before proceeding. Keep `--force` for explicitly accepted overwrites only.
+   `apply` invokes hooks with side effects (including missing package
+   installation and LaunchAgent reconciliation), even if managed files are
+   unchanged. Review active services, existing file changes, and backups
+   before proceeding. For a file-only preview on an existing Mac, use
+   `chezmoi diff` or `chezmoi apply --dry-run --exclude scripts` instead of
+   adding package-selection flags. Keep `--force` for explicitly accepted
+   overwrites only.
 
 ## Inspect your installation
 

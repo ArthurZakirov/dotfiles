@@ -102,8 +102,8 @@ def test_desktop_commander_launch_agent_is_personal_only(
 
 
 @pytest.mark.parametrize("profile", ["personal", "professional"])
-def test_peekaboo_skill_hook_is_rendered_and_safe_to_skip(
-    profile: str, profile_factory: ChezmoiProfileFixture, tmp_path,
+def test_peekaboo_skill_hook_renders_without_running_provisioning(
+    profile: str, profile_factory: ChezmoiProfileFixture,
 ) -> None:
     rendered = profile_factory.render(profile)
     hook = profile_factory.render_hook(
@@ -120,17 +120,13 @@ def test_peekaboo_skill_hook_is_rendered_and_safe_to_skip(
     profile_factory.run("/bin/bash", "-n", str(hook))
     assert (profile_factory.repository / "home/run_after_40-ensure-peekaboo-skill.sh.tmpl").stat().st_mode & 0o111
 
-    # Headless profile rendering must not install tools or contact GitHub.
-    profile_factory.run(
-        "/bin/bash", str(hook),
-        env={**os.environ, "HOME": str(tmp_path), "DOTFILES_SKIP_OPTIONAL_APPS": "1"},
-    )
-    assert not (tmp_path / ".agents").exists()
+    # Rendering and syntax checking require no network or installer execution.
+    assert "DOTFILES_SKIP_OPTIONAL_APPS" not in content
 
 
 @pytest.mark.parametrize("profile", ["personal", "professional"])
 def test_agent_browser_hook_renders_for_both_profiles(
-    profile: str, profile_factory: ChezmoiProfileFixture, tmp_path,
+    profile: str, profile_factory: ChezmoiProfileFixture,
 ) -> None:
     rendered = profile_factory.render(profile)
     hook = profile_factory.render_hook(
@@ -147,11 +143,8 @@ def test_agent_browser_hook_renders_for_both_profiles(
     assert 'ensure_agent_browser_runtime' in content
     assert 'source "$DOTFILES_ROOT/src/agent-browser-runtime.sh"' in content
     profile_factory.run("/bin/bash", "-n", str(hook))
-    profile_factory.run(
-        "/bin/bash", str(hook),
-        env={**os.environ, "HOME": str(tmp_path), "DOTFILES_SKIP_OPTIONAL_APPS": "1"},
-    )
-    assert not (tmp_path / ".agents").exists()
+    # Do not run the real installer in a rendering test.
+    assert "DOTFILES_SKIP_OPTIONAL_APPS" not in content
 
 
 @pytest.mark.parametrize("profile", ["personal", "professional"])

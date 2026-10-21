@@ -288,20 +288,6 @@ def test_store_prompt_runs_once_per_machine(tmp_path):
     assert "confirm Repository Manager installation" in first.stdout
 
 
-def test_store_prompt_defers_when_optional_apps_skipped(tmp_path):
-    env, home, capture = onboarding_env(tmp_path)
-    env["DOTFILES_SKIP_OPTIONAL_APPS"] = "1"
-
-    skipped = subprocess.run(["sh", str(HOOK)], env=env, capture_output=True, text=True)
-
-    assert skipped.returncode == 0
-    assert not capture.exists()
-    assert not (home / ".cache/chezmoi/raycast-repository-manager-store-opened").exists()
-    env.pop("DOTFILES_SKIP_OPTIONAL_APPS")
-    assert subprocess.run(["sh", str(HOOK)], env=env, capture_output=True).returncode == 0
-    assert capture.exists()
-
-
 def test_failed_store_open_can_be_retried(tmp_path):
     env, home, capture = onboarding_env(tmp_path)
     bin_dir = tmp_path / "bin"
