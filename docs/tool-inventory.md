@@ -48,7 +48,7 @@ Homebrew installs or detects these applications. **DevMac does not configure eve
 | `langsmith` (formula via tap) | Personal | Personal integration tooling |
 | `tunnel-client` (formula via tap) | Personal | [Secure MCP tunnel transport](features/chatgpt-skills-mcp.md) |
 
-These tools are installed from the [Brewfile](../Brewfile) or through [`src/apps.sh`](../src/apps.sh). Some use third-party taps.
+These tools are installed from the [required Brewfile](../dependencies/brew/required.Brewfile) or through [`src/apps.sh`](../src/apps.sh). Some use third-party taps.
 
 ## npm global CLIs
 

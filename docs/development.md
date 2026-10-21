@@ -75,8 +75,8 @@ chezmoi add ~/.example
 | Zsh configuration | [`home/dot_zshrc.tmpl`](../home/dot_zshrc.tmpl) |
 | Personal-only configuration | [`home/.chezmoitemplates/personal.zsh`](../home/.chezmoitemplates/personal.zsh) |
 | Chezmoi configuration | [`home/.chezmoi.toml.tmpl`](../home/.chezmoi.toml.tmpl) |
-| Shared template data | [`home/.chezmoidata.toml`](../home/.chezmoidata.toml) |
-| Installers and packages | [`src/shell-setup.sh`](../src/shell-setup.sh), [`src/apps.sh`](../src/apps.sh), [`Brewfile`](../Brewfile), [`brew/`](../brew/), [`npm/`](../npm/) |
+| Shared dependency revisions | [`dependencies/git/`](../dependencies/git/) |
+| Installers and packages | [`src/shell-setup.sh`](../src/shell-setup.sh), [`src/apps.sh`](../src/apps.sh), [`dependencies/`](../dependencies/) |
 
 Inspect the generated output without applying it:
 

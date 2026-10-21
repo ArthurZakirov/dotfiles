@@ -30,7 +30,7 @@ command -v npx >/dev/null
 while read -r command_name package verification; do
   case "$command_name" in ''|\#*) continue ;; esac
   npm install --global "$package"
-done < "$repo_root/npm/common.txt"
+done < "$repo_root/dependencies/npm/common.txt"
 [[ -x "$npm_config_prefix/bin/agent-browser" ]]
 "$npm_config_prefix/bin/agent-browser" --version
 [[ -x "$npm_config_prefix/bin/skills" ]]

@@ -91,7 +91,7 @@ validates all other parsed settings are unchanged, and preserves unrelated
 formatting and comments. It reads and writes through standard input/output;
 chezmoi performs the actual file update with private (0600) permissions.
 A first install can initialize a missing `config.toml` without `uv`; editing
-an existing config requires `uv`, which is included in the Brewfile.
+an existing config requires `uv`, which is included in the [required Brewfile](../../dependencies/brew/required.Brewfile).
 
 **The usual `chezmoi diff` now includes pending changes to the active
 `config.toml`**, even when the installed Markdown file is already up to date

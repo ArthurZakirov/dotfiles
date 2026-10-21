@@ -3,6 +3,7 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 DOTFILES_ROOT="$repo_root"
 source "$repo_root/src/apps.sh"
+source "$repo_root/src/setup-actions.sh"
 
 # All installers below are stubbed; no system software is modified.
 test_dir="$(mktemp -d)"
@@ -51,7 +52,7 @@ unset BREW_INSTALLED
 
 # A manually installed GUI app is not replaced with a Homebrew cask.
 APP_INSTALLED=AltTab.app
-install_optional_brewfile "$repo_root/brew/common/gui.Brewfile" >/dev/null
+install_optional_brewfile "$repo_root/dependencies/brew/common/gui.Brewfile" >/dev/null
 [[ " ${calls[*]} " != *'install --cask alt-tab'* ]]
 unset APP_INSTALLED
 calls=()
@@ -74,26 +75,28 @@ install_npm_cli skills skills version
 unset CLI_INSTALLED
 
 # Both profile-independent Brewfile inventories install the exact former packages.
-install_optional_brewfile "$repo_root/brew/common/cli.Brewfile"
+install_optional_brewfile "$repo_root/dependencies/brew/common/cli.Brewfile"
 [[ "${calls[*]}" == 'install --cask codex install --cask claude-code install node install openclaw/tap/peekaboo' ]]
 calls=()
-install_optional_brewfile "$repo_root/brew/common/gui.Brewfile"
+PENDING_BREW_ACTIONS=()
+install_optional_brewfile "$repo_root/dependencies/brew/common/gui.Brewfile"
+[[ "${PENDING_BREW_ACTIONS[*]}" == 'vscode-cli' ]]
 [[ "${calls[*]}" == 'install --cask alt-tab install --cask betterdisplay install --cask displaylink install --cask ddpm install --cask warp install --cask google-drive install --cask hammerspoon install --cask logi-options+ install --cask logitune install --cask docker-desktop install --cask raycast install --cask rectangle install --cask visual-studio-code install --cask google-chrome install --cask claude install --cask chatgpt' ]]
 calls=()
 
 # Personal Brewfile entries stay out of the professional profile.
-install_optional_brewfile "$repo_root/brew/personal/cli.Brewfile"
+install_optional_brewfile "$repo_root/dependencies/brew/personal/cli.Brewfile"
 [[ "${calls[*]}" == 'install --cask xdevplatform/tap/xurl install langchain-ai/tap/langsmith-cli install openai/tools/tunnel-client' ]]
 calls=()
-install_optional_brewfile "$repo_root/brew/personal/gui.Brewfile"
+install_optional_brewfile "$repo_root/dependencies/brew/personal/gui.Brewfile"
 [[ "${calls[*]}" == 'install --cask bitwarden install --cask telegram install --cask whatsapp install --cask todoist-app install --cask notion' ]]
 calls=()
 
 # Both npm inventories install the same globally available CLIs as before.
-install_npm_manifest "$repo_root/npm/common.txt"
+install_npm_manifest "$repo_root/dependencies/npm/common.txt"
 [[ "${calls[*]}" == 'npm install --global skills npm install --global agent-browser' ]]
 calls=()
-install_npm_manifest "$repo_root/npm/personal.txt"
+install_npm_manifest "$repo_root/dependencies/npm/personal.txt"
 [[ "${calls[*]}" == 'npm install --global @wonderwhy-er/desktop-commander' ]]
 calls=()
 
@@ -118,6 +121,25 @@ if install_optional_brewfile "$test_dir/invalid.Brewfile" 2>/dev/null; then exit
 printf 'tool package unexpected extra\n' > "$test_dir/invalid-npm.txt"
 if install_npm_manifest "$test_dir/invalid-npm.txt" 2>/dev/null; then exit 1; fi
 
+# Profile membership and npm post-install hooks come from inventories, not code.
+relocated="$test_dir/relocated"
+mkdir -p "$relocated/dependencies/brew/personal" "$relocated/dependencies/npm"
+printf 'cask "relocated-app" # apps: Relocated.app\n' > "$relocated/dependencies/brew/personal/gui.Brewfile"
+printf 'desktop-commander @wonderwhy-er/desktop-commander none desktop-commander-link\n' > "$relocated/dependencies/npm/common.txt"
+DOTFILES_ROOT="$relocated"
+calls=()
+install_optional_dependencies professional
+[[ ${#calls[@]} -eq 0 ]]
+install_optional_dependencies personal
+[[ "${calls[*]}" == 'install --cask relocated-app' ]]
+calls=()
+rm "$HOME/.local/bin/desktop-commander-remote"
+install_optional_dependencies common
+[[ "${calls[*]}" == 'npm install --global @wonderwhy-er/desktop-commander' ]]
+[[ "$(readlink "$HOME/.local/bin/desktop-commander-remote")" == "$test_dir/npm-prefix/bin/desktop-commander" ]]
+DOTFILES_ROOT="$repo_root"
+calls=()
+
 # A fully provisioned Mac never reinstalls a cask, formula, or npm CLI,
 # including after multiple applies and when GUI apps were installed manually.
 calls=()
@@ -135,8 +157,8 @@ command() {
   builtin command "$@"
 }
 for iteration in 1 2; do
-  install_common_apps >/dev/null
-  install_personal_apps >/dev/null
+  install_optional_dependencies common >/dev/null
+  install_optional_dependencies personal >/dev/null
   [[ ${#calls[@]} -eq 0 ]]
 done
 

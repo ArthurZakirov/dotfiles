@@ -172,7 +172,7 @@ def test_npm_installer_handles_missing_and_existing_cli(tmp_path, preinstalled):
            'TEST_NPM_CALLS': str(tmp_path / 'npm-calls')}
     result = subprocess.run([
         '/bin/bash', '-c',
-        'source "$1" && install_npm_manifest "$DOTFILES_ROOT/npm/personal.txt" && configure_desktop_commander_cli', 'test', str(root / 'src/apps.sh'), 'present' if preinstalled else 'missing'
+        'source "$1" && source "$DOTFILES_ROOT/src/setup-actions.sh" && install_npm_manifest "$DOTFILES_ROOT/dependencies/npm/personal.txt"', 'test', str(root / 'src/apps.sh'), 'present' if preinstalled else 'missing'
     ], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     link = tmp_path / '.local/bin/desktop-commander-remote'

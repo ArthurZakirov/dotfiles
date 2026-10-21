@@ -18,11 +18,8 @@ DevMac is experienced as a set of developer workflows, but delivered through app
 | [`src/shell-setup.sh`](../src/shell-setup.sh) | Reusable shell, editor, and profile installers; selects personal or professional integrations. |
 | [`src/homebrew.sh`](../src/homebrew.sh) | Installs Homebrew if missing and configures its shell environment. |
 | [`src/apps.sh`](../src/apps.sh) | Reads optional Homebrew and npm manifests; preserves checks for existing apps and CLI tools. |
-| [`Brewfile`](../Brewfile) | Required shared shell dependencies (including headless CI). |
-| [`brew/`](../brew/) | Four optional Homebrew inventories: common/personal × GUI/CLI. |
-| [`npm/`](../npm/) | Shared and personal global npm CLI inventories. |
-| [`home/dot_local/share/dotfiles/brew/hammerspoon-swift.Brewfile`](../home/dot_local/share/dotfiles/brew/hammerspoon-swift.Brewfile) | Swift toolchain provisioned lazily if no working compiler exists. |
-| [`home/.chezmoidata.toml`](../home/.chezmoidata.toml) | Stores shared settings including the pinned Oh My Zsh revision. |
+| [`dependencies/`](../dependencies/) | Canonical inventory of required, optional, on-demand, Git and manually installed dependencies, organized by profile and tool type. |
+| [`src/setup-actions.sh`](../src/setup-actions.sh) | Implements package-specific lifecycle actions without deciding which profile owns them. |
 | [`home/dot_zshrc.tmpl`](../home/dot_zshrc.tmpl) | Renders shell history, completion, prompt, Git helpers, fzf, and plugins. |
 | [`home/dot_gitconfig`](../home/dot_gitconfig) | Renders the shared Git aliases and an optional machine-local override. |
 | [`home/run_once_before_15-migrate-git-config.sh`](../home/run_once_before_15-migrate-git-config.sh) | Preserves an existing global Git configuration as the machine-local override. |

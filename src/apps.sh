@@ -48,7 +48,7 @@ install_missing_formula() {
 # Keep the command/app checks in Bash: a plain 'brew bundle install' would not
 # preserve the skip behavior for apps that were installed outside Homebrew.
 install_optional_brewfile() {
-  local file="$1" line kind package check_type check_value
+  local file="$1" line kind package check_type check_value post_action
   local -a app_names
   local pattern='^(brew|cask)[[:space:]]+"([^"]+)"[[:space:]]+#[[:space:]]+(binary|apps):[[:space:]]*(.+)$'
   [[ -r "$file" ]] || { echo "Missing Brewfile: $file" >&2; return 1; }
@@ -62,6 +62,12 @@ install_optional_brewfile() {
     package="${BASH_REMATCH[2]}"
     check_type="${BASH_REMATCH[3]}"
     check_value="${BASH_REMATCH[4]}"
+    post_action=""
+    if [[ "$check_value" == *"; post: "* ]]; then
+      post_action="${check_value##*; post: }"
+      check_value="${check_value%%; post: *}"
+      [[ -n "$post_action" ]] || { echo "Missing post-install action in $file" >&2; return 2; }
+    fi
     case "$kind/$check_type" in
       brew/binary)
         install_missing_formula "$check_value" "$package" || return
@@ -78,6 +84,9 @@ install_optional_brewfile() {
         return 2
         ;;
     esac
+    if [[ -n "$post_action" ]]; then
+      PENDING_BREW_ACTIONS+=("$post_action")
+    fi
   done < "$file"
 }
 
@@ -85,73 +94,59 @@ install_optional_brewfile() {
 install_npm_cli() {
   local command_name="$1" package="$2" verification="$3"
   if ! command -v "$command_name" >/dev/null 2>&1; then
-    if [[ "$command_name" == desktop-commander ]] && ! command -v npm >/dev/null 2>&1; then
-      echo 'npm is required to install Desktop Commander.' >&2
-      return 1
-    fi
-    case "$command_name" in
-      skills) echo 'Installing: Vercel skills CLI (npm)' ;;
-      agent-browser) echo 'Installing: agent-browser (npm)' ;;
-      *) echo "Installing: $package (npm)" ;;
-    esac
+    command -v npm >/dev/null 2>&1 || {
+      echo "npm is required to install $package." >&2
+      return 127
+    }
+    echo "Installing: $package (npm)"
     npm install --global "$package" || return 1
   fi
   if [[ "$verification" == version ]]; then
     "$command_name" --version >/dev/null 2>&1 || {
-      case "$command_name" in
-        skills) echo 'Vercel skills CLI failed its version check.' >&2 ;;
-        agent-browser) echo 'Agent Browser CLI failed its version check.' >&2 ;;
-        *) echo "$command_name failed its version check." >&2 ;;
-      esac
+      echo "$command_name failed its version check." >&2
       return 1
     }
   fi
 }
 
 install_npm_manifest() {
-  local file="$1" command_name package verification extra
+  local file="$1" command_name package verification post_action extra
   [[ -r "$file" ]] || { echo "Missing npm manifest: $file" >&2; return 1; }
-  while read -r command_name package verification extra || [[ -n "$command_name" ]]; do
+  while read -r command_name package verification post_action extra || [[ -n "$command_name" ]]; do
     case "$command_name" in ''|\#*) continue ;; esac
     if [[ -z "$package" || ( "$verification" != version && "$verification" != none ) || -n "$extra" ]]; then
-      echo "Invalid npm manifest entry in $file: $command_name $package $verification $extra" >&2
+      echo "Invalid npm manifest entry in $file: $command_name $package $verification $post_action $extra" >&2
       return 2
     fi
     install_npm_cli "$command_name" "$package" "$verification" || return
+    if [[ -n "$post_action" && "$post_action" != none ]]; then
+      run_dependency_post_install "$post_action" || return
+    fi
   done < "$file"
 }
 
-configure_desktop_commander_cli() {
-  local cli target
-  cli="$(command -v desktop-commander 2>/dev/null || true)"
-  if [[ -z "$cli" ]] && command -v npm >/dev/null 2>&1; then
-    cli="$(npm prefix --global)/bin/desktop-commander"
+# Profile and package membership are declared under dependencies/.
+install_optional_dependencies() {
+  local scope="$1" category file
+  PENDING_BREW_ACTIONS=()
+  for category in gui cli; do
+    file="$DOTFILES_ROOT/dependencies/brew/$scope/$category.Brewfile"
+    [[ -f "$file" ]] || continue
+    install_optional_brewfile "$file" || return
+  done
+  file="$DOTFILES_ROOT/dependencies/npm/$scope.txt"
+  if [[ -f "$file" ]]; then
+    install_npm_manifest "$file" || return
   fi
-  if [[ -z "$cli" || ! -x "$cli" ]]; then
-    echo 'Desktop Commander binary not found after npm installation.' >&2
-    return 1
-  fi
-  target="$HOME/.local/bin/desktop-commander-remote"
-  mkdir -p "$(dirname "$target")"
-  if [[ -e "$target" && ! -L "$target" ]]; then
-    echo "Refusing to overwrite $target" >&2
-    return 1
-  fi
-  ln -sfn "$cli" "$target"
 }
 
-install_common_apps() {
-  install_optional_brewfile "$DOTFILES_ROOT/brew/common/gui.Brewfile" || return
-  install_optional_brewfile "$DOTFILES_ROOT/brew/common/cli.Brewfile" || return
-  install_npm_manifest "$DOTFILES_ROOT/npm/common.txt"
-}
-
-# Only the personal profile installs these apps.
-install_personal_apps() {
-  install_optional_brewfile "$DOTFILES_ROOT/brew/personal/gui.Brewfile" || return
-  install_optional_brewfile "$DOTFILES_ROOT/brew/personal/cli.Brewfile" || return
-  install_npm_manifest "$DOTFILES_ROOT/npm/personal.txt" || return
-  configure_desktop_commander_cli
+run_pending_brew_actions() {
+  local action
+  for action in "${PENDING_BREW_ACTIONS[@]-}"; do
+    [[ -n "$action" ]] || continue
+    run_dependency_post_install "$action" || return
+  done
+  PENDING_BREW_ACTIONS=()
 }
 
 verify_node_toolchain() {

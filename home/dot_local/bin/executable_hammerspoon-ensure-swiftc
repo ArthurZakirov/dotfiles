@@ -32,7 +32,13 @@ if [ -n "$prefix" ]; then
 fi
 if [ -z "$found" ]; then
   echo 'Installing Swift toolchain for Hammerspoon microphone diagnostics ...' >&2
-  manifest="$HOME/.local/share/dotfiles/brew/hammerspoon-swift.Brewfile"
+  # Find the only canonical manifest in the active chezmoi checkout.
+  command -v chezmoi >/dev/null 2>&1 || {
+    echo 'Cannot resolve Swift manifest: chezmoi is missing.' >&2
+    exit 127
+  }
+  source_dir="$(chezmoi source-path)" || exit 1
+  manifest="${source_dir%/*}/dependencies/brew/common/on-demand/hammerspoon-swift.Brewfile"
   if [ ! -r "$manifest" ]; then
     echo "Missing managed Swift Brewfile: $manifest" >&2
     exit 1

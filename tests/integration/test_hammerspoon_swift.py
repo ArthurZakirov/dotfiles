@@ -44,10 +44,15 @@ def test_swift_toolchain_installs_only_when_compiler_missing(tmp_path, fake_comm
     )
     brew.chmod(0o755)
     home = tmp_path / "home"
-    manifest = home / ".local/share/dotfiles/brew/hammerspoon-swift.Brewfile"
+    repo = tmp_path / "source"
+    source_dir = repo / "home"
+    source_dir.mkdir(parents=True)
+    manifest = repo / "dependencies/brew/common/on-demand/hammerspoon-swift.Brewfile"
     manifest.parent.mkdir(parents=True)
     manifest.write_text('brew "swift"\n')
-    env = {**os.environ, "HOME": str(home), "PATH": str(fake_commands)}
+    executable(fake_commands, "chezmoi", 'echo "$TEST_CHEZMOI_SOURCE_DIR"\n')
+    env = {**os.environ, "HOME": str(home), "PATH": str(fake_commands),
+           "TEST_CHEZMOI_SOURCE_DIR": str(source_dir)}
     first = subprocess.run([str(SWIFT_SETUP)], env=env, text=True, capture_output=True)
     assert first.returncode == 0, first.stderr
     assert first.stdout.strip() == str(keg / "Swift-6.4.xctoolchain/usr/bin/swiftc")

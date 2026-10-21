@@ -12,7 +12,7 @@ cask "logitune" # apps: LogiTune.app|Logi Tune.app
 cask "docker-desktop" # apps: Docker.app
 cask "raycast" # apps: Raycast.app
 cask "rectangle" # apps: Rectangle.app
-cask "visual-studio-code" # apps: Visual Studio Code.app
+cask "visual-studio-code" # apps: Visual Studio Code.app; post: vscode-cli
 cask "google-chrome" # apps: Google Chrome.app
 cask "claude" # apps: Claude.app
 cask "chatgpt" # apps: ChatGPT.app

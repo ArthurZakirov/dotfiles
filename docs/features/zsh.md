@@ -16,8 +16,8 @@ An existing `.zshrc` is backed up before its first replacement.
 | --- | --- |
 | [Zsh template](../../home/dot_zshrc.tmpl) | Shared shell behavior and commands |
 | [Personal template](../../home/.chezmoitemplates/personal.zsh) | Personal-only environment and integrations |
-| [Shared data](../../home/.chezmoidata.toml) | Pinned Oh My Zsh revision |
-| [Brewfile](../../Brewfile) | Shell dependencies |
+| [Git dependency manifest](../../dependencies/git/common/oh-my-zsh.commit) | Pinned Oh My Zsh revision |
+| [Brewfile](../../dependencies/brew/required.Brewfile) | Shell dependencies |
 
 Keep machine-local additions in `~/.zshrc.local`, which the shared shell sources
 when present. This file is unmanaged and remains on that machine. To share a
