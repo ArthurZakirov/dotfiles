@@ -1,16 +1,19 @@
 # Raycast navigation
 
-[← Features](README.md) · [Development](../development.md)
+[← Features](README.md) · [Review and navigation](../workflows/review-and-navigation.md) · [Development](../development.md)
 
-Raycast remains **local to each Mac**. Chezmoi installs Raycast and manages
-Script Commands, but it never synchronizes Raycast's clipboard history,
-credentials, browser activity, databases or account settings. Do not enable
-Raycast Cloud Sync as part of this setup.
+Raycast provides optional navigation to Git repositories and frequently used
+configuration files directly from the keyboard. Chezmoi installs the app and
+manages file-opening Script Commands; other DevMac workflows do not depend on
+Raycast onboarding. Raycast stays **local to each Mac**: this feature does not
+synchronize clipboard history, credentials, browser activity, databases, or
+account settings. Raycast Cloud Sync is not needed.
 
 ## Workflows
 
 | Workflow | Mechanism | Setup on each Mac |
 | --- | --- | --- |
+| Launch installed applications | Raycast's built-in app search | Raycast app installed by DevMac; no extension required |
 | Find Git repositories | [Repository Manager](https://www.raycast.com/francesco_mecchi/repository-manager), a Store extension | Install in Raycast, configure projects path and VS Code, assign `Option+R` |
 | Open configuration files | [Raycast Script Commands](https://manual.raycast.com/script-commands) managed with chezmoi | Register `~/.config/raycast/scripts` once |
 | Other Quicklinks | Keep existing local Raycast Quicklinks | Existing Quicklinks remain unchanged |
@@ -32,8 +35,9 @@ not checked into Git.
 ## First-time initialization
 
 On a normal interactive Mac, `chezmoi apply` creates the scripts and opens
-Repository Manager's official Store listing **once per machine**. Confirm
-installation in Raycast, then:
+Repository Manager's official Store listing **once per machine**. This is an
+onboarding prompt, not unattended extension installation. Confirm installation
+in Raycast, then:
 
 1. In Raycast, open **Settings → Script Commands → Add Script Directory** and
    select `~/.config/raycast/scripts`.

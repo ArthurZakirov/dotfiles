@@ -20,6 +20,6 @@ When `DOTFILES_SKIP_OPTIONAL_APPS` is not `1`, both profiles run `install_common
 
 ## What the installer does not do
 
-Installing a package does **not** automatically enable macOS Accessibility and Screen Recording permissions, Logitech Flow, monitor input shortcuts, Raycast Store extensions, provider logins, ChatGPT plugin connections, or machine-local secrets. Some feature hooks do additional work; inspect them in the [architecture](architecture.md) and follow the [relevant feature instructions](features/README.md).
+Installing a package does **not** automatically enable macOS Accessibility and Screen Recording permissions, Logitech Flow, monitor input shortcuts, Raycast Store extensions, provider logins, ChatGPT plugin connections, or machine-local secrets. For Raycast, chezmoi manages file-opening Script Commands and opens the Repository Manager Store page once, but Raycast still requires manual extension installation and Script Command registration ([details](features/raycast.md)). Some feature hooks do additional work; inspect them in the [architecture](architecture.md) and follow the [relevant feature instructions](features/README.md).
 
 Before applying DevMac on an already-configured Mac, follow the [safe synchronization workflow](setup.md#already-configured-mac-synchronize-safely). Apply hooks may have side effects even when destination files have not changed.
