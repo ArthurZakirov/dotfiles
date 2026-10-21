@@ -161,7 +161,7 @@ def test_npm_installer_handles_missing_and_existing_cli(tmp_path, preinstalled):
     fake_bin = tmp_path / 'bin'
     fake_bin.mkdir()
     npm = fake_bin / 'npm'
-    npm.write_text("#!/bin/sh\n" "printf '%s\\n' \"$*\" >> \"$TEST_NPM_CALLS\"\n" "printf '#!/bin/sh\\nexit 0\\n' > \"$(dirname \"$0\")/desktop-commander\"\n" "chmod +x \"$(dirname \"$0\")/desktop-commander\"\n")
+    npm.write_text("#!/bin/sh\n" "if [ \"$1\" = list ]; then exit 1; fi\n" "printf '%s\\n' \"$*\" >> \"$TEST_NPM_CALLS\"\n" "printf '#!/bin/sh\\nexit 0\\n' > \"$(dirname \"$0\")/desktop-commander\"\n" "chmod +x \"$(dirname \"$0\")/desktop-commander\"\n")
     npm.chmod(0o755)
     if preinstalled:
         cli = fake_bin / 'desktop-commander'
