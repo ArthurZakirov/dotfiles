@@ -1,6 +1,8 @@
-# How it works
+# How DevMac is assembled
 
-[← README](../README.md)
+[← DevMac](../README.md) · [Tool inventory](tool-inventory.md) · [Features by purpose](features/README.md)
+
+DevMac is experienced as a set of developer workflows, but delivered through applications, command-line tools, managed configuration files, and login services. [Browse by outcome](features/README.md) or [audit the tools by kind and installer](tool-inventory.md).
 
 **Chezmoi** is the native entry point. It discovers `<GitHub username>/dotfiles`, clones the repository, generates a machine-local configuration, and applies the declared files. **Git** carries updates between Macs, while **Homebrew** installs dependencies. The supported operating system is macOS.
 

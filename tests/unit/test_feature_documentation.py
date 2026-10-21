@@ -46,24 +46,31 @@ def test_bitwarden_keychain_instructions_match_provider():
     assert "`BWS_ACCESS_TOKEN`" in doc
 
 
-def test_feature_docs_link_to_canonical_local_sources():
-    for filename in (
-        ROOT / "docs/setup.md",
-        FEATURES / "README.md",
-        MCP_DOC,
-        SECRETS_DOC,
-    ):
+def test_documentation_links_resolve():
+    # Both reader-facing routes and detailed implementation pages must stay navigable.
+    for filename in (ROOT / "README.md", *sorted((ROOT / "docs").rglob("*.md"))):
         source = filename.read_text()
         for target in re.findall(r"\]\(([^)]+)\)", source):
             if target.startswith(("http://", "https://", "mailto:", "#")):
                 continue
             path, sep, anchor = target.partition("#")
             destination = filename.parent / path
-            assert destination.is_file(), f"{filename}: broken link to {target}"
-            if sep:
+            assert destination.exists(), f"{filename}: broken link to {target}"
+            if sep and destination.is_file():
                 headings = re.findall(r"^#{1,6}\s+(.+)$", destination.read_text(), re.M)
                 slugs = {
                     re.sub(r"[^a-z0-9 -]", "", heading.lower()).replace(" ", "-")
                     for heading in headings
                 }
                 assert anchor in slugs, f"{filename}: broken heading link to {target}"
+
+
+def test_direct_bitwarden_cli_installer_is_documented():
+    installer = (ROOT / "src/shell-setup.sh").read_text()
+    assert "install_bitwarden_secrets_manager()" in installer
+    assert "https://bws.bitwarden.com/install" in installer
+
+    for path in (ROOT / "docs/provisioning.md", ROOT / "docs/tool-inventory.md"):
+        page = path.read_text()
+        assert "`bws`" in page, f"{path}: missing direct Bitwarden CLI"
+        assert "src/shell-setup.sh" in page, f"{path}: missing direct installer source"

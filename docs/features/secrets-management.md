@@ -2,7 +2,7 @@
 
 [← Features](README.md)
 
-Bitwarden Secrets Manager stores API keys for independent dotfiles features.
+Bitwarden Secrets Manager stores API keys for independent DevMac integrations.
 The shared [credential helper](../../home/dot_local/share/dotfiles-secrets/secret_store.py)
 reads the secrets available to the machine account, then **returns only the
 requested values** to the calling feature. No values or Mac-specific access

@@ -3,7 +3,7 @@
 [← Shared features](README.md) · [Development](../development.md)
 
 Chezmoi synchronizes macOS keyboard shortcut overrides together with your
-other dotfiles. The desired configuration is stored in
+other managed configuration files. The desired configuration is stored in
 [`home/dot_config/macos-shortcuts/shortcuts.json`](../../home/dot_config/macos-shortcuts/shortcuts.json).
 
 ## Managed shortcuts

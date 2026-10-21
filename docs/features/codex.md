@@ -2,7 +2,9 @@
 
 [← Feature catalog](README.md)
 
-Chezmoi installs the versioned Codex files directly from this Dotfiles repository.
+Start with Codex instructions and hooks refined through hundreds of hours of real software-development work, without having to design and tune them all yourself.
+
+Chezmoi installs the versioned Codex files directly from this DevMac repository.
 Neither installation nor synchronization requires cloning or invoking another
 repository. The global guidance source tree and its renderer are **build-time
 files only**, not a second installation inside `~/.codex/`.
