@@ -161,17 +161,18 @@ def test_npm_installer_handles_missing_and_existing_cli(tmp_path, preinstalled):
     fake_bin = tmp_path / 'bin'
     fake_bin.mkdir()
     npm = fake_bin / 'npm'
-    npm.write_text("#!/bin/sh\n" "printf '%s\\n' \"$*\" >> \"$TEST_NPM_CALLS\"\n" "printf '#!/bin/sh\\nexit 0\\n' > \"$(dirname \"$0\")/desktop-commander\"\n" "chmod +x \"$(dirname \"$0\")/desktop-commander\"\n")
+    npm.write_text("#!/bin/sh\n" "if [ \"$1\" = list ]; then exit 1; fi\n" "printf '%s\\n' \"$*\" >> \"$TEST_NPM_CALLS\"\n" "printf '#!/bin/sh\\nexit 0\\n' > \"$(dirname \"$0\")/desktop-commander\"\n" "chmod +x \"$(dirname \"$0\")/desktop-commander\"\n")
     npm.chmod(0o755)
     if preinstalled:
         cli = fake_bin / 'desktop-commander'
         cli.write_text('#!/bin/sh\nexit 0\n')
         cli.chmod(0o755)
     env = {**os.environ, 'HOME': str(tmp_path), 'PATH': f"{fake_bin}:/usr/bin:/bin",
+           'DOTFILES_ROOT': str(root),
            'TEST_NPM_CALLS': str(tmp_path / 'npm-calls')}
     result = subprocess.run([
         '/bin/bash', '-c',
-        'source "$1"; install_desktop_commander_cli', 'test', str(root / 'src/apps.sh'), 'present' if preinstalled else 'missing'
+        'source "$1" && source "$DOTFILES_ROOT/src/setup-actions.sh" && install_npm_manifest "$DOTFILES_ROOT/dependencies/npm/personal.txt"', 'test', str(root / 'src/apps.sh'), 'present' if preinstalled else 'missing'
     ], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     link = tmp_path / '.local/bin/desktop-commander-remote'

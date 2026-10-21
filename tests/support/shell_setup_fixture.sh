@@ -14,11 +14,27 @@ record_installation() {
 install_homebrew() { record_installation homebrew; }
 configure_homebrew() { record_installation configure; }
 install_homebrew_packages() { record_installation packages; }
-configure_vscode_cli() { record_installation vscode-cli; }
-install_common_apps() { record_installation apps; }
+run_pending_brew_actions() {
+  if [[ "${last_installed_scope:-}" == common ]]; then record_installation vscode-cli; fi
+  return 0
+}
+install_optional_dependencies() {
+  last_installed_scope="$1"
+  case "$1" in
+    common) record_installation apps ;;
+    personal) record_installation personal-apps ;;
+    professional) : ;;
+  esac
+}
 verify_node_toolchain() { record_installation node-tools; }
-install_personal_apps() { record_installation personal-apps; }
-install_oh_my_zsh() { record_installation oh-my-zsh; }
+install_git_dependencies() {
+  if [[ "$1" == common ]]; then record_installation oh-my-zsh; fi
+  return 0
+}
+install_manual_dependencies() {
+  if [[ "$1" == personal ]]; then record_installation bitwarden; fi
+  return 0
+}
 install_bitwarden_secrets_manager() { record_installation bitwarden; }
 
 given_profile() {

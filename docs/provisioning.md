@@ -2,24 +2,52 @@
 
 [← Architecture](architecture.md) · [Tool inventory](tool-inventory.md) · [Features](features/README.md)
 
-DevMac uses Homebrew, npm, direct upstream installers, and managed configuration to assemble its developer environment. This page documents package detection, installation sources, and lifecycle behavior.
+**Source of truth:** [`dependencies/`](../dependencies/) holds all machine-provisioning
+package identities, profile assignments, classifications, version pins, and
+declared post-install actions. The installer scripts implement behavior, not
+package/profile membership.
 
-## Sources of truth
+## Dependency inventories
+
+| Scope | Homebrew CLI | Homebrew GUI | npm global CLI | Other |
+| --- | --- | --- | --- | --- |
+| Required, both profiles | [`required.Brewfile`](../dependencies/brew/required.Brewfile) | — | — | [`Git pins`](../dependencies/git/common/) |
+| Optional, both profiles | [`common/cli.Brewfile`](../dependencies/brew/common/cli.Brewfile) | [`common/gui.Brewfile`](../dependencies/brew/common/gui.Brewfile) | [`common.txt`](../dependencies/npm/common.txt) | — |
+| Optional, personal | [`personal/cli.Brewfile`](../dependencies/brew/personal/cli.Brewfile) | [`personal/gui.Brewfile`](../dependencies/brew/personal/gui.Brewfile) | [`personal.txt`](../dependencies/npm/personal.txt) | [`Manual installers`](../dependencies/manual/personal.txt) (required regardless of optional-app skip) |
+| On demand, both profiles | [`Swift Brewfile`](../dependencies/brew/common/on-demand/hammerspoon-swift.Brewfile) | — | — | — |
+
+Move an entry between the appropriate inventory files to change profile
+membership. A new professional-only inventory can be placed under the
+corresponding `professional/` directory. The shell runner discovers profiles
+by scope instead of hardcoding package lists.
+
+## Execution and lifecycle
 
 | Source | Responsibility |
 | --- | --- |
-| [`Brewfile`](../Brewfile) | Shared Homebrew CLI dependencies |
-| [`src/apps.sh`](../src/apps.sh) | Detection and installation of shared and profile-specific applications/CLIs through Homebrew and npm |
-| [`src/shell-setup.sh`](../src/shell-setup.sh) | Orchestrates setup; installs pinned Oh My Zsh and the personal-profile `bws` CLI directly |
-| [`src/homebrew.sh`](../src/homebrew.sh) | Bootstraps Homebrew when it is missing |
-| [`src/agent-skills.sh`](../src/agent-skills.sh) | Installation, provenance, and integrity checks for supported upstream agent skills |
-| [`home/`](../home/) | Managed configuration, hooks, scripts, and macOS LaunchAgents |
-| [Tool inventory](tool-inventory.md) | Human-readable breakdown by GUI app, package manager, CLI, and managed artifact |
+| [`src/homebrew.sh`](../src/homebrew.sh) | Bootstraps Homebrew if absent. |
+| [`src/shell-setup.sh`](../src/shell-setup.sh) | Orchestrates required packages, optional packages, Git pins and manual installers in the established order. |
+| [`src/apps.sh`](../src/apps.sh) | Reads optional Homebrew and npm manifests; detects existing executables and application bundles. |
+| [`src/setup-actions.sh`](../src/setup-actions.sh) | Implements package-specific installation and post-install actions without determining profile membership. |
+| [`src/agent-skills.sh`](../src/agent-skills.sh) | Validates supported upstream agent skills. |
+| [`home/`](../home/) | Managed configuration, hooks and macOS LaunchAgents. |
 
-When `DOTFILES_SKIP_OPTIONAL_APPS` is not `1`, both profiles run `install_common_apps`; the personal profile additionally runs `install_personal_apps`. Installation helpers check for existing executables or application bundles and skip recognized installations before invoking Homebrew or npm. Separately, the personal-profile setup installs `bws` through the [Bitwarden upstream installer](https://bws.bitwarden.com/install) when the CLI is missing: `src/shell-setup.sh` downloads the shell installer and executes it. This step is not controlled by `DOTFILES_SKIP_OPTIONAL_APPS`. Detection cannot prove an installed app is configured, authenticated, permitted, or working for the intended task.
+The required Brewfile is installed on every apply. When
+`DOTFILES_SKIP_OPTIONAL_APPS=1`, Homebrew and npm optional dependencies are
+skipped; required Git and manual dependencies retain their original behavior.
+npm manifest entries may specify a post-install action. Homebrew annotations
+may specify a post-install action after the package detection step. Actions
+run even if the corresponding binary or application already existed.
+
+On-demand Swift provisioning reads the canonical Brewfile from the active
+chezmoi source checkout, rather than maintaining a second copy under `home/`.
+Global npm tools remain global (not project-local `package.json` installs).
+Project-specific Python dependency files stay with their owning projects.
 
 ## What the installer does not do
 
 Installing a package does **not** automatically enable macOS Accessibility and Screen Recording permissions, Logitech Flow, monitor input shortcuts, Raycast Store extensions, provider logins, ChatGPT plugin connections, or machine-local secrets. For Raycast, chezmoi manages file-opening Script Commands and opens the Repository Manager Store page once, but Raycast still requires manual extension installation and Script Command registration ([details](features/raycast.md)). Some feature hooks do additional work; inspect them in the [architecture](architecture.md) and follow the [relevant feature instructions](features/README.md).
 
-Before applying DevMac on an already-configured Mac, follow the [safe synchronization workflow](setup.md#already-configured-mac-synchronize-safely). Apply hooks may have side effects even when destination files have not changed.
+For an already configured Mac, follow the
+[safe synchronization workflow](setup.md#already-configured-mac-synchronize-safely).
+Chezmoi hooks can have side effects even when destination files have not changed.

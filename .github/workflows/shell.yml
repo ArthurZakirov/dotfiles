@@ -15,10 +15,10 @@ jobs:
           persist-credentials: false
       - name: Install shell dependencies for read-only tests
         run: |
-          brew bundle install --no-upgrade --file=Brewfile
+          brew bundle install --no-upgrade --file=dependencies/brew/required.Brewfile
           brew install luajit # Run Hammerspoon Lua scenarios against the real Lua modules.
           git clone https://github.com/ohmyzsh/ohmyzsh.git "$HOME/.oh-my-zsh"
-          revision=$(sed -n 's/^ohMyZshCommit = "\(.*\)"/\1/p' home/.chezmoidata.toml)
+          revision=$(cat dependencies/git/common/oh-my-zsh.commit)
           git -C "$HOME/.oh-my-zsh" checkout --detach "$revision"
       - name: Install Poetry and test dependencies
         run: |

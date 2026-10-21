@@ -30,7 +30,7 @@ test_personal_factory_calls_bitwarden_installer() {
   given_profile personal
 
   # WHEN its profile-specific tools are installed
-  install_personal_profile
+  install_profile_dependencies personal
 
   # THEN only Bitwarden Secrets Manager is requested
   assert_installation_sequence "bitwarden personal-apps"
@@ -41,7 +41,7 @@ test_professional_factory_has_no_additional_tools() {
   given_profile professional
 
   # WHEN its profile-specific tools are installed
-  install_professional_profile
+  install_profile_dependencies professional
 
   # THEN no personal-only tools are requested
   assert_installation_sequence ""

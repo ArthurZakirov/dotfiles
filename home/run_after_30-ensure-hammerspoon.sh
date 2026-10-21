@@ -28,4 +28,8 @@ if [[ ! -x "$activate" ]]; then
   printf 'Hammerspoon: activation helper missing: %s\n' "$activate" >&2
   exit 1
 fi
+if [ -r "$(chezmoi source-path | sed 's@/home$@@')/src/provisioning-log.sh" ]; then
+  source "$(chezmoi source-path | sed 's@/home$@@')/src/provisioning-log.sh"
+  dotfiles_section "HAMMERSPOON RUNTIME"
+fi
 "$activate"

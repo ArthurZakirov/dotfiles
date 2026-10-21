@@ -31,11 +31,12 @@ The next `chezmoi apply` verifies the upstream provenance recorded by Vercel's
 `skills` installer before accepting the updated file and storing its digest.
 Do not remove the marker to suppress an unknown or unreviewed local change.
 
-The hook also runs `agent-browser install` to provision Chrome for Testing.
-This is a separate browser runtime, not the Chrome profile used for personal
-browsing. Subsequent runs can reuse the downloaded runtime; no browser window
-is opened during installation. These optional tools are skipped in headless
-provisioning with `DOTFILES_SKIP_OPTIONAL_APPS=1`.
+The hook checks for an existing working Chrome for Testing, system Chrome, or
+compatible Chromium executable **before** downloading anything. Existing browser
+runtimes remain in place: a normal chezmoi apply does not implicitly upgrade
+Chrome for Testing. A separate explicit update is required to do that.
+When no browser executable is available, the helper runs agent-browser install.
+The optional hook is skipped by DOTFILES_SKIP_OPTIONAL_APPS=1.
 
 ## Verify
 

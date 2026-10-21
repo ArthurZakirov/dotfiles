@@ -1,5 +1,6 @@
 #!/bin/bash
-# Install common macOS apps only when no existing installation is found.
+# Install optional apps only when the existing application or CLI is missing.
+# Package identities live in Brewfiles and npm manifests, not in shell code.
 
 app_exists() {
   local name
@@ -39,94 +40,121 @@ install_missing_formula() {
     echo "Already installed: $command_name"
     return 0
   fi
+  if brew list --formula "$formula" >/dev/null 2>&1; then
+    echo "Already installed: $formula (Homebrew; binary not on PATH)"
+    return 0
+  fi
   echo "Installing: $formula"
   brew install "$formula"
 }
 
-install_skills_cli() {
-  if ! command -v skills >/dev/null 2>&1; then
-    echo 'Installing: Vercel skills CLI (npm)'
-    npm install --global skills || return 1
-  fi
-  skills --version >/dev/null 2>&1 || {
-    echo 'Vercel skills CLI failed its version check.' >&2
-    return 1
-  }
+# The optional Brewfiles use valid brew/cask declarations with annotations.
+# Keep the command/app checks in Bash: a plain 'brew bundle install' would not
+# preserve the skip behavior for apps that were installed outside Homebrew.
+install_optional_brewfile() {
+  local file="$1" line kind package check_type check_value post_action
+  local -a app_names
+  local pattern='^(brew|cask)[[:space:]]+"([^"]+)"[[:space:]]+#[[:space:]]+(binary|apps):[[:space:]]*(.+)$'
+  [[ -r "$file" ]] || { echo "Missing Brewfile: $file" >&2; return 1; }
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in ''|\#*) continue ;; esac
+    if [[ ! "$line" =~ $pattern ]]; then
+      echo "Invalid optional Brewfile entry in $file: $line" >&2
+      return 2
+    fi
+    kind="${BASH_REMATCH[1]}"
+    package="${BASH_REMATCH[2]}"
+    check_type="${BASH_REMATCH[3]}"
+    check_value="${BASH_REMATCH[4]}"
+    post_action=""
+    if [[ "$check_value" == *"; post: "* ]]; then
+      post_action="${check_value##*; post: }"
+      check_value="${check_value%%; post: *}"
+      [[ -n "$post_action" ]] || { echo "Missing post-install action in $file" >&2; return 2; }
+    fi
+    case "$kind/$check_type" in
+      brew/binary)
+        install_missing_formula "$check_value" "$package" || return
+        ;;
+      cask/binary)
+        install_missing_cli_cask "$check_value" "$package" || return
+        ;;
+      cask/apps)
+        IFS='|' read -r -a app_names <<< "$check_value"
+        install_missing_cask "$package" "${app_names[@]}" || return
+        ;;
+      *)
+        echo "Unsupported optional Brewfile entry in $file: $line" >&2
+        return 2
+        ;;
+    esac
+    if [[ -n "$post_action" ]]; then
+      PENDING_BREW_ACTIONS+=("$post_action")
+    fi
+  done < "$file"
 }
 
-install_agent_browser_cli() {
-  if ! command -v agent-browser >/dev/null 2>&1; then
-    echo 'Installing: agent-browser (npm)'
-    npm install --global agent-browser || return 1
-  fi
-  agent-browser --version >/dev/null 2>&1 || {
-    echo 'Agent Browser CLI failed its version check.' >&2
-    return 1
-  }
-}
-
-install_common_apps() {
-  install_missing_cask alt-tab 'AltTab.app'
-  install_missing_cask betterdisplay 'BetterDisplay.app'
-  install_missing_cask displaylink 'DisplayLink Manager.app'
-  install_missing_cli_cask codex codex
-  install_missing_cli_cask claude claude-code
-  install_missing_cask ddpm 'DDPM/DDPM.app'
-  install_missing_cask warp 'Warp.app'
-  install_missing_cask google-drive 'Google Drive.app'
-  install_missing_cask hammerspoon 'Hammerspoon.app'
-  install_missing_cask logi-options+ 'Logi Options+.app' 'logioptionsplus.app'
-  install_missing_cask logitune 'LogiTune.app' 'Logi Tune.app'
-  install_missing_cask docker-desktop 'Docker.app'
-  install_missing_formula node node
-  install_skills_cli
-  install_agent_browser_cli
-  install_missing_formula peekaboo openclaw/tap/peekaboo
-  install_missing_cask raycast 'Raycast.app'
-  install_missing_cask rectangle 'Rectangle.app'
-  install_missing_cask visual-studio-code 'Visual Studio Code.app'
-  install_missing_cask google-chrome 'Google Chrome.app'
-  install_missing_cask claude 'Claude.app'
-  install_missing_cask chatgpt 'ChatGPT.app'
-}
-
-# Only the personal profile installs these apps.
-install_personal_apps() {
-  install_missing_cask bitwarden 'Bitwarden.app'
-  install_missing_cask telegram 'Telegram.app'
-  install_missing_cask whatsapp 'WhatsApp.app'
-  install_missing_cask todoist-app 'Todoist.app'
-  install_missing_cask notion 'Notion.app'
-  install_missing_cli_cask xurl xdevplatform/tap/xurl
-  install_missing_formula langsmith langchain-ai/tap/langsmith-cli
-  install_desktop_commander_cli
-  install_missing_formula tunnel-client openai/tools/tunnel-client
-}
-
-install_desktop_commander_cli() {
-  local cli target
-  if ! command -v desktop-commander >/dev/null 2>&1; then
+# npm installs are global, and an existing CLI is never upgraded or replaced.
+install_npm_cli() {
+  local command_name="$1" package="$2" verification="$3"
+  if ! command -v "$command_name" >/dev/null 2>&1; then
     command -v npm >/dev/null 2>&1 || {
-      echo 'npm is required to install Desktop Commander.' >&2
+      echo "npm is required to install $package." >&2
+      return 127
+    }
+    if npm list --global --depth=0 "$package" >/dev/null 2>&1; then
+      echo "Already installed: $package (npm; executable $command_name is not on PATH)" >&2
+      return 1
+    fi
+    echo "Installing: $package (npm)"
+    npm install --global "$package" || return 1
+  fi
+  if [[ "$verification" == version ]]; then
+    "$command_name" --version >/dev/null 2>&1 || {
+      echo "$command_name failed its version check." >&2
       return 1
     }
-    npm install --global @wonderwhy-er/desktop-commander || return 1
   fi
-  cli="$(command -v desktop-commander 2>/dev/null || true)"
-  if [[ -z "$cli" ]] && command -v npm >/dev/null 2>&1; then
-    cli="$(npm prefix --global)/bin/desktop-commander"
+}
+
+install_npm_manifest() {
+  local file="$1" command_name package verification post_action extra
+  [[ -r "$file" ]] || { echo "Missing npm manifest: $file" >&2; return 1; }
+  while read -r command_name package verification post_action extra || [[ -n "$command_name" ]]; do
+    case "$command_name" in ''|\#*) continue ;; esac
+    if [[ -z "$package" || ( "$verification" != version && "$verification" != none ) || -n "$extra" ]]; then
+      echo "Invalid npm manifest entry in $file: $command_name $package $verification $post_action $extra" >&2
+      return 2
+    fi
+    install_npm_cli "$command_name" "$package" "$verification" || return
+    if [[ -n "$post_action" && "$post_action" != none ]]; then
+      run_dependency_post_install "$post_action" || return
+    fi
+  done < "$file"
+}
+
+# Profile and package membership are declared under dependencies/.
+install_optional_dependencies() {
+  local scope="$1" category file
+  PENDING_BREW_ACTIONS=()
+  for category in gui cli; do
+    file="$DOTFILES_ROOT/dependencies/brew/$scope/$category.Brewfile"
+    [[ -f "$file" ]] || continue
+    install_optional_brewfile "$file" || return
+  done
+  file="$DOTFILES_ROOT/dependencies/npm/$scope.txt"
+  if [[ -f "$file" ]]; then
+    install_npm_manifest "$file" || return
   fi
-  if [[ -z "$cli" || ! -x "$cli" ]]; then
-    echo 'Desktop Commander binary not found after npm installation.' >&2
-    return 1
-  fi
-  target="$HOME/.local/bin/desktop-commander-remote"
-  mkdir -p "$(dirname "$target")"
-  if [[ -e "$target" && ! -L "$target" ]]; then
-    echo "Refusing to overwrite $target" >&2
-    return 1
-  fi
-  ln -sfn "$cli" "$target"
+}
+
+run_pending_brew_actions() {
+  local action
+  for action in "${PENDING_BREW_ACTIONS[@]-}"; do
+    [[ -n "$action" ]] || continue
+    run_dependency_post_install "$action" || return
+  done
+  PENDING_BREW_ACTIONS=()
 }
 
 verify_node_toolchain() {

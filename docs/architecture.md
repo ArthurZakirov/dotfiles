@@ -17,9 +17,9 @@ DevMac is experienced as a set of developer workflows, but delivered through app
 | [`home/run_before_10-install-shell.sh.tmpl`](../home/run_before_10-install-shell.sh.tmpl) | Runs the shell installation process. |
 | [`src/shell-setup.sh`](../src/shell-setup.sh) | Reusable shell, editor, and profile installers; selects personal or professional integrations. |
 | [`src/homebrew.sh`](../src/homebrew.sh) | Installs Homebrew if missing and configures its shell environment. |
-| [`src/apps.sh`](../src/apps.sh) | Checks for installed shared applications and CLIs, installing only missing Homebrew packages. |
-| [`Brewfile`](../Brewfile) | Declares Homebrew packages without locking exact package versions. |
-| [`home/.chezmoidata.toml`](../home/.chezmoidata.toml) | Stores shared settings including the pinned Oh My Zsh revision. |
+| [`src/apps.sh`](../src/apps.sh) | Reads optional Homebrew and npm manifests; preserves checks for existing apps and CLI tools. |
+| [`dependencies/`](../dependencies/) | Canonical inventory of required, optional, on-demand, Git and manually installed dependencies, organized by profile and tool type. |
+| [`src/setup-actions.sh`](../src/setup-actions.sh) | Implements package-specific lifecycle actions without deciding which profile owns them. |
 | [`home/dot_zshrc.tmpl`](../home/dot_zshrc.tmpl) | Renders shell history, completion, prompt, Git helpers, fzf, and plugins. |
 | [`home/dot_gitconfig`](../home/dot_gitconfig) | Renders the shared Git aliases and an optional machine-local override. |
 | [`home/run_once_before_15-migrate-git-config.sh`](../home/run_once_before_15-migrate-git-config.sh) | Preserves an existing global Git configuration as the machine-local override. |

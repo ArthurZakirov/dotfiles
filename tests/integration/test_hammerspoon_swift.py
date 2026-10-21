@@ -32,7 +32,9 @@ def test_swift_toolchain_installs_only_when_compiler_missing(tmp_path, fake_comm
         "if sys.argv[1:] == ['--prefix', 'swift']:\n"
         "    if not keg.exists(): sys.exit(1)\n"
         "    print(keg)\n"
-        "elif sys.argv[1:] == ['install', 'swift']:\n"
+        "elif sys.argv[1:4] == ['bundle', 'install', '--no-upgrade']:\n"
+        "    arg=next(a for a in sys.argv[4:] if a.startswith('--file='))\n"
+        "    assert Path(arg.split('=',1)[1]).read_text().strip().endswith('brew \"swift\"')\n"
         "    compiler=keg/'Swift-6.4.xctoolchain/usr/bin/swiftc'\n"
         "    compiler.parent.mkdir(parents=True)\n"
         "    compiler.write_text('#!/bin/sh\\nexit 0\\n')\n"
@@ -41,7 +43,16 @@ def test_swift_toolchain_installs_only_when_compiler_missing(tmp_path, fake_comm
         "else: sys.exit(2)\n"
     )
     brew.chmod(0o755)
-    env = {**os.environ, "PATH": str(fake_commands)}
+    home = tmp_path / "home"
+    repo = tmp_path / "source"
+    source_dir = repo / "home"
+    source_dir.mkdir(parents=True)
+    manifest = repo / "dependencies/brew/common/on-demand/hammerspoon-swift.Brewfile"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text('brew "swift"\n')
+    executable(fake_commands, "chezmoi", 'echo "$TEST_CHEZMOI_SOURCE_DIR"\n')
+    env = {**os.environ, "HOME": str(home), "PATH": str(fake_commands),
+           "TEST_CHEZMOI_SOURCE_DIR": str(source_dir)}
     first = subprocess.run([str(SWIFT_SETUP)], env=env, text=True, capture_output=True)
     assert first.returncode == 0, first.stderr
     assert first.stdout.strip() == str(keg / "Swift-6.4.xctoolchain/usr/bin/swiftc")

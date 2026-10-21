@@ -4,7 +4,7 @@
 
 Browse the software behind DevMac by component type and installation method. For the workflows these components enable, see the [feature index](features/README.md).
 
-**Scope:** `shared` = personal and professional profiles; `personal` = personal profile only. An app being declared for installation does not mean its settings, accounts, or entire runtime are managed. `Brewfile`, [`src/apps.sh`](../src/apps.sh), [`src/shell-setup.sh`](../src/shell-setup.sh), and the linked managed sources are authoritative; this is a readable snapshot of their intent.
+**Scope:** `shared` = personal and professional profiles; `personal` = personal profile only. An app being declared for installation does not mean its settings, accounts, or entire runtime are managed. [**`dependencies/`**](../dependencies/) is the single authoritative source for package/profile membership; this table is only a descriptive snapshot.
 
 ## Desktop applications (Homebrew casks)
 
@@ -48,7 +48,7 @@ Homebrew installs or detects these applications. **DevMac does not configure eve
 | `langsmith` (formula via tap) | Personal | Personal integration tooling |
 | `tunnel-client` (formula via tap) | Personal | [Secure MCP tunnel transport](features/chatgpt-skills-mcp.md) |
 
-These tools are installed from the [Brewfile](../Brewfile) or through [`src/apps.sh`](../src/apps.sh). Some use third-party taps.
+These tools are declared in [`dependencies/`](../dependencies/) and installed through the provisioning scripts. Some use third-party taps.
 
 ## npm global CLIs
 
@@ -64,8 +64,8 @@ DevMac installs these through [`src/apps.sh`](../src/apps.sh), not the Brewfile.
 
 | Component | Scope | Source and installation method | Purpose |
 | --- | --- | --- | --- |
-| Bitwarden Secrets Manager CLI (`bws`) | Personal | [`src/shell-setup.sh`](../src/shell-setup.sh) downloads and runs the [upstream shell installer](https://bws.bitwarden.com/install) if `bws` is missing | [Retrieve runtime secrets](features/secrets-management.md) for personal integrations |
-| Oh My Zsh | Shared | [`src/shell-setup.sh`](../src/shell-setup.sh) clones the upstream repository and checks out the revision pinned in [`home/.chezmoidata.toml`](../home/.chezmoidata.toml) | [Zsh framework](features/zsh.md) |
+| Bitwarden Secrets Manager CLI (`bws`) | Personal | [`src/setup-actions.sh`](../src/setup-actions.sh) downloads and runs the [upstream shell installer](https://bws.bitwarden.com/install) if `bws` is missing | [Retrieve runtime secrets](features/secrets-management.md) for personal integrations |
+| Oh My Zsh | Shared | [`src/setup-actions.sh`](../src/setup-actions.sh) clones the upstream repository and checks out the revision pinned in [`dependencies/git/common/oh-my-zsh.commit`](../dependencies/git/common/oh-my-zsh.commit) | [Zsh framework](features/zsh.md) |
 | Homebrew bootstrap | Shared | [`src/homebrew.sh`](../src/homebrew.sh) installs Homebrew if absent | Install formulae and casks listed above |
 
 Unlike optional application provisioning, the `bws` installation also runs for personal profiles when `DOTFILES_SKIP_OPTIONAL_APPS=1`.

@@ -1,6 +1,7 @@
 {
   "files.associations": {
     "Brewfile": "ruby",
+    "**/*.Brewfile": "ruby",
     "**/.chezmoi.toml.tmpl": "go",
     "**/*.toml.tmpl": "go",
     "**/*.lua.tmpl": "lua",
