@@ -18,7 +18,7 @@ run_unit_tests() {
   bash "$repo_root/tests/unit/test_apps.sh"
   bash "$repo_root/tests/unit/test_agent_browser_runtime.sh"
   bash "$repo_root/tests/unit/test_agent_skills.sh"
-  PYTHONDONTWRITEBYTECODE=1 "$repo_root/.venv/bin/pytest" -q "$repo_root/tests/unit/test_pysetup.py" "$repo_root/tests/unit/test_local_skills_mcp.py" "$repo_root/tests/unit/test_dotfiles_secrets.py" "$repo_root/tests/unit/test_feature_documentation.py" "$repo_root/tests/unit/test_macos_shortcuts.py"
+  PYTHONDONTWRITEBYTECODE=1 "$repo_root/.venv/bin/pytest" -q "$repo_root/tests/unit/test_pysetup.py" "$repo_root/tests/unit/test_local_skills_mcp.py" "$repo_root/tests/unit/test_dotfiles_secrets.py" "$repo_root/tests/unit/test_feature_documentation.py" "$repo_root/tests/unit/test_macos_shortcuts.py" "$repo_root/tests/unit/test_provisioning_log_grouping.py"
   bash "$repo_root/tests/integration/test_vscode_cli.sh"
 }
 
