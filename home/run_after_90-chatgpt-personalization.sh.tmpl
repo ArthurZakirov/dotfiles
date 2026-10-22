@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+{{ if eq .profile "personal" -}}
+instructions="$HOME/.config/chatgpt/personalization-instructions.md"
+if [ -f "$instructions" ]; then
+  printf '\n  -- CHATGPT PERSONALIZATION (MANUAL) --\n'
+  printf 'Instructions file: %s\n' "$instructions"
+  printf 'Paste into ChatGPT: %s\n' 'https://chatgpt.com/settings/personalization?instructions=chatgpt'
+  printf '%s\n' 'Copy the file contents into ChatGPT Custom Instructions manually.'
+else
+  printf 'ChatGPT instructions not found: %s\n' "$instructions" >&2
+fi
+{{ end -}}
