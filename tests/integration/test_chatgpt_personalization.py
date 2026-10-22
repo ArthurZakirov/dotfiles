@@ -33,6 +33,8 @@ def test_personalization_deployment_and_apply_reminder(profile, tmp_path, profil
     if profile == "personal":
         assert chezmoi("cat", str(instructions)) == SOURCE.read_text()
         assert len(SOURCE.read_text()) < 5000
+        assert "MCP tools are not exposed in this chat" in SOURCE.read_text()
+        assert "Custom Instructions cannot activate a plugin" in SOURCE.read_text()
         instructions.parent.mkdir(parents=True)
         instructions.write_text(SOURCE.read_text())
     else:
