@@ -6,6 +6,8 @@ Explore DevMac by workflow. Some tools support several different capabilities.
 
 ## Let agents complete tasks without babysitting
 
+For ChatGPT, the [personalization instructions](chatgpt-personalization.md) tell the assistant how to access Desktop Commander and local Agent Skills. Paste them manually during setup.
+
 [Why agents need these tools—and what ChatGPT usage limits mean →](../workflows/agent-capabilities.md)
 
 | Capability | Detailed feature documentation |
@@ -14,7 +16,6 @@ Explore DevMac by workflow. Some tools support several different capabilities.
 | See and control native macOS interfaces | [Peekaboo](peekaboo.md) |
 | Inspect files and run authorized local commands remotely | [Desktop Commander](desktop-commander.md) (personal profile) |
 | Read locally installed Agent Skills from ChatGPT | [Local Agent Skills via MCP](chatgpt-skills-mcp.md) (personal profile) |
-| Copy version-controlled custom instructions into ChatGPT when they change | [ChatGPT personalization](chatgpt-personalization.md) (personal profile; manual paste) |
 | Start with field-tested Codex guidance and hooks | [Codex configuration](codex.md) |
 
 ## Review and navigate at agent speed

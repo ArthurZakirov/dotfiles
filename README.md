@@ -17,7 +17,7 @@ AI agents can write code faster than you can review it. When inspecting their ch
 
 ### 🤖 Let agents work across systems without consuming your attention
 
-Give an agent a task without becoming its copy-paste assistant. DevMac equips it to inspect files, use browser and desktop apps, and consult proven instructions—so it can work through multi-step tasks while you do something else, involving you when approval or judgment is needed.
+Give an agent a task without becoming its copy-paste assistant. DevMac equips it to inspect files, use browser and desktop apps, and consult proven instructions—so it can work through multi-step tasks while you do something else, involving you when approval or judgment is needed. The [ChatGPT personalization instructions](docs/features/chatgpt-personalization.md) tell ChatGPT how to access Desktop Commander and local Agent Skills; paste them manually during setup.
 
 | Capability | Detailed feature documentation |
 | --- | --- |
@@ -25,7 +25,6 @@ Give an agent a task without becoming its copy-paste assistant. DevMac equips it
 | 🖥️ See and control native macOS interfaces and desktop apps | [Peekaboo](docs/features/peekaboo.md) |
 | ◼️ Inspect files and run authorized commands on your Mac from a connected remote assistant | [Desktop Commander](docs/features/desktop-commander.md) |
 | 📚 Let a connected ChatGPT assistant read locally installed Agent Skills | [Local Agent Skills via MCP](docs/features/chatgpt-skills-mcp.md) |
-| 🧭 Keep ChatGPT's custom instructions in dotfiles and copy them into ChatGPT when updated | [ChatGPT personalization](docs/features/chatgpt-personalization.md) (personal profile; manual paste) |
 | ⚙️ Use field-tested [`AGENTS.md`](AGENTS.md), Codex configuration, and hooks to guide agent behavior | [Codex configuration](docs/features/codex.md) |
 
 Desktop Commander remote access and the ChatGPT skills bridge are personal-profile capabilities and require explicit authorization.
