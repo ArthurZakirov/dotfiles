@@ -392,9 +392,10 @@ def test_versioned_voice_prompt_distinguishes_live_and_backend():
     assert "Treat the system as one unified assistant" in upstream
     assert "do not mention \"backend\"" in upstream
     assert "distinct conversational agent" in custom
-    assert "backend was not consulted" in custom
+    assert "* **Disclose the source of every reply**" in custom
+    assert "the backend was not consulted" in custom
     assert "the result is not yet known" in custom
-    assert "when using actual backend findings, explicitly attribute them to the backend" in custom
+    assert "Attribute received findings to the backend" in custom
     assert "do not mention \"backend\"" not in custom.lower()
     assert "Do not disclose the concept or existence of backend" not in custom
 
@@ -434,29 +435,51 @@ def test_mode_specific_guidance_is_removed_from_global_agents_md():
 
 def test_voice_frontend_requires_backend_and_grounded_code_navigation():
     prompt = (SOURCE / "config-toml/realtime-voice-backend-prompt.md").read_text()
-    assert "Every question about real code or repository behavior requires backend investigation" in prompt
-    assert "Every question about actual code" in prompt
-    assert "return a navigation-only first result" in prompt
-    assert "visible output must not spoil the walkthrough" in prompt
-    assert "even if you believe you know the answer" in prompt
-    assert "repository, worktree" in prompt
-    assert "correct workspace is open" in prompt
-    assert "confirms the file is open" in prompt
-    assert "confirms that location is visible" in prompt
-    assert "one visible relationship" in prompt
-    assert "Do not answer the question literally" in prompt
+    backend = prompt.split("## Backend use and steering", 1)[1].split(
+        "## Backend outputs and user inputs", 1
+    )[0]
+    walkthrough = prompt.split("### Code walkthroughs", 1)[1].split(
+        "### Application and UI walkthroughs", 1
+    )[0]
+
+    assert "* Delegate **every question about real code or repository behavior**" in backend
+    assert "Never answer from memory" in backend
+    assert "* Ask the backend to verify the repository, branch/worktree" in backend
+    assert "**return a navigation-only first result**" in backend
+    assert "visible output must not spoil the explanation" in backend
+    assert "* **Every actual code question**" in walkthrough
+    assert "Never deliver the full answer before the user can inspect its evidence" in walkthrough
+    assert "* Begin with the first missing visual anchor" in walkthrough
+    for step in range(1, 6):
+        assert f"{step}. " in walkthrough
 
 
-def test_voice_frontend_always_identifies_direct_answer_provenance():
+def test_voice_frontend_discloses_provenance_in_existing_bullet_sections():
     prompt = (SOURCE / "config-toml/realtime-voice-backend-prompt.md").read_text()
-    assert "Every reply must disclose its provenance" in prompt
-    assert "direct voice-frontend answer and that the backend was not consulted" in prompt
-    assert "This includes short answers and acknowledgements" in prompt
-    assert "Direct from me, without consulting the backend:" in prompt
-    assert "when using actual backend findings, explicitly attribute them to the backend" in prompt
-    assert "Before starting backend work that will be invisible" in prompt
-    assert "The silence is the checkpoint" in prompt
-    assert "change representation rather than repeating" in prompt
+    policies = prompt.split("### Policies", 1)[1].split(
+        "## Voice turn-taking", 1
+    )[0]
+    communication = prompt.split("## Communication style", 1)[1].split(
+        "## Delegated execution context", 1
+    )[0]
+    pacing = prompt.split("### General pacing", 1)[1].split(
+        "### Code walkthroughs", 1
+    )[0]
+
+    assert "* **Disclose the source of every reply**" in policies
+    assert "including brief answers and acknowledgements" in policies
+    assert "* For a direct voice-frontend answer, explicitly say" in policies
+    assert "Direct from me, without consulting the backend:" in policies
+    assert "* For a backend handoff, identify the delegated work" in policies
+    assert "* Before invisible or noticeably slow backend work" in communication
+    assert "* After each step, stop and yield" in pacing
+    assert "Silence is the checkpoint" in pacing
+    assert "change representation rather than repeat jargon" in pacing
+    assert "## Spoken progress and explanation checkpoints" not in prompt
+
+    # All new instruction rules belong to existing bullet sections.
+    for section in (policies, communication, pacing):
+        assert all(line.startswith("* ") for line in section.splitlines() if line.strip())
 
 
 def test_hooks_template_preserves_expected_events():
