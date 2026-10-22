@@ -34,7 +34,6 @@ def test_apply_owns_only_deployed_codex_artifacts(profile_factory, profile):
     paths = managed(profile_factory, profile)
     for expected in (
         ".codex/AGENTS.md",
-        ".codex/agents-md-references/codex.md",
         ".codex/agents-md-references/repositories.json",
         ".codex/.vscode/settings.json",
         ".codex/keybindings.json",
@@ -87,7 +86,8 @@ def test_canonical_guidance_is_only_in_the_repository():
     guidance = (SOURCE / "AGENTS.md").read_text(encoding="utf-8")
     assert "src/codex-guidance/global-guidance/agents-md-manifest.yaml" in guidance
     assert "guidance-source/" not in guidance
-    assert (SOURCE / "agents-md-references/codex.md").is_file()
+    for removed in ("chatgpt-chat.md", "chatgpt-work.md", "codex.md"):
+        assert not (SOURCE / "agents-md-references" / removed).exists()
     assert "sync-agents-md" not in (ROOT / "home/dot_zshrc.tmpl").read_text()
 
 
@@ -390,9 +390,9 @@ def test_versioned_voice_prompt_distinguishes_live_and_backend():
     assert "Treat the system as one unified assistant" in upstream
     assert "do not mention \"backend\"" in upstream
     assert "distinct conversational agent" in custom
-    assert "no backend consulted" in custom
-    assert "handed to the backend" in custom
-    assert "information actually received from the backend" in custom
+    assert "backend was not consulted" in custom
+    assert "the result is not yet known" in custom
+    assert "when using actual backend findings, explicitly attribute them to the backend" in custom
     assert "do not mention \"backend\"" not in custom.lower()
     assert "Do not disclose the concept or existence of backend" not in custom
 
@@ -411,6 +411,50 @@ def test_live_voice_waits_for_explicit_spoken_turn_completion():
     assert "including the user's corrections" in turn_taking
     assert 'not typed messages, backend updates' in turn_taking
     assert 'takes precedence over instructions to respond promptly or to delegate immediately' in turn_taking
+
+
+def test_mode_specific_guidance_is_removed_from_global_agents_md():
+    global_guidance = (SOURCE / "AGENTS.md").read_text()
+    canonical = CANONICAL / "global-guidance"
+    manifest = (canonical / "agents-md-manifest.yaml").read_text()
+
+    assert "Delegated chat naming" in global_guidance
+    for obsolete in ("ChatGPT runtime mode identification", "Interaction mode behavior",
+                     "Mode-specific guidance"):
+        assert obsolete not in global_guidance
+    for obsolete in ("chatgpt-runtime-mode-identification.md", "interaction-mode-behavior.md"):
+        assert obsolete not in manifest
+        assert not (canonical / "agents-md-components/runtime-and-interaction" / obsolete).exists()
+    for obsolete in ("chatgpt-chat.md", "chatgpt-work.md", "codex.md"):
+        assert not (canonical / "agents-md-references" / obsolete).exists()
+        assert not (SOURCE / "agents-md-references" / obsolete).exists()
+
+
+def test_voice_frontend_requires_backend_and_grounded_code_navigation():
+    prompt = (SOURCE / "config-toml/realtime-voice-backend-prompt.md").read_text()
+    assert "Every question about real code or repository behavior requires backend investigation" in prompt
+    assert "Every question about actual code" in prompt
+    assert "return a navigation-only first result" in prompt
+    assert "visible output must not spoil the walkthrough" in prompt
+    assert "even if you believe you know the answer" in prompt
+    assert "repository, worktree" in prompt
+    assert "correct workspace is open" in prompt
+    assert "confirms the file is open" in prompt
+    assert "confirms that location is visible" in prompt
+    assert "one visible relationship" in prompt
+    assert "Do not answer the question literally" in prompt
+
+
+def test_voice_frontend_always_identifies_direct_answer_provenance():
+    prompt = (SOURCE / "config-toml/realtime-voice-backend-prompt.md").read_text()
+    assert "Every reply must disclose its provenance" in prompt
+    assert "direct voice-frontend answer and that the backend was not consulted" in prompt
+    assert "This includes short answers and acknowledgements" in prompt
+    assert "Direct from me, without consulting the backend:" in prompt
+    assert "when using actual backend findings, explicitly attribute them to the backend" in prompt
+    assert "Before starting backend work that will be invisible" in prompt
+    assert "The silence is the checkpoint" in prompt
+    assert "change representation rather than repeating" in prompt
 
 
 def test_hooks_template_preserves_expected_events():
