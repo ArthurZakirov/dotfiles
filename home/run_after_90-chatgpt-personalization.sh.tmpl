@@ -2,7 +2,7 @@
 set -eu
 
 {{ if eq .profile "personal" -}}
-instructions="$HOME/.config/chatgpt/personalization-instructions.md"
+instructions={{ (printf "%s/src/chatgpt/personalization-instructions.md" .chezmoi.workingTree) | quote }}
 if [ -f "$instructions" ]; then
   printf '\n  -- CHATGPT PERSONALIZATION (MANUAL) --\n'
   printf 'Instructions file: %s\n' "$instructions"

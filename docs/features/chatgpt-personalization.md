@@ -2,18 +2,19 @@
 
 [← Features](README.md) · [Local Agent Skills via MCP](chatgpt-skills-mcp.md)
 
-DevMac manages a local copy of [ChatGPT personalization instructions](../../home/dot_config/chatgpt/personalization-instructions.md) on **personal** macOS profiles. They tell ChatGPT how to use the Mac's remote connection, `AGENTS.md`, and local skills without interrupting ordinary conversations. This file is kept in Git; ChatGPT's account settings are **not** writable through chezmoi.
+The [ChatGPT personalization instructions](../../src/chatgpt/personalization-instructions.md) live **once** in the DevMac Git repository. They tell ChatGPT how to use the Mac's remote connection, `AGENTS.md`, and local skills without interrupting ordinary conversations. Chezmoi never installs a duplicate under `$HOME`, and it cannot write to ChatGPT's account settings.
 
 ## Publish changes to ChatGPT manually
 
-1. Run `chezmoi diff` to review changes and `chezmoi apply` after approving them. Chezmoi installs the file at `~/.config/chatgpt/personalization-instructions.md`.
-2. At the end of `chezmoi apply`, the [post-apply hook](../../home/run_after_90-chatgpt-personalization.sh.tmpl) prints the **absolute file path** and [ChatGPT Custom Instructions](https://chatgpt.com/settings/personalization?instructions=chatgpt).
-3. Open the printed file, copy its **entire contents**, open the printed ChatGPT link, and paste the contents into the custom-instructions field. Save in ChatGPT. Repeat after future updates; `chezmoi apply` cannot publish the text to your account.
+1. Edit the linked Markdown file in the Dotfiles checkout and review it with Git (`git diff -- src/chatgpt/personalization-instructions.md`). Since it is repository documentation rather than a managed destination file, `chezmoi diff` does not show its changes.
+2. On a **personal** profile, run `chezmoi apply`. The [after-apply hook](../../home/run_after_90-chatgpt-personalization.sh.tmpl) prints the **absolute path to that same file in the checkout** and the [ChatGPT Custom Instructions settings](https://chatgpt.com/settings/personalization?instructions=chatgpt).
+3. Open the printed file, copy its **entire contents**, paste them into the custom-instructions field, and save in ChatGPT. Repeat when the instructions change; `chezmoi apply` cannot publish them to your account.
 
-To check the current character count against ChatGPT's field limit:
+To check the character limit on the source file:
 
 ```sh
-wc -m "$HOME/.config/chatgpt/personalization-instructions.md"
+repo="$(git -C "$(chezmoi source-path)" rev-parse --show-toplevel)"
+wc -m "$repo/src/chatgpt/personalization-instructions.md"
 ```
 
-The professional profile does not manage this file or print the reminder. The reminder only displays paths and instructions; it does not open a browser, change ChatGPT settings, or copy anything to the clipboard.
+The professional profile does not print this reminder. The hook does not copy the file, open a browser, modify ChatGPT settings, or touch the clipboard.
