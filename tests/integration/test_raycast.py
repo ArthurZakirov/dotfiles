@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -11,6 +12,14 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "home/dot_config/raycast/scripts"
 HOOK = ROOT / "home/run_after_60-raycast-onboarding.sh"
 LAUNCHER = ROOT / "home/dot_config/raycast/lib/executable_open-target.sh"
+
+WORKFLOW_COMMANDS = {
+    "chezmoi-diff": "chezmoi diff",
+    "chezmoi-apply": "chezmoi apply",
+    "chezmoi-update": "chezmoi update",
+    "sync-systemsmith": "zsh -ic sync-systemsmith",
+}
+WORKFLOW_LAUNCHER = ROOT / "home/dot_config/raycast/lib/executable_run-workflow.sh"
 
 CONFIG_COMMANDS = {
     "open-codex-agents": ".codex/AGENTS.md",
@@ -227,13 +236,14 @@ def test_chezmoi_quicklink_rejects_non_git_source(tmp_path):
     assert not capture.exists()
 
 
-def test_script_directory_contains_all_eight_quicklinks_plus_three_extras():
+def test_script_directory_contains_navigation_and_four_workflow_commands():
     expected = {
         *(f"executable_{name}.sh" for name in LEGACY_QUICKLINKS),
         CHEZMOI_COMMAND,
         "executable_open-codex-agents.sh",
         "executable_open-aws-config.sh",
         "executable_open-databricks-config.sh",
+        *(f"executable_{name}.sh" for name in WORKFLOW_COMMANDS),
     }
     assert {file.name for file in SCRIPTS.glob("*.sh")} == expected
 
@@ -298,3 +308,93 @@ def test_failed_store_open_can_be_retried(tmp_path):
     assert result.returncode == 22
     assert not (home / ".cache/chezmoi/raycast-repository-manager-store-opened").exists()
     assert not capture.exists()
+
+
+@pytest.mark.parametrize(("name", "expected"), WORKFLOW_COMMANDS.items())
+def test_workflow_wrapper_opens_terminal_with_exact_fixed_command(name, expected, tmp_path):
+    """Runs the real wrapper/launcher, not chezmoi or npx: mock only osascript."""
+    home = tmp_path / "home with spaces"
+    home.mkdir()
+    target = home / ".config/raycast/lib/run-workflow.sh"
+    target.parent.mkdir(parents=True)
+    shutil.copyfile(WORKFLOW_LAUNCHER, target)
+    target.chmod(0o755)
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    capture = tmp_path / "apple-args"
+    script_capture = tmp_path / "apple-script"
+    fake_executable(
+        bin_dir, "osascript",
+        'printf "%s\n" "$@" > "$CAPTURE"\ncat > "$SCRIPT_CAPTURE"\n',
+    )
+
+    wrapper = SCRIPTS / f"executable_{name}.sh"
+    content = wrapper.read_text()
+    assert f"# @raycast.title {name if name == 'sync-systemsmith' else expected}\n" in content
+    assert "# @raycast.mode silent\n" in content
+    assert 'exec "$HOME/.config/raycast/lib/run-workflow.sh" ' + name in content
+    result = subprocess.run(
+        ["bash", str(wrapper)],
+        env={**os.environ, "HOME": str(home),
+             "PATH": f"{bin_dir}:{os.environ['PATH']}",
+             "CAPTURE": str(capture), "SCRIPT_CAPTURE": str(script_capture)},
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert capture.read_text().splitlines() == ["-", expected]
+    applescript = script_capture.read_text()
+    assert 'tell application "Terminal"' in applescript
+    # A cold `activate` first creates Terminal's default blank startup window.
+    # `launch` suppresses that run event; do script creates the one desired window.
+    assert applescript.index("    launch\n") < applescript.index(
+        "    do script (item 1 of argv)\n"
+    ) < applescript.index("    activate\n")
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="AppleScript compiler requires macOS")
+def test_workflow_applescript_compiles_without_launching_terminal(tmp_path):
+    # Compile the real embedded script; never execute it against the active GUI.
+    launcher = WORKFLOW_LAUNCHER.read_text()
+    script = launcher.split("<<'APPLESCRIPT'\n", 1)[1].split("\nAPPLESCRIPT", 1)[0]
+    compiled = tmp_path / "run-workflow.scpt"
+
+    result = subprocess.run(
+        ["osacompile", "-o", str(compiled)],
+        input=script + "\n", capture_output=True, text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert compiled.is_file()
+
+
+@pytest.mark.parametrize("args", [[], ["bad-command"], ["chezmoi-apply", "extra"]])
+def test_workflow_launcher_refuses_unrecognized_actions_before_opening_terminal(args, tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    capture = tmp_path / "unexpected-open"
+    fake_executable(bin_dir, "osascript", 'touch "$CAPTURE"\n')
+    result = subprocess.run(
+        ["bash", str(WORKFLOW_LAUNCHER), *args],
+        env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "CAPTURE": str(capture)},
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 2
+    assert not capture.exists()
+
+
+def test_sync_systemsmith_uses_the_existing_zsh_alias_as_source_of_truth():
+    zshrc = (ROOT / "home/dot_zshrc.tmpl").read_text()
+    assert 'alias sync-systemsmith=' in zshrc
+    assert WORKFLOW_COMMANDS["sync-systemsmith"] == "zsh -ic sync-systemsmith"
+    launcher = WORKFLOW_LAUNCHER.read_text()
+    assert "ArthurZakirov/SystemSmith" not in launcher
+    assert "npx" not in launcher
+
+
+def test_feature_guide_documents_every_workflow_and_terminal_boundary():
+    guide = (ROOT / "docs/features/raycast.md").read_text()
+    for expected in WORKFLOW_COMMANDS.values():
+        assert f"| `{expected}` |" in guide
+    assert "macOS Terminal" in guide
+    assert "Warp" in guide
