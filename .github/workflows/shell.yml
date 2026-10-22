@@ -125,7 +125,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb
           # Match the VS Code version used for local macOS GUI verification.
-          curl --fail --location --retry 3 \
+          curl --fail --location --retry 5 --retry-all-errors --retry-delay 3 \
             https://update.code.visualstudio.com/1.141.0/linux-deb-x64/stable \
             --output /tmp/vscode.deb
           sudo apt-get install -y /tmp/vscode.deb
@@ -154,7 +154,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb
-          curl --fail --location --retry 3 https://update.code.visualstudio.com/1.141.0/linux-deb-x64/stable --output /tmp/vscode.deb
+          curl --fail --location --retry 5 --retry-all-errors --retry-delay 3 \
+            https://update.code.visualstudio.com/1.141.0/linux-deb-x64/stable \
+            --output /tmp/vscode.deb
           sudo apt-get install -y /tmp/vscode.deb
           curl -fsSL https://get.chezmoi.io | sh -s -- -b /tmp/chezmoi-bin
           echo /tmp/chezmoi-bin >> "$GITHUB_PATH"
