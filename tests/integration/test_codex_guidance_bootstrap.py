@@ -76,7 +76,10 @@ def test_guidance_from_external_manifest_paths_is_rendered(tmp_path, with_overla
     assert installed.returncode == 0, installed.stderr
     guidance = (tmp_path / ".codex/AGENTS.md").read_text()
     assert f"`{manifest.as_posix()}`" in guidance
-    assert f"`{(manifest.parent / 'component.md').as_posix()}`" in guidance
+    assert "Resolved order:" not in guidance
+    assert "Resolved component order:" not in guidance
+    assert (manifest.parent / "component.md").as_posix() not in guidance
+    assert "# Distinct external overlay" in guidance if with_overlay else "# External guidance" in guidance
 
 
 def test_dangling_symlink_can_be_reconciled_and_backed_up(tmp_path):

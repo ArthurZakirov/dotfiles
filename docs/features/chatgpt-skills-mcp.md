@@ -50,8 +50,13 @@ Follow the [current ChatGPT connection instructions](https://help.openai.com/en/
 4. Choose **Authentication: None** for this read-only server, acknowledge
    the risk notice, then select **Create as a plugin**.
 5. Install the newly created plugin in the intended ChatGPT workspace.
-6. Open a new normal chat and select the installed plugin using `@`.
-   Test `search_skills` and `read_skill` against an installed skill.
+6. Open a new normal chat and select the installed plugin using `@` if it is
+   not already exposed to that chat. Selection may be needed again on later
+   messages. Test `search_skills` and `read_skill` against an installed skill.
+
+Custom Instructions cannot activate an unavailable plugin. If the MCP tools are
+not exposed, the [personalization guidance](chatgpt-personalization.md) uses
+the local CLI fallback when Remote Desktop Commander is connected.
 
 ## Automated setup and behavior
 

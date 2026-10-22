@@ -17,7 +17,7 @@ AI agents can write code faster than you can review it. When inspecting their ch
 
 ### 🤖 Let agents work across systems without consuming your attention
 
-Give an agent a task without becoming its copy-paste assistant. DevMac equips it to inspect files, use browser and desktop apps, and consult proven instructions—so it can work through multi-step tasks while you do something else, involving you when approval or judgment is needed.
+Give an agent a task without becoming its copy-paste assistant. DevMac equips it to inspect files, use browser and desktop apps, and consult proven instructions—so it can work through multi-step tasks while you do something else, involving you when approval or judgment is needed. The [ChatGPT personalization instructions](docs/features/chatgpt-personalization.md) tell ChatGPT how to access Desktop Commander and local Agent Skills; paste them manually during setup.
 
 | Capability | Detailed feature documentation |
 | --- | --- |

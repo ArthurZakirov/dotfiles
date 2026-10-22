@@ -6,6 +6,8 @@ Explore DevMac by workflow. Some tools support several different capabilities.
 
 ## Let agents complete tasks without babysitting
 
+For ChatGPT, the [personalization instructions](chatgpt-personalization.md) tell the assistant how to access Desktop Commander and local Agent Skills. Paste them manually during setup.
+
 [Why agents need these tools—and what ChatGPT usage limits mean →](../workflows/agent-capabilities.md)
 
 | Capability | Detailed feature documentation |
