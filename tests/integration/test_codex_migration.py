@@ -85,6 +85,8 @@ def test_canonical_guidance_is_only_in_the_repository():
     assert not (SOURCE / "guidance-source").exists()
     guidance = (SOURCE / "AGENTS.md").read_text(encoding="utf-8")
     assert "src/codex-guidance/global-guidance/agents-md-manifest.yaml" in guidance
+    assert "Resolved order:" not in guidance
+    assert "agents-md-components/" not in guidance
     assert "guidance-source/" not in guidance
     for removed in ("chatgpt-chat.md", "chatgpt-work.md", "codex.md"):
         assert not (SOURCE / "agents-md-references" / removed).exists()

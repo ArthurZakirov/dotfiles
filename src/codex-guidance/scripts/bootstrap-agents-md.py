@@ -461,37 +461,26 @@ def install_layered(manifest: Path, agents_home: Path, claude_home: Path,
     if not has_workspace_group:
         component_toc_lines.insert(0, "- [🛠️ Updating this AGENTS.md](#agents-md-maintenance)")
     component_toc_text = "\n".join(component_toc_lines)
-    # The Dotfiles checkout is the source of truth, not a runtime directory under
-    # CODEX_HOME. Source paths are displayed as repo-relative code, never as
-    # Markdown links that would be broken after chezmoi installs AGENTS.md.
+    # Link to the canonical manifest, not the individual implementation files.
+    # Component order remains defined by the manifest and rendered TOC.
     checkout_root = Path(__file__).resolve().parents[3]
     def display_source(path: Path) -> str:
         return path.relative_to(checkout_root).as_posix() if path.is_relative_to(checkout_root) else path.as_posix()
 
     manifest_links = [display_source(layer.manifest) for layer in layers]
     manifest_link = manifest_links[0]
-    component_links = [display_source(component.path) for component in components]
-    regenerate_link = Path(__file__).resolve().with_name("regenerate-agents-md.py").relative_to(checkout_root).as_posix()
     protected_sources = {component.path for component in components} | {layer.manifest for layer in layers}
     if len(layers) == 1:
         source_lines = [
             "This file is generated atomically from the ordered sources declared in:",
             "",
             f"- AGENTS.md manifest: `{manifest_link}`",
-            "",
-            "Resolved order:",
-            "",
-            *[f"{index}. `{link}`" for index, (component, link) in enumerate(zip(components, component_links), start=1)],
         ]
     else:
         source_lines = [
             "This file is generated atomically from the ordered guidance layers:",
             "",
             *[f"{index}. Manifest ({layer.layer_id}): `{link}`" for index, (layer, link) in enumerate(zip(layers, manifest_links), start=1)],
-            "",
-            "Resolved component order:",
-            "",
-            *[f"{index}. `{link}`" for index, (component, link) in enumerate(zip(components, component_links), start=1)],
         ]
     source_text = "\n".join(source_lines)
     maintenance_text = (

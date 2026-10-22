@@ -50,31 +50,6 @@ This file is generated atomically from the ordered sources declared in:
 
 - AGENTS.md manifest: `src/codex-guidance/global-guidance/agents-md-manifest.yaml`
 
-Resolved order:
-
-1. `src/codex-guidance/global-guidance/agents-md-components/workspace-and-agent-system/workspace-and-agent-system.md`
-2. `src/codex-guidance/global-guidance/agents-md-components/workspace-and-agent-system/git-workflow.md`
-3. `src/codex-guidance/global-guidance/agents-md-components/workspace-and-agent-system/external-system-access.md`
-4. `src/codex-guidance/global-guidance/agents-md-components/workspace-and-agent-system/managed-repositories-skills-global-rules.md`
-5. `src/codex-guidance/global-guidance/agents-md-components/workspace-and-agent-system/agent-behavior-lifecycle.md`
-6. `src/codex-guidance/global-guidance/agents-md-components/runtime-and-interaction/runtime-and-interaction.md`
-7. `src/codex-guidance/global-guidance/agents-md-components/runtime-and-interaction/delegated-chat-naming.md`
-8. `src/codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/reasoning-and-agent-behavior.md`
-9. `src/codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/problem-intent-and-proposed-solutions.md`
-10. `src/codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/unresolved-implementation-decisions.md`
-11. `src/codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/requirements-scope-validation.md`
-12. `src/codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/effort-scope-checkpoints.md`
-13. `src/codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/evidence-grounding.md`
-14. `src/codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/behavior-feedback-debugging.md`
-15. `src/codex-guidance/global-guidance/agents-md-components/reasoning-and-agent-behavior/execution-algorithm.md`
-16. `src/codex-guidance/global-guidance/agents-md-components/information-presentation/information-presentation.md`
-17. `src/codex-guidance/global-guidance/agents-md-components/information-presentation/relevance.md`
-18. `src/codex-guidance/global-guidance/agents-md-components/information-presentation/anchoring.md`
-19. `src/codex-guidance/global-guidance/agents-md-components/information-presentation/representation.md`
-20. `src/codex-guidance/global-guidance/agents-md-components/information-presentation/structural-semantic-coherence.md`
-21. `src/codex-guidance/global-guidance/agents-md-components/information-presentation/visual-semantics.md`
-22. `src/codex-guidance/global-guidance/agents-md-components/information-presentation/chat-response-presentation.md`
-
 | When | Then |
 | --- | --- |
 | Updating global agent guidance. | Edit the canonical components, manifest, and references in the Dotfiles repository under `src/codex-guidance/global-guidance/`. Render with `python3 src/codex-guidance/render.py`, inspect the diff, then apply through chezmoi. |
