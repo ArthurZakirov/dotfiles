@@ -109,3 +109,22 @@ def test_canonical_document_staging_guidance_is_consistent():
     assert "self-source/.local-workspace/documents/" in routing
     assert ".local-workspace/documents/" in documents
     assert "outside Git repositories" not in routing
+
+
+def test_scope_risk_and_rule_trace_pilot_reach_generated_guidance(tmp_path):
+    installed = bootstrap(tmp_path, "--manifest", str(BASE_MANIFEST))
+    assert installed.returncode == 0, installed.stderr
+
+    guidance = (tmp_path / ".codex/AGENTS.md").read_text()
+    assert "One-day guidance transparency pilot" in guidance
+    assert "Guidance audit" in guidance
+    assert "Before potentially substantial human effort" in guidance
+    assert "possible scope creep" in guidance.lower()
+
+    references = tmp_path / ".codex/agents-md-references"
+    assert "Compare and warn early" in (
+        references / "effort-scope-checkpoints.md"
+    ).read_text()
+    assert "tentative scope-risk warning" in (
+        references / "requirements-scope-validation.md"
+    ).read_text()
