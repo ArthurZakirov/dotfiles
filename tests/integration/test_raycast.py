@@ -9,7 +9,7 @@ import sys
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = ROOT / "home/dot_config/raycast/scripts"
+SCRIPTS = ROOT / "home/Documents/Raycast Commands"
 HOOK = ROOT / "home/run_after_60-raycast-onboarding.sh"
 LAUNCHER = ROOT / "home/dot_config/raycast/lib/executable_open-target.sh"
 
@@ -234,6 +234,14 @@ def test_chezmoi_quicklink_rejects_non_git_source(tmp_path):
 
     assert result.returncode != 0
     assert not capture.exists()
+
+
+def test_script_commands_use_documents_directory_without_custom_registration():
+    # Installation path is the externally visible contract for a new Mac.
+    assert SCRIPTS.relative_to(ROOT) == Path("home/Documents/Raycast Commands")
+    assert not (ROOT / "home/dot_config/raycast/scripts").exists()
+    assert "Add Script Directory" not in HOOK.read_text()
+    assert "add ~/.config/raycast/scripts" not in HOOK.read_text()
 
 
 def test_script_directory_contains_navigation_and_four_workflow_commands():
