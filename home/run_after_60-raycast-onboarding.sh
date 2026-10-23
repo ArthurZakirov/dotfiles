@@ -25,5 +25,5 @@ open 'https://www.raycast.com/francesco_mecchi/repository-manager'
 mkdir -p "$(dirname "$marker")"
 : > "$marker"
 printf '%s\n' 'Raycast: confirm Repository Manager installation in the Store.' \
-  'Raycast: add ~/.config/raycast/scripts under Settings -> Script Commands.' \
+  'Raycast: script commands provisioned at ~/Documents/Raycast Commands.' \
   'Raycast: assign Option+R to the repository list command (once per Mac).'

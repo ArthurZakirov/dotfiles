@@ -15,14 +15,17 @@ account settings. Raycast Cloud Sync is not needed.
 | --- | --- | --- |
 | Launch installed applications | Raycast's built-in app search | Raycast app installed by DevMac; no extension required |
 | Find Git repositories | [Repository Manager](https://www.raycast.com/francesco_mecchi/repository-manager), a Store extension | Install in Raycast, configure projects path and VS Code, assign `Option+R` |
-| Open specific files and folders | [Raycast Script Commands](https://manual.raycast.com/script-commands) managed with chezmoi | Register `~/.config/raycast/scripts` once |
-| Run shared shell workflows | Four chezmoi-managed Raycast Script Commands | Same registered script directory; macOS Terminal for interactive output |
+| Open specific files and folders | [Raycast Script Commands](https://manual.raycast.com/script-commands) managed with chezmoi | Place scripts in `~/Documents/Raycast Commands` |
+| Run shared shell workflows | Four chezmoi-managed Raycast Script Commands | Same script directory; macOS Terminal for interactive output |
 
 **Repository Manager lists Git repositories dynamically; it does not provide
 shortcuts to arbitrary files or directories.** Raycast discovers the separately
-managed Script Commands from `~/.config/raycast/scripts`. Register that folder
-once per Mac; subsequent `chezmoi apply` runs update its contents without
-regenerating or importing Quicklinks JSON.
+managed Script Commands in `~/Documents/Raycast Commands`, the standard
+script location requested for DevMac. Chezmoi installs the commands there
+directly; there is no separate DevMac-specific script directory to register
+and no Quicklinks JSON import. Raycast still controls which directories it
+indexes; its documentation does not guarantee that this folder is registered
+on an unconfigured installation.
 
 Each command file supplies only its searchable Raycast metadata and a target
 argument. One shared launcher handles file/folder checks and opens the target
@@ -32,7 +35,7 @@ in VS Code. For example, `.zshrc` delegates to:
 exec "$HOME/.config/raycast/lib/open-target.sh" file "$HOME/.zshrc"
 ```
 
-The launcher lives under `~/.config/raycast/lib`, **outside** the registered
+The launcher lives under `~/.config/raycast/lib`, **outside** the
 Script Commands directory, so Raycast does not index it as another command.
 It also resolves the `chezmoi dotfiles` repository dynamically.
 
@@ -106,13 +109,24 @@ Repository Manager's official Store listing **once per machine**. This is an
 onboarding prompt, not unattended extension installation. Confirm installation
 in Raycast, then:
 
-1. In Raycast, open **Settings → Script Commands → Add Script Directory** and
-   select `~/.config/raycast/scripts`.
-2. Open Repository Manager's preferences, set your Git projects path and VS Code
-   as editor, and choose **Open in Editor** as its primary action.
-3. Assign `Option+R` to Repository Manager's repository-list command in Raycast.
+The Script Commands are installed at `~/Documents/Raycast Commands` by
+chezmoi; DevMac does not require registering an additional custom directory.
 
-After verifying the new file commands, remove only their superseded file
+For **Repository Manager** (a separate Store extension):
+
+1. Open Repository Manager's preferences, set your Git projects path and VS Code
+   as editor, and choose **Open in Editor** as its primary action.
+2. Assign `Option+R` to Repository Manager's repository-list command in Raycast.
+
+Raycast's [official documentation](https://manual.raycast.com/script-commands)
+only guarantees indexing for a registered Script Directory. Using the
+conventional Documents path therefore removes our custom-directory setup,
+but does not establish fully unattended first-use discovery on every Mac.
+If commands fail to appear on a fresh Raycast installation, that limitation
+must be resolved with a supported Raycast registration mechanism rather than
+silently editing its internal database.
+
+After verifying the file commands, remove only their superseded file
 Quicklinks in Raycast if you want to avoid duplicate search results. The
 migration deliberately leaves existing Quicklinks intact until then.
 
@@ -131,7 +145,7 @@ marker is not an installation-health indicator. Raycast must already be installe
 
 | Purpose | Source |
 | --- | --- |
-| Fifteen Raycast command wrappers | [`home/dot_config/raycast/scripts/`](../../home/dot_config/raycast/scripts/) |
+| Fifteen Raycast command wrappers | [`home/Documents/Raycast Commands/`](../../home/Documents/) |
 | Shared target-opening launcher | [`home/dot_config/raycast/lib/executable_open-target.sh`](../../home/dot_config/raycast/lib/executable_open-target.sh) |
 | Shared interactive-workflow launcher | [`home/dot_config/raycast/lib/executable_run-workflow.sh`](../../home/dot_config/raycast/lib/executable_run-workflow.sh) |
 | One-time Store onboarding | [`home/run_after_60-raycast-onboarding.sh`](../../home/run_after_60-raycast-onboarding.sh) |
