@@ -384,21 +384,18 @@ def test_chezmoi_gui_diff_shows_only_the_readable_voice_prompt(profile_factory, 
 
 
 
-def test_versioned_voice_prompt_distinguishes_live_and_backend():
+def test_voice_frontend_reads_backend_visible_output():
     upstream = (ROOT / "src/codex-guidance/upstream/realtime/backend_prompt.md").read_text()
     custom = (SOURCE / "config-toml/realtime-voice-backend-prompt.md").read_text()
 
     assert "The user's name is {{ user_first_name }}" in upstream
     assert "Treat the system as one unified assistant" in upstream
-    assert "do not mention \"backend\"" in upstream
     assert "distinct conversational agent" in custom
-    assert "* **Disclose the source of every reply**" in custom
-    assert "the backend was not consulted" in custom
-    assert "the result is not yet known" in custom
-    assert "Attribute received findings to the backend" in custom
+    assert "* Delegate every completed user turn to the backend" in custom
+    assert "user-visible inline Markdown item" in custom
+    assert "sole source for your spoken reply" in custom
+    assert "Read each newly displayed backend inline item exactly once" in custom
     assert "do not mention \"backend\"" not in custom.lower()
-    assert "Do not disclose the concept or existence of backend" not in custom
-
 
 
 def test_live_voice_waits_for_explicit_spoken_turn_completion():
@@ -433,53 +430,42 @@ def test_mode_specific_guidance_is_removed_from_global_agents_md():
         assert not (SOURCE / "agents-md-references" / obsolete).exists()
 
 
-def test_voice_frontend_requires_backend_and_grounded_code_navigation():
+def test_voice_frontend_delegates_code_navigation_to_backend_guidance():
     prompt = (SOURCE / "config-toml/realtime-voice-backend-prompt.md").read_text()
-    backend = prompt.split("## Backend use and steering", 1)[1].split(
-        "## Backend outputs and user inputs", 1
-    )[0]
-    walkthrough = prompt.split("### Code walkthroughs", 1)[1].split(
-        "### Application and UI walkthroughs", 1
-    )[0]
+    reference = "code-evidence-and-vscode-navigation.md"
+    canonical = CANONICAL / "global-guidance"
+    routing = (canonical / "agents-md-components/reasoning-and-agent-behavior/evidence-grounding.md").read_text()
+    detailed = (canonical / "agents-md-references" / reference).read_text()
 
-    assert "* Delegate **every question about real code or repository behavior**" in backend
-    assert "Never answer from memory" in backend
-    assert "* Ask the backend to verify the repository, branch/worktree" in backend
-    assert "**return a navigation-only first result**" in backend
-    assert "visible output must not spoil the explanation" in backend
-    assert "* **Every actual code question**" in walkthrough
-    assert "Never deliver the full answer before the user can inspect its evidence" in walkthrough
-    assert "* Begin with the first missing visual anchor" in walkthrough
-    for step in range(1, 6):
-        assert f"{step}. " in walkthrough
+    assert "* Delegate **every question about real code or repository behavior**" in prompt
+    assert "repository verification and editor navigation to the backend" in prompt
+    assert "request a location-only first checkpoint" in prompt
+    assert "one visible checkpoint at a time" in prompt
+    assert "code --goto" not in prompt
+    assert "code --new-window" not in prompt
+    assert reference in routing
+    assert 'code --new-window "$repo" --goto "$file:$line"' in detailed
+    assert 'code --goto "$file:$line"' in detailed
+    assert "A successful CLI exit" in detailed
+    assert (SOURCE / "agents-md-references" / reference).read_text().endswith(detailed)
+    assert reference in (SOURCE / "AGENTS.md").read_text()
 
 
-def test_voice_frontend_discloses_provenance_in_existing_bullet_sections():
+def test_voice_frontend_speaks_only_visible_backend_items_and_paces_walkthroughs():
     prompt = (SOURCE / "config-toml/realtime-voice-backend-prompt.md").read_text()
-    policies = prompt.split("### Policies", 1)[1].split(
-        "## Voice turn-taking", 1
-    )[0]
+    policies = prompt.split("### Policies", 1)[1].split("## Voice turn-taking", 1)[0]
     communication = prompt.split("## Communication style", 1)[1].split(
         "## Delegated execution context", 1
     )[0]
-    pacing = prompt.split("### General pacing", 1)[1].split(
-        "### Code walkthroughs", 1
-    )[0]
+    pacing = prompt.split("### General pacing", 1)[1].split("### Code walkthroughs", 1)[0]
 
-    assert "* **Disclose the source of every reply**" in policies
-    assert "including brief answers and acknowledgements" in policies
-    assert "* For a direct voice-frontend answer, explicitly say" in policies
-    assert "Direct from me, without consulting the backend:" in policies
-    assert "* For a backend handoff, identify the delegated work" in policies
-    assert "* Before invisible or noticeably slow backend work" in communication
+    assert "Do not add a spoken preface" in policies
+    assert "Do not speak while waiting for the user-visible backend item" in policies
+    assert "the backend's visible messages" in policies
+    assert "Before noticeably slow backend work" in communication
     assert "* After each step, stop and yield" in pacing
     assert "Silence is the checkpoint" in pacing
     assert "change representation rather than repeat jargon" in pacing
-    assert "## Spoken progress and explanation checkpoints" not in prompt
-
-    # All new instruction rules belong to existing bullet sections.
-    for section in (policies, communication, pacing):
-        assert all(line.startswith("* ") for line in section.splitlines() if line.strip())
 
 
 def test_hooks_template_preserves_expected_events():
