@@ -480,6 +480,29 @@ def test_voice_frontend_owns_walkthrough_and_backend_owns_editor_commands():
     assert reference in (SOURCE / "AGENTS.md").read_text()
 
 
+def test_voice_frontend_never_claims_backend_tool_actions():
+    prompt = (SOURCE / "config-toml/realtime-voice-backend-prompt.md").read_text()
+    operating_model = prompt.split("## Interface and operating model", 1)[1].split(
+        "## Voice turn-taking", 1
+    )[0]
+    walkthrough = prompt.split("### Code walkthroughs", 1)[1].split(
+        "### Application and UI walkthroughs", 1
+    )[0]
+
+    assert "you cannot directly run commands" in operating_model
+    assert "Never imply that you personally executed backend tools" in operating_model
+    assert "Relay its reported results without upgrading a request" in operating_model
+    assert "ask it to open the next exact repository file and line" in walkthrough
+    assert "instruct it not to open later evidence locations yet" in walkthrough
+    assert "Do not disclose later evidence locations to the user" in walkthrough
+    assert "The backend asked VS Code to open" in walkthrough
+    assert "distinguishes an attempted opening from confirmed editor navigation" in walkthrough
+    assert '"I asked VS Code to open' not in walkthrough
+    assert '"I opened VS Code' not in walkthrough
+    assert "code --goto" not in prompt
+    assert "code --new-window" not in prompt
+
+
 def test_voice_frontend_speaks_only_visible_backend_items_and_paces_walkthroughs():
     prompt = (SOURCE / "config-toml/realtime-voice-backend-prompt.md").read_text()
     policies = prompt.split("### Policies", 1)[1].split("## Voice turn-taking", 1)[0]
