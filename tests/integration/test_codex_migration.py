@@ -430,23 +430,52 @@ def test_mode_specific_guidance_is_removed_from_global_agents_md():
         assert not (SOURCE / "agents-md-references" / obsolete).exists()
 
 
-def test_voice_frontend_delegates_code_navigation_to_backend_guidance():
+def test_voice_frontend_owns_walkthrough_and_backend_owns_editor_commands():
     prompt = (SOURCE / "config-toml/realtime-voice-backend-prompt.md").read_text()
     reference = "code-evidence-and-vscode-navigation.md"
     canonical = CANONICAL / "global-guidance"
-    routing = (canonical / "agents-md-components/reasoning-and-agent-behavior/evidence-grounding.md").read_text()
+    routing = (
+        canonical / "agents-md-components/information-presentation/anchoring.md"
+    ).read_text()
     detailed = (canonical / "agents-md-references" / reference).read_text()
 
-    assert "* Delegate **every question about real code or repository behavior**" in prompt
-    assert "repository verification and editor navigation to the backend" in prompt
-    assert "request a location-only first checkpoint" in prompt
-    assert "one visible checkpoint at a time" in prompt
+    # Frontend behavior: the complete visual conversation remains in the prompt.
+    backend = prompt.split("## Backend use and steering", 1)[1].split(
+        "## Backend outputs and user inputs", 1
+    )[0]
+    walkthrough = prompt.split("### Code walkthroughs", 1)[1].split(
+        "### Application and UI walkthroughs", 1
+    )[0]
+    assert "* Delegate **every question about real code or repository behavior**" in backend
+    assert "For every visual walkthrough handoff" in backend
+    assert "Before the user confirms the first target is visible" in backend
+    assert "When the user confirms a location" in backend
+    assert "Request further evidence only after the current evidence" in backend
+    assert "return a location-only first result" in backend
+    assert "**Every actual code question** requires a visual walkthrough" in walkthrough
+    assert "A direct F12 chain" in walkthrough
+    assert "Separate evidence locations" in walkthrough
+    for step in range(1, 6):
+        assert f"{step}. " in walkthrough
+    assert "app_settings.py" in walkthrough
+    assert "Every factual claim about the code" in walkthrough
+    assert "Do not summarize the full chain" in walkthrough
     assert "code --goto" not in prompt
     assert "code --new-window" not in prompt
+
+    # Backend guidance: verified locations and VS Code commands, no pacing protocol.
     assert reference in routing
+    evidence_routing = (
+        canonical / "agents-md-components/reasoning-and-agent-behavior/evidence-grounding.md"
+    ).read_text()
+    assert reference not in evidence_routing
+    assert "Presenting verified repository code evidence to a user" in routing
+    assert "Use this procedure when responding to a question about repository code." in detailed
     assert 'code --new-window "$repo" --goto "$file:$line"' in detailed
     assert 'code --goto "$file:$line"' in detailed
     assert "A successful CLI exit" in detailed
+    assert "Guided interactive walkthroughs" not in detailed
+    assert "voice frontend" not in detailed.lower()
     assert (SOURCE / "agents-md-references" / reference).read_text().endswith(detailed)
     assert reference in (SOURCE / "AGENTS.md").read_text()
 
