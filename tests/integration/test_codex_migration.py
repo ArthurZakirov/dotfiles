@@ -319,17 +319,27 @@ def test_first_apply_bootstraps_voice_config_without_uv(profile_factory, profile
 
 
 @pytest.mark.parametrize("active_process", ["ChatGPT", "Codex", "codex"])
-def test_codex_modify_diff_remains_visible_while_app_running_and_apply_defers(
+def test_codex_modify_diff_and_apply_while_app_running(
     profile_factory, tmp_path, active_process
 ):
     config = prepare_codex_home(tmp_path)
-    initial = config.read_bytes()
+    initial = config.read_text()
+    prompt = (SOURCE / "config-toml/realtime-voice-backend-prompt.md").read_text()
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
+    pgrep_log = tmp_path / "pgrep.log"
     pgrep = fake_bin / "pgrep"
-    pgrep.write_text(f'#!/bin/sh\n[ "$2" = "{active_process}" ]\n')
+    # Simulate the app being active, and fail if the modifier probes processes.
+    pgrep.write_text(
+        '#!/bin/sh\n'
+        'printf "%s\\n" "$*" >> "$PGREP_LOG"\n'
+        f'[ "$2" = "{active_process}" ]\n'
+    )
     pgrep.chmod(0o755)
-    env = {"PATH": f"{fake_bin}:{os.environ['PATH']}"}
+    env = {
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "PGREP_LOG": str(pgrep_log),
+    }
 
     diff = chezmoi_codex_command(
         profile_factory, "personal", tmp_path, "--use-builtin-diff", "--no-pager",
@@ -337,20 +347,27 @@ def test_codex_modify_diff_remains_visible_while_app_running_and_apply_defers(
     )
     assert diff.returncode == 0, diff.stderr
     assert "diff --git a/.codex/config.toml" in diff.stdout
+    assert config.read_text() == initial
 
     apply = chezmoi_codex_command(
         profile_factory, "personal", tmp_path, "apply", "--exclude", "scripts",
         str(config), env=env,
     )
     assert apply.returncode == 0, apply.stderr
-    assert "Deferred Codex Live Voice prompt sync" in apply.stderr
-    assert config.read_bytes() == initial
+    assert "Deferred Codex Live Voice prompt sync" not in apply.stderr
+    assert tomllib.loads(config.read_text()) == {
+        **tomllib.loads(initial),
+        "experimental_realtime_ws_backend_prompt": prompt,
+    }
+    assert stat.S_IMODE(config.stat().st_mode) == 0o600
+    assert not pgrep_log.exists(), "app status must not block or gate configuration writes"
 
-    still_pending = chezmoi_codex_command(
+    synchronized = chezmoi_codex_command(
         profile_factory, "personal", tmp_path, "--use-builtin-diff", "--no-pager",
         "diff", str(config), env=env,
     )
-    assert "diff --git a/.codex/config.toml" in still_pending.stdout
+    assert synchronized.returncode == 0, synchronized.stderr
+    assert synchronized.stdout == ""
 
 
 def test_chezmoi_gui_diff_shows_only_the_readable_voice_prompt(profile_factory, tmp_path):
