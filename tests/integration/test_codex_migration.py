@@ -458,7 +458,7 @@ def test_voice_frontend_owns_walkthrough_and_backend_owns_editor_commands():
     for step in range(1, 6):
         assert f"{step}. " in walkthrough
     assert "app_settings.py" in walkthrough
-    assert "Every factual claim about the code" in walkthrough
+    assert "Ask the backend to ground every factual code claim" in walkthrough
     assert "Do not summarize the full chain" in walkthrough
     assert "code --goto" not in prompt
     assert "code --new-window" not in prompt
