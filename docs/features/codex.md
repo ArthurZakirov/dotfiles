@@ -105,10 +105,13 @@ or the prompt was edited through the Desktop UI. The existing VS Code diff
 adapter displays those changes as a readable Markdown comparison, without
 caching or opening unrelated local TOML settings.
 
-`chezmoi apply` updates the prompt only if Codex and ChatGPT Desktop are not
-running. Otherwise, the modifier leaves the active config unchanged and
-reports that the update was deferred; `chezmoi diff` continues showing the
-pending change. Close the apps and run `chezmoi apply` again. No full-file
+`chezmoi apply` writes the versioned prompt to `config.toml` even while
+Codex CLI, Codex Desktop, or ChatGPT Desktop is running. The modifier does not
+inspect or terminate running application processes. `chezmoi diff` shows a
+pending change before applying it and becomes clean afterward. An existing
+voice call or app session may continue using previously loaded instructions;
+restart the voice call or app later if the new prompt is not picked up. Updating
+the file does not guarantee hot-reloading in existing sessions. No full-file
 template, automatic reverse synchronization, or project-trust replication is
 introduced.
 
