@@ -10,8 +10,6 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
-import shutil
-import subprocess
 import sys
 import tomllib
 
@@ -49,22 +47,6 @@ def render_prompt(content: str, prompt: str) -> str:
     return updated
 
 
-def codex_is_running() -> bool:
-    """Codex is not a cooperating lock holder; avoid applying while it is active."""
-    pgrep = shutil.which("pgrep")
-    if pgrep is None:
-        raise RuntimeError("Cannot check running Codex processes: pgrep unavailable")
-    for name in ("ChatGPT", "Codex", "codex"):
-        process = subprocess.run(
-            [pgrep, "-x", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-        if process.returncode == 0:
-            return True
-        if process.returncode != 1:
-            raise RuntimeError(f"Cannot check running {name} processes")
-    return False
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prompt", type=Path, required=True)
@@ -81,14 +63,6 @@ def main() -> None:
             raise ValueError("refusing to replace a symlinked Codex config")
 
     updated = render_prompt(original, args.prompt.read_text(encoding="utf-8"))
-    if updated != original and os.environ.get("CHEZMOI_COMMAND") == "apply" and codex_is_running():
-        print(
-            "Deferred Codex Live Voice prompt sync: quit ChatGPT Desktop and Codex CLI, "
-            "then rerun chezmoi apply; chezmoi diff still shows the pending change.",
-            file=sys.stderr,
-        )
-        updated = original
-
     # stdout is strictly the computed target file; no user-facing status text.
     sys.stdout.write(updated)
 
