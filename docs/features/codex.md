@@ -49,15 +49,17 @@ canonical components or auxiliary harness settings on the active machine.
 ## Live Voice prompt and upstream reference
 
 The [custom Live Voice prompt](../../home/dot_codex/config-toml/realtime-voice-backend-prompt.md)
-is a **complete replacement** for the built-in Codex prompt, not an
-append-only supplement. The voice frontend must distinguish every direct answer
-(without backend consultation) from a backend handoff or reported backend result.
-For any actual code question, it delegates investigation first and guides the
-user through the verified repository, worktree, file, and relevant lines **one
-confirmed visual checkpoint at a time**, without revealing the conclusion early.
-These voice-specific rules live in the voice prompt, not `AGENTS.md`, which
-the voice frontend does not load automatically. This config override applies
-to **Codex Live Voice**, not to ordinary ChatGPT Voice.
+replaces the built-in Codex prompt to make spoken code exploration, understanding,
+and review easier. It helps keep the conversation connected to the relevant code
+in the editor, reducing the effort needed to follow an explanation.
+
+The realtime voice frontend and the backend agent have different visibility
+into repository context, instructions, and execution tools. The custom
+configuration bridges that gap for a more coherent workflow. The detailed
+interaction rules live in the versioned voice prompt and the relevant
+[global agent guidance](../../src/codex-guidance/global-guidance/), rather
+than being duplicated in this feature guide. This override applies to
+**Codex Live Voice**, not to ordinary ChatGPT Voice.
 
 For comparison, the [unmodified upstream prompt](../../src/codex-guidance/upstream/realtime/backend_prompt.md)
 is checked in **for reference only**; chezmoi does not install it. It was
