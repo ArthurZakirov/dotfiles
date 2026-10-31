@@ -49,6 +49,14 @@ retain a previously selected interpreter, and environment detection may need a
 refresh if it initialized before setup completed. Neither setting modifies the
 reviewed repository or the user's global VS Code configuration.
 
+Python reviews also set `python.useEnvironmentsExtension` to `false` in the
+temporary workspace. This uses the Python extension's interpreter backend for
+both automatic discovery and **Python: Select Interpreter**. The preview Python
+Environments backend can classify a Poetry-local environment under its system
+manager when Poetry is unavailable, then fall back to global Python during
+discovery even though the local interpreter exists. The workspace override
+avoids that selection path; other VS Code workspaces keep their existing setting.
+
 Automatic tasks require VS Code to allow folder-open tasks and to trust the
 workspace. An explicit trust prompt or a local `task.allowAutomaticTasks`
 restriction takes precedence. **Only open and trust review worktrees whose
@@ -126,7 +134,10 @@ The [CI workflow](../../.github/workflows/shell.yml) runs these tests on both
 macOS and Linux. It additionally installs actual VS Code on Ubuntu under Xvfb,
 then executes the [real-editor GUI integration test](../../tests/integration/test_git_review_vscode_gui.py),
 which verifies that the Git extension discovers exactly one review worktree
-when the launcher inherits adversarial Git environment variables. The GUI test
-uses a disposable VS Code profile and extensions directory, never the regular
-VS Code user data. On macOS with the `code` CLI installed, run the same test via
-`RUN_VSCODE_GUI_E2E=1 .venv/bin/pytest -q tests/integration/test_git_review_vscode_gui.py`.
+when the launcher inherits adversarial Git environment variables. It also
+installs the Microsoft Python extensions and checks the actual selected Python
+executable before and after an environment-discovery refresh, including a user
+profile that enables the preview backend. The GUI test uses a disposable VS Code
+profile and extensions directory and runs only in isolated Linux CI; it never
+uses the regular VS Code user data. It does not automate the interpreter picker
+or inspect the status-bar label.

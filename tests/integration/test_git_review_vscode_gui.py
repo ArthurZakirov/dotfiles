@@ -138,12 +138,40 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
         '{"workbench.startupEditor":"none","git.autofetch":false,'
         '"git.detectWorktrees":true,"git.autoRepositoryDetection":true,'
         '"window.restoreWindows":"none","telemetry.telemetryLevel":"off",'
-        '"task.allowAutomaticTasks":"on"}\n'
+        '"task.allowAutomaticTasks":"on","python.useEnvironmentsExtension":true}\n'
     )
     extensions = tmp_path / "vscode-extensions"
     extensions.mkdir()
+    # Use the same real Microsoft backends implicated in the regression. The
+    # user setting opts into the preview backend; the review must override it.
+    subprocess.run([
+        real_code, "--user-data-dir", str(profile), "--extensions-dir", str(extensions),
+        "--install-extension", "ms-python.python@2026.10.0",
+        "--install-extension", "ms-python.vscode-python-envs@1.40.0",
+    ], check=True, capture_output=True, text=True, timeout=180)
+    probe = extensions / "test.python-selection-0.0.1"
+    probe.mkdir()
+    (probe / "package.json").write_text(json.dumps({
+        "name": "python-selection", "publisher": "test", "version": "0.0.1",
+        "engines": {"vscode": "^1.100.0"}, "main": "./extension.js",
+        "activationEvents": ["onStartupFinished"],
+    }))
+    shutil.copy2(ROOT / "tests/support/vscode_python_probe.js", probe / "extension.js")
     review_extension = ROOT / "home/dot_vscode/extensions/agentdesk.git-review-ui-0.1.0"
     shutil.copytree(review_extension, extensions / review_extension.name)
+    # The Marketplace install initializes this registry. Copied test extensions
+    # must join it too; development-host flags change normal window reuse.
+    registry = extensions / "extensions.json"
+    installed = json.loads(registry.read_text())
+    for directory in (probe, extensions / review_extension.name):
+        manifest = json.loads((directory / "package.json").read_text())
+        installed.append({
+            "identifier": {"id": f"{manifest['publisher']}.{manifest['name']}"},
+            "version": manifest["version"],
+            "location": {"$mid": 1, "scheme": "file", "path": str(directory)},
+            "relativeLocation": directory.name,
+        })
+    registry.write_text(json.dumps(installed))
     # Only modify this private wrapper, NEVER the user's installed VS Code CLI.
     code = bindir / "code"
     code.write_text(
@@ -165,6 +193,7 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
         "REVIEW_BOOTSTRAP_LOG": str(tmp_path / "pysetup-bootstrap.log"),
         "GIT_REVIEW_GUI_TEST_MARKER": str(tmp_path / "source-control-opened.log"),
         "GIT_REVIEW_DIFF_TEST_MARKER": str(tmp_path / "opened-diff-tabs.json"),
+        "GIT_REVIEW_PYTHON_TEST_MARKER": str(tmp_path / "python-selection.json"),
         "GIT_CONFIG_GLOBAL": str(home / ".gitconfig"),
         "GIT_CONFIG_NOSYSTEM": "1",
         "PATH": f"{bindir}{os.pathsep}{helperdir}{os.pathsep}{os.environ['PATH']}",
@@ -229,6 +258,30 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
             time.sleep(0.5)
         assert task_log.exists(), "VS Code did not execute the folder-open task"
         assert task_log.read_text().strip() == str(review)
+
+        python_marker = Path(env["GIT_REVIEW_PYTHON_TEST_MARKER"])
+        deadline = time.monotonic() + 90
+        while time.monotonic() < deadline and not python_marker.exists():
+            time.sleep(0.5)
+        if not python_marker.exists():
+            stage = Path(str(python_marker) + ".stage")
+            progress = stage.read_text() if stage.exists() else "probe never activated"
+            logs = "\n".join(
+                path.read_text(errors="replace")
+                for path in sorted(profile.glob("logs/**/exthost.log"))
+            )
+            pytest.fail(f"Python probe stalled at {progress}:\n{logs[-6000:]}")
+        selection = json.loads(python_marker.read_text())
+        assert "error" not in selection, selection
+        for phase in ("initial", "refreshed"):
+            # Do not resolve symlinks: the venv executable points at global
+            # Python, but invoking that global target loses the virtualenv.
+            assert selection[phase]["executable"] == str(review / ".venv/bin/python"), selection
+            assert selection[phase]["execCommand"] == [str(review / ".venv/bin/python")], selection
+            prefix = subprocess.check_output([
+                *selection[phase]["execCommand"], "-c", "import sys; print(sys.prefix)",
+            ], text=True).strip()
+            assert prefix == str(review / ".venv")
 
         # The real extension confirms that VS Code executed the SCM command.
         marker = Path(env["GIT_REVIEW_GUI_TEST_MARKER"])

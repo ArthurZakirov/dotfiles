@@ -91,6 +91,10 @@ def review_workspace(review: Path, repo_name: str, target_sha: str) -> Path:
         # Keep editor integration outside the reviewed Git tree. VS Code runs
         # the task on folder open, subject to its normal workspace trust rules.
         configuration["settings"]["python.defaultInterpreterPath"] = "${workspaceFolder}/.venv/bin/python"
+        # The preview environments backend can resolve a Poetry-local venv via
+        # its system manager, then revert to global Python on discovery refresh.
+        # Use Python's interpreter backend in this disposable workspace only.
+        configuration["settings"]["python.useEnvironmentsExtension"] = False
         configuration["tasks"] = {
             "version": "2.0.0",
             "tasks": [{
