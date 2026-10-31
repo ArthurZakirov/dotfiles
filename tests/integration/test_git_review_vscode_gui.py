@@ -159,14 +159,25 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
     shutil.copy2(ROOT / "tests/support/vscode_python_probe.js", probe / "extension.js")
     review_extension = ROOT / "home/dot_vscode/extensions/agentdesk.git-review-ui-0.1.0"
     shutil.copytree(review_extension, extensions / review_extension.name)
+    # The Marketplace install initializes this registry. Copied test extensions
+    # must join it too; development-host flags change normal window reuse.
+    registry = extensions / "extensions.json"
+    installed = json.loads(registry.read_text())
+    for directory in (probe, extensions / review_extension.name):
+        manifest = json.loads((directory / "package.json").read_text())
+        installed.append({
+            "identifier": {"id": f"{manifest['publisher']}.{manifest['name']}"},
+            "version": manifest["version"],
+            "location": {"$mid": 1, "scheme": "file", "path": str(directory)},
+            "relativeLocation": directory.name,
+        })
+    registry.write_text(json.dumps(installed))
     # Only modify this private wrapper, NEVER the user's installed VS Code CLI.
     code = bindir / "code"
     code.write_text(
         "#!/bin/sh\n"
         f'exec "{real_code}" --disable-gpu '
         f'--disable-workspace-trust --user-data-dir "{profile}" '
-        f'--extensionDevelopmentPath="{probe}" '
-        f'--extensionDevelopmentPath="{extensions / review_extension.name}" '
         f'--extensions-dir "{extensions}" "$@"\n'
     )
     code.chmod(0o755)
