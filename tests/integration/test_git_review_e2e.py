@@ -240,6 +240,7 @@ def test_poetry_review_configures_automatic_task_and_interpreter(sandbox):
         "gitReview.showSourceControl": True,
         "gitReview.openDiffTabs": True,
         "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+        "python.useEnvironmentsExtension": False,
     }
     task = configuration["tasks"]["tasks"][0]
     assert configuration["tasks"]["version"] == "2.0.0"
