@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+
+if [ "$(uname -s)" != Darwin ]; then
+  exit 0
+fi
+
+label=com.arthur.repo-refresh
+plist="$HOME/Library/LaunchAgents/$label.plist"
+domain="gui/$(id -u)"
+marker="$HOME/Library/Caches/chezmoi/$label.sha256"
+mkdir -p "$HOME/Library/Logs" "$(dirname "$marker")"
+plutil -lint "$plist" >/dev/null
+current_hash="$(shasum -a 256 "$plist" | awk '{print $1}')"
+previous_hash="$(cat "$marker" 2>/dev/null || true)"
+
+if launchctl print "$domain/$label" >/dev/null 2>&1; then
+  if [ "$current_hash" != "$previous_hash" ]; then
+    # Never interrupt a preservation transaction to reload scheduling changes.
+    echo "repo-refresh schedule changed; log out and back in to load it after any active run." >&2
+    exit 0
+  fi
+else
+  launchctl bootstrap "$domain" "$plist"
+fi
+temporary="$(mktemp "$marker.XXXXXX")"
+printf '%s\n' "$current_hash" > "$temporary"
+mv "$temporary" "$marker"
