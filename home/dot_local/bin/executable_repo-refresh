@@ -1,0 +1,497 @@
+#!/usr/bin/env python3
+"""Refresh permanent checkouts and rebase local branches with recovery worktrees."""
+
+import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import fcntl
+import json
+import os
+from pathlib import Path
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import time
+import uuid
+
+
+class RefreshError(Exception):
+    """An actionable failure without potentially credential-bearing Git output."""
+
+
+def git(repo, *args, check=True):
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never",
+           "GIT_SSH_COMMAND": "ssh -oBatchMode=yes -oConnectTimeout=15", "LC_ALL": "C"}
+    # Do not inherit a caller's repository/index routing into other checkouts.
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
+                 "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"):
+        env.pop(name, None)
+    with subprocess.Popen(
+            ["git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "submodule.recurse=false",
+             "-c", "maintenance.auto=false", "-C", str(repo), *map(str, args)],
+            env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            start_new_session=True,
+    ) as process:
+        try:
+            stdout, stderr = process.communicate(input=b"", timeout=120)
+        except subprocess.TimeoutExpired:
+            # Git may spawn SSH, credential helpers, or submodule children. Stop
+            # the entire group before releasing the updater's repository lock.
+            os.killpg(process.pid, signal.SIGKILL)
+            process.communicate()
+            raise RefreshError(f"Git {args[0]} timed out; retry next cycle") from None
+        result = subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
+    if check and result.returncode:
+        raise RefreshError(f"Git {args[0]} failed (exit {result.returncode}); original or recovery worktree retained")
+    return result
+
+
+def value(repo, *args):
+    return os.fsdecode(git(repo, *args).stdout).strip()
+
+
+def git_path(repo, name):
+    return Path(value(repo, "rev-parse", "--path-format=absolute", "--git-path", name))
+
+
+def write_json(path, payload):
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    with temporary.open("x") as stream:
+        os.chmod(temporary, 0o600)
+        json.dump(payload, stream, indent=2)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary.replace(path)
+
+
+def repositories(root):
+    """Stop at repository boundaries; don't follow directory symlinks or submodules."""
+    for current, directories, files in os.walk(root, followlinks=False):
+        directories[:] = sorted(d for d in directories if d != ".git")
+        if ".git" in files:
+            # Linked development worktrees are not additional permanent clones.
+            directories.clear()
+            metadata = git(Path(current), "rev-parse", "--absolute-git-dir", check=False)
+            if metadata.returncode or not (Path(os.fsdecode(metadata.stdout).strip()) / "commondir").exists():
+                yield Path(current)
+        elif (Path(current) / ".git").is_dir():
+            directories.clear()
+            yield Path(current)
+
+
+def inventory(repo):
+    """Detect files changing while recovery is being copied, including ignored files."""
+    result = {}
+    for current, directories, files in os.walk(repo, followlinks=False):
+        if Path(current) == repo:
+            directories[:] = [name for name in directories if name != ".git"]
+            files = [name for name in files if name != ".git"]
+        for name in directories + files:
+            path = Path(current) / name
+            info = path.lstat()
+            if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)
+                    or stat.S_ISLNK(info.st_mode)):
+                raise RefreshError("Special filesystem entry cannot be preserved; checkout left untouched")
+            result[str(path.relative_to(repo))] = (
+                info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns,
+            )
+    return result
+
+
+OPERATION_STATE = (
+    "rebase-merge", "rebase-apply", "sequencer", "MERGE_HEAD", "MERGE_MSG",
+    "MERGE_MODE", "AUTO_MERGE", "CHERRY_PICK_HEAD", "REVERT_HEAD", "REBASE_HEAD",
+    "ORIG_HEAD", "BISECT_LOG", "BISECT_START", "BISECT_NAMES", "BISECT_EXPECTED_REV",
+)
+ACTIVE_OPERATION_STATE = (
+    "rebase-merge", "rebase-apply", "sequencer", "MERGE_HEAD",
+    "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_START",
+)
+
+
+def copy_entry(source, destination):
+    if source.is_dir() and not source.is_symlink():
+        shutil.copytree(source, destination, symlinks=True)
+    else:
+        shutil.copy2(source, destination, follow_symlinks=False)
+
+
+def preserve(repo, destination, branch, head, original_head, default, target):
+    if Path(value(repo, "rev-parse", "--show-toplevel")).resolve() != repo.resolve():
+        raise RefreshError("Working tree redirects outside its selected path; left untouched")
+    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # Recovery may include ignored local credentials. Keep the entire hierarchy private.
+    os.chmod(destination.parent, 0o700)
+    before = inventory(repo)
+    original_index = git_path(repo, "index")
+    index_bytes = original_index.read_bytes() if original_index.exists() else None
+    recovery_ref = f"refs/repo-refresh/{destination.name}"
+    git(repo, "update-ref", recovery_ref, head)
+    git(repo, "worktree", "add", "--detach", "--no-checkout", destination, head)
+    if Path(value(destination, "rev-parse", "--show-toplevel")).resolve() != destination.resolve():
+        raise RefreshError("Recovery Git directory resolves outside its worktree; original left untouched")
+    os.chmod(destination, 0o700)
+    record_dir = git_path(destination, "repo-refresh")
+    record_dir.mkdir(mode=0o700)
+    record = {"source": str(repo), "branch": branch, "head": original_head,
+              "recovery_head": head,
+              "default_branch": default, "target": target,
+              "recovery_ref": recovery_ref, "complete": False}
+    write_json(record_dir / "recovery.json", record)
+    for entry in repo.iterdir():
+        if entry.name != ".git":
+            copy_entry(entry, destination / entry.name)
+
+    # Submodules use gitfiles pointing back into the original checkout. Give their
+    # recovery copies independent metadata, so recovery commands cannot alter originals.
+    for current, directories, files in os.walk(destination, followlinks=False):
+        directories[:] = [name for name in directories if name != ".git"]
+        nested = Path(current)
+        if nested != destination and ".git" in files:
+            original = repo / nested.relative_to(destination)
+            metadata = Path(value(original, "rev-parse", "--absolute-git-dir"))
+            if (metadata / "commondir").exists():
+                raise RefreshError("Nested linked worktree needs manual recovery; original left untouched")
+            (nested / ".git").unlink()
+            shutil.copytree(metadata, nested / ".git", symlinks=True)
+            git(destination, "config", "--file", nested / ".git/config",
+                "--unset-all", "core.worktree", check=False)
+
+    if index_bytes is not None:
+        git_path(destination, "index").write_bytes(index_bytes)
+    # A split index references sharedindex files beside the original index.
+    for shared in original_index.parent.glob("sharedindex.*"):
+        shutil.copy2(shared, git_path(destination, "index").parent / shared.name)
+    for name in OPERATION_STATE:
+        source = git_path(repo, name)
+        if source.exists():
+            copy_entry(source, record_dir / name)
+    current_head = git(repo, "rev-parse", "--verify", "HEAD", check=False)
+    observed_head = os.fsdecode(current_head.stdout).strip() if current_head.returncode == 0 else None
+    if (before != inventory(repo) or observed_head != original_head
+            or (original_index.read_bytes() if original_index.exists() else None) != index_bytes):
+        raise RefreshError("Checkout changed during preservation; original left untouched; retry next cycle")
+    default_ref = f"refs/heads/{default}"
+    old_default = git(repo, "rev-parse", "--verify", default_ref, check=False)
+    if old_default.returncode == 0:
+        old_tip = os.fsdecode(old_default.stdout).strip()
+        git(repo, "update-ref", recovery_ref + "-default", old_tip)
+        record["previous_default"] = old_tip
+    record["complete"] = True
+    write_json(record_dir / "recovery.json", record)
+    return record_dir
+
+
+def worktree_path(worktrees, relative, prefix=""):
+    stamp = time.strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:12]
+    destination = worktrees / relative / (prefix + stamp)
+    if not destination.resolve().is_relative_to(worktrees):
+        raise RefreshError("Recovery directory symlink escapes the configured root; checkout left untouched")
+    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return destination
+
+
+def refresh(repo, worktrees, relative, remote):
+    # Fetch and resolve the remote's actual default before disturbing local files.
+    git(repo, "fetch", "--prune", "--no-recurse-submodules", remote)
+    advertised = value(repo, "ls-remote", "--symref", remote, "HEAD")
+    default = next((line.split()[1][len("refs/heads/"):]
+                    for line in advertised.splitlines()
+                    if line.startswith("ref: refs/heads/") and line.endswith("\tHEAD")), None)
+    if not default:
+        raise RefreshError("Remote has no resolvable default branch; checkout left untouched")
+    git(repo, "check-ref-format", f"refs/heads/{default}")
+    # Fetch explicitly as narrow clone refspecs may exclude the default branch.
+    git(repo, "fetch", "--no-recurse-submodules", remote,
+        f"+refs/heads/{default}:refs/remotes/{remote}/{default}")
+    git(repo, "remote", "set-head", remote, default)
+    target = value(repo, "rev-parse", f"refs/remotes/{remote}/{default}")
+    current_head = git(repo, "rev-parse", "--verify", "HEAD", check=False)
+    original_head = os.fsdecode(current_head.stdout).strip() if current_head.returncode == 0 else None
+    head = original_head
+    if head is None:
+        # An initialized but uncommitted checkout needs an empty recovery baseline.
+        tree = value(repo, "hash-object", "-t", "tree", "--stdin", "-w")
+        head = value(repo, "-c", "user.name=repo-refresh", "-c",
+                     "user.email=repo-refresh@localhost", "commit-tree", tree,
+                     "-m", "Recovery baseline for an unborn checkout")
+    symbolic = git(repo, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
+    branch = os.fsdecode(symbolic.stdout).strip() or None
+    dirty = bool(git(repo, "status", "--porcelain=v1", "--untracked-files=all").stdout)
+    operation = any(git_path(repo, name).exists() for name in ACTIVE_OPERATION_STATE)
+    if branch == default and head == target and not dirty and not operation:
+        return {"state": "current", "branch": default, "commit": target}
+
+    destination = worktree_path(worktrees, relative)
+    preserve(repo, destination, branch, head, original_head, default, target)
+    try:
+        released = restore_default(repo, destination, branch, head, default, target, remote)
+    except (RefreshError, OSError) as error:
+        message = str(error) if isinstance(error, RefreshError) else type(error).__name__
+        raise RefreshError(f"{message}; recovery: {destination}") from None
+    return {"state": "updated", "branch": default, "commit": target,
+            "recovery": str(destination), "released_worktrees": released}
+
+
+def restore_default(repo, destination, branch, head, default, target, remote):
+    # All destructive steps occur only after the verified recovery record is durable.
+    # Detach without checkout: dirty/conflicted indexes must not prevent preservation.
+    git(repo, "update-ref", "--no-deref", "HEAD", head)
+    if branch and branch != default:
+        if git(repo, "show-ref", "--verify", f"refs/heads/{branch}", check=False).returncode:
+            git(repo, "update-ref", f"refs/heads/{branch}", head)
+        git(destination, "symbolic-ref", "HEAD", f"refs/heads/{branch}")
+    # A default branch already checked out elsewhere is released without altering
+    # that worktree's files, index, or commit. It remains usable as a detached checkout.
+    worktree_data = git(repo, "worktree", "list", "--porcelain", "-z").stdout
+    other = None
+    released = []
+    for field in worktree_data.split(b"\0"):
+        if field.startswith(b"worktree "):
+            other = Path(os.fsdecode(field[len(b"worktree "):]))
+        elif field == os.fsencode(f"branch refs/heads/{default}") and other != repo:
+            other_head = value(other, "rev-parse", "HEAD")
+            git(other, "update-ref", "--no-deref", "HEAD", other_head)
+            released.append(str(other))
+    for name in OPERATION_STATE:
+        path = git_path(repo, name)
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.exists():
+            path.unlink()
+    git(repo, "-c", "core.sparseCheckout=false", "reset", "--hard", target)
+    if git(repo, "config", "--bool", "core.sparseCheckout", check=False).stdout.strip() == b"true":
+        git(repo, "sparse-checkout", "disable")
+    # Includes nested untracked repos; every file was copied above. Ignored files
+    # remain in place where possible and have also been copied to recovery.
+    git(repo, "clean", "-ffd")
+    git(repo, "checkout", "--force", "-B", default, target)
+    tracking = git(repo, "branch", "--set-upstream-to", f"{remote}/{default}", default, check=False)
+    if tracking.returncode:
+        # Single-branch clones may not yet map this branch in their fetch refspec.
+        git(repo, "config", "--add", f"remote.{remote}.fetch",
+            f"+refs/heads/{default}:refs/remotes/{remote}/{default}")
+        git(repo, "branch", "--set-upstream-to", f"{remote}/{default}", default)
+    if (repo / ".gitmodules").is_file():
+        git(repo, "submodule", "sync", "--recursive")
+        git(repo, "submodule", "update", "--init", "--recursive", "--force")
+        git(repo, "submodule", "foreach", "--recursive", "git reset --hard && git clean -ffd")
+    if (value(repo, "symbolic-ref", "--short", "HEAD") != default
+            or value(repo, "rev-parse", "HEAD") != target
+            or git(repo, "status", "--porcelain=v1").stdout):
+        raise RefreshError(f"Checkout verification failed; recovery: {destination}")
+    return released
+
+
+def branch_worktrees(repo):
+    """Associate detached, unfinished rebases with the branch they are replaying."""
+    paths = {}
+    current = None
+    for field in git(repo, "worktree", "list", "--porcelain", "-z").stdout.split(b"\0"):
+        if field.startswith(b"worktree "):
+            current = Path(os.fsdecode(field[len(b"worktree "):]))
+            if not current.is_dir():
+                continue
+            for state in ("rebase-merge", "rebase-apply"):
+                head_name = git_path(current, f"{state}/head-name")
+                if head_name.is_file():
+                    branch = head_name.read_text().strip().removeprefix("refs/heads/")
+                    paths.setdefault(branch, set()).add(current)
+        elif field.startswith(b"branch refs/heads/") and current is not None:
+            branch = os.fsdecode(field[len(b"branch refs/heads/"):])
+            paths.setdefault(branch, set()).add(current)
+    return paths
+
+
+def rebase_branch(repo, branch, candidates, worktrees, relative, default, target):
+    if len(candidates) > 1:
+        raise RefreshError("Branch is checked out in multiple worktrees; cannot safely choose one")
+    source = next(iter(candidates), None)
+    previous = {}
+    if source is not None:
+        marker = git_path(source, "repo-refresh-rebase.json")
+        if marker.is_file():
+            previous = json.loads(marker.read_text())
+            if not isinstance(previous, dict):
+                raise RefreshError("Invalid rebase recovery record; inspect the worktree metadata")
+            if previous.get("branch") != branch:
+                previous = {}
+        unmerged = bool(git(source, "ls-files", "--unmerged").stdout)
+        active = any(git_path(source, name).exists() for name in ACTIVE_OPERATION_STATE)
+        if active or unmerged:
+            return {**previous, "state": "conflicts" if unmerged else "in-progress", "worktree": str(source)}
+        if previous.get("state") == "edits-pending":
+            return previous
+    if git(repo, "merge-base", "--is-ancestor", target, f"refs/heads/{branch}", check=False).returncode == 0:
+        return {"state": "current", **({"worktree": str(source)} if source else {})}
+    if source is None:
+        source = worktree_path(worktrees, relative, "branch-")
+        git(repo, "worktree", "add", source, branch)
+    head = value(source, "rev-parse", "HEAD")
+    recovery = worktree_path(worktrees, relative, "before-rebase-")
+    preserve(source, recovery, branch, head, head, default, target)
+    if value(source, "symbolic-ref", "--short", "HEAD") != branch:
+        raise RefreshError(f"Branch changed during preservation; recovery: {recovery}")
+    marker = git_path(source, "repo-refresh-rebase.json")
+    record = {"branch": branch, "base": target, "original_head": head,
+              "recovery": str(recovery), "worktree": str(source), "state": "running"}
+    write_json(marker, record)
+    previous_stash = git(source, "rev-parse", "--verify", "refs/stash", check=False).stdout.strip()
+    # Native autostash restores tracked edits; an independent recovery worktree
+    # retains index state, untracked/ignored content and the pre-rebase commit.
+    # Never let rebase.updateRefs rewrite other branches without their own backups.
+    result = git(source, "-c", "stash.index=true", "-c", "rebase.updateRefs=false",
+                 "-c", "core.editor=true", "rebase", "--autostash", "--rebase-merges",
+                 "--no-autosquash", target, check=False)
+    unmerged = bool(git(source, "ls-files", "--unmerged").stdout)
+    active = any(git_path(source, name).exists() for name in ("rebase-merge", "rebase-apply"))
+    current_stash = git(source, "rev-parse", "--verify", "refs/stash", check=False).stdout.strip()
+    edits_pending = False
+    if current_stash and current_stash != previous_stash and "autostash" in value(
+        source, "reflog", "show", "--max-count=1", "--format=%gs", "refs/stash",
+    ):
+        record["edits_stash"] = os.fsdecode(current_stash)
+        git(source, "update-ref", f"refs/repo-refresh/{recovery.name}-edits", record["edits_stash"])
+        # --index can refuse to apply a staged patch without leaving conflict
+        # markers, even when rebase exits zero. Retry the merge without index
+        # restoration only when Git left an entirely clean working tree.
+        if not active and not unmerged:
+            edits_pending = True
+            if not git(source, "status", "--porcelain=v1").stdout:
+                restored = git(source, "-c", "stash.index=false", "stash", "apply",
+                               record["edits_stash"], check=False)
+                unmerged = bool(git(source, "ls-files", "--unmerged").stdout)
+                edits_pending = restored.returncode != 0 and not unmerged
+    if unmerged:
+        record["state"] = "conflicts"
+    elif active:
+        record["state"] = "in-progress"
+    elif edits_pending:
+        record["state"] = "edits-pending"
+    elif result.returncode:
+        record["state"] = "edits-pending" if git(
+            source, "merge-base", "--is-ancestor", target, "HEAD", check=False,
+        ).returncode == 0 else "failed"
+    else:
+        record["state"] = "rebased"
+        record["commit"] = value(source, "rev-parse", "HEAD")
+    write_json(marker, record)
+    return record
+
+
+def rebase_branches(repo, worktrees, relative, default, target):
+    paths = branch_worktrees(repo)
+    outcomes = []
+    for reference in value(repo, "for-each-ref", "--format=%(refname)", "refs/heads/").splitlines():
+        branch = reference.removeprefix("refs/heads/")
+        if branch in {default, "main", "master"}:
+            continue
+        try:
+            outcome = rebase_branch(repo, branch, paths.get(branch, set()),
+                                    worktrees, relative, default, target)
+        except (RefreshError, OSError, shutil.Error, ValueError) as error:
+            message = str(error) if isinstance(error, RefreshError) else type(error).__name__
+            outcome = {"state": "failed", "error": message}
+        outcomes.append({"branch": branch, **outcome})
+    return outcomes
+
+
+def refresh_one(repo, root, worktrees, remote):
+    outcome = {"repository": str(repo)}
+    try:
+        if Path(value(repo, "rev-parse", "--show-toplevel")).resolve() != repo.resolve():
+            raise RefreshError("Repository redirects its working tree outside the selected path; left untouched")
+        # The common directory is the lock boundary shared by linked worktrees.
+        common = Path(value(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+        with (common / "repo-refresh.lock").open("a") as repo_lock:
+            fcntl.flock(repo_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            outcome.update(refresh(repo, worktrees, repo.relative_to(root), remote))
+            outcome["branches"] = rebase_branches(
+                repo, worktrees, repo.relative_to(root), outcome["branch"], outcome["commit"],
+            )
+            for branch in outcome["branches"]:
+                if branch.get("worktree") == outcome.get("recovery") and branch.get("recovery"):
+                    outcome["development_worktree"] = outcome["recovery"]
+                    outcome["recovery"] = branch["recovery"]
+                    break
+    except BlockingIOError:
+        outcome.update(state="busy")
+    except (RefreshError, OSError, shutil.Error) as error:
+        # Low-level exception text may include credential-bearing URLs.
+        message = str(error) if isinstance(error, RefreshError) else type(error).__name__
+        outcome.update(state="failed", error=message)
+    return outcome
+
+
+def run(config_path, state_dir):
+    if not config_path.exists():
+        return 0
+    config = json.loads(config_path.read_text())
+    if not isinstance(config.get("enabled", True), bool):
+        raise RefreshError("enabled must be a JSON boolean")
+    for key in ("root", "worktrees"):
+        setting = config.get(key)
+        if (not isinstance(setting, str) or not setting.strip()
+                or not Path(setting).expanduser().is_absolute()):
+            raise RefreshError(f"{key} must be an absolute path or start with ~/")
+    root = Path(config["root"]).expanduser().resolve()
+    worktrees = Path(config["worktrees"]).expanduser().resolve()
+    remote = config.get("remote", "origin")
+    if not isinstance(remote, str) or not remote or remote.startswith("-"):
+        raise RefreshError("remote must be a nonempty Git remote name")
+    if not config.get("enabled", True):
+        return 0
+    if root == worktrees or root in worktrees.parents or worktrees in root.parents:
+        raise RefreshError("Repository and recovery roots must not overlap")
+    if not root.is_dir():
+        raise RefreshError("Configured repository root is not a directory")
+    state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (state_dir / "run.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return 0
+        outcomes = []
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            pending = [pool.submit(refresh_one, repo, root, worktrees, remote)
+                       for repo in repositories(root)]
+            for future in as_completed(pending):
+                outcome = future.result()
+                outcomes.append(outcome)
+                write_json(state_dir / "status.json", {"checked_at": time.time(), "repositories": outcomes})
+                if outcome["state"] != "current" or any(
+                    branch["state"] != "current" for branch in outcome.get("branches", [])
+                ):
+                    print(json.dumps(outcome), flush=True)
+        write_json(state_dir / "status.json", {"checked_at": time.time(), "repositories": outcomes})
+        return int(any(item["state"] == "failed" or any(
+            branch["state"] == "failed" for branch in item.get("branches", [])
+        ) for item in outcomes))
+
+
+def main():
+    os.umask(0o077)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path,
+                        default=Path.home() / ".config/repo-refresh/config.json")
+    parser.add_argument("--state-dir", type=Path,
+                        default=Path.home() / ".local/state/repo-refresh")
+    parser.add_argument("--status", action="store_true", help="show the last scheduled run")
+    args = parser.parse_args()
+    try:
+        if args.status:
+            path = args.state_dir / "status.json"
+            print(path.read_text() if path.exists() else "No runs recorded.")
+            return 0
+        return run(args.config, args.state_dir)
+    except (RefreshError, OSError, ValueError, KeyError, TypeError) as error:
+        message = str(error) if isinstance(error, RefreshError) else type(error).__name__
+        print(f"repo-refresh: {message}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

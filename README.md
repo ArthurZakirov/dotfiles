@@ -39,6 +39,7 @@ An agent can finish a change before you've even opened the first diff. When gett
 | --- | --- |
 | 🔴🟢 Review committed changes in VS Code diff tabs, with code navigation where supported | [Git review](docs/features/git-review.md) |
 | 🐍 Set up Python environments for review checkouts with a single command | [Python environments](docs/features/pysetup.md) |
+| 🔄 Refresh permanent checkouts and rebase feature branches, preserving unfinished work | [Automatic repository refresh](docs/features/repo-refresh.md) |
 | 📁 Find Git repositories and frequently used config files, then open them in VS Code | [Raycast navigation](docs/features/raycast.md) (one-time Raycast setup) |
 |  Open the right app or window on the right monitor with a keyboard shortcut | Raycast ([tool inventory](docs/tool-inventory.md#desktop-applications-homebrew-casks)) · [Hammerspoon](docs/features/hammerspoon.md) · [macOS keyboard shortcuts](docs/features/macos-shortcuts.md) · AltTab · Rectangle |
 | ◼️ Find and reuse shell commands without memorizing them or making typos | [Zsh](docs/features/zsh.md) |

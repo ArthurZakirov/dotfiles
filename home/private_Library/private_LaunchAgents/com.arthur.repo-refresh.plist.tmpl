@@ -1,0 +1,2 @@
+{{ $definition := includeTemplate "repo-refresh-agent" . -}}
+{{ $definition | replace "__REPO_REFRESH_AGENT_REVISION__" (sha256sum $definition) }}

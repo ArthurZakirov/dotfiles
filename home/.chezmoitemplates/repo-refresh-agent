@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.arthur.repo-refresh</string>
+  <key>ProgramArguments</key>
+  <array><string>{{ .chezmoi.homeDir }}/.local/bin/repo-refresh</string></array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>REPO_REFRESH_AGENT_REVISION</key><string>__REPO_REFRESH_AGENT_REVISION__</string>
+    <key>HOME</key><string>{{ .chezmoi.homeDir }}</string>
+    <key>PATH</key><string>{{ .chezmoi.homeDir }}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>60</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>{{ .chezmoi.homeDir }}/Library/Logs/repo-refresh.log</string>
+  <key>StandardErrorPath</key><string>{{ .chezmoi.homeDir }}/Library/Logs/repo-refresh.err.log</string>
+</dict>
+</plist>

@@ -81,6 +81,7 @@ The `bws` installer is scoped to the personal profile and only runs if its CLI i
 | Raycast Script Commands and onboarding hook | Open existing config files in VS Code; prompt for Repository Manager installation | [Raycast navigation](features/raycast.md) |
 | Codex guidance, hooks, selected settings | Codex behavior and prompt customization | [Codex](features/codex.md); other local Codex settings remain unmanaged |
 | LaunchAgent + remote CLI | Desktop Commander at login | [Personal remote access](features/desktop-commander.md) |
+| LaunchAgent + Git updater + local configuration | Refresh permanent checkouts, rebase feature branches, preserve displaced work | [Automatic repository refresh](features/repo-refresh.md) |
 | LaunchAgent + Python MCP server + tunnel client | Read installed Agent Skills through ChatGPT | [Personal skills bridge](features/chatgpt-skills-mcp.md) |
 | Credential lookup helper | Machine-local secret retrieval | [Bitwarden Secrets Manager setup](features/secrets-management.md) |
 
