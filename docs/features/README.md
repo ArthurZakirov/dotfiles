@@ -26,7 +26,7 @@ For ChatGPT, the [personalization instructions](chatgpt-personalization.md) tell
 | --- | --- |
 | Inspect changes in isolated, editable VS Code review workspaces | [Git review](git-review.md) |
 | Prepare Python environments for review checkouts | [Python environments](pysetup.md) |
-| Keep permanent repositories current while preserving unfinished work | [Automatic repository refresh](repo-refresh.md) |
+| Refresh permanent repositories and rebase feature branches | [Automatic repository refresh](repo-refresh.md) |
 | Find apps, repositories, and configuration files quickly | [Raycast navigation](raycast.md) |
 | Find shell commands and history with fewer keystrokes | [Zsh](zsh.md) |
 | Control apps, windows, and Spaces from the keyboard | [Hammerspoon](hammerspoon.md) · [macOS keyboard shortcuts](macos-shortcuts.md) |

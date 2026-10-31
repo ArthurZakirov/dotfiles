@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep permanent checkouts current, with recoverable worktrees before replacement."""
+"""Refresh permanent checkouts and rebase local branches with recovery worktrees."""
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -22,7 +22,7 @@ class RefreshError(Exception):
 
 def git(repo, *args, check=True):
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never",
-           "GIT_SSH_COMMAND": "ssh -oBatchMode=yes -oConnectTimeout=15"}
+           "GIT_SSH_COMMAND": "ssh -oBatchMode=yes -oConnectTimeout=15", "LC_ALL": "C"}
     # Do not inherit a caller's repository/index routing into other checkouts.
     for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
                  "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"):
@@ -106,6 +106,10 @@ OPERATION_STATE = (
     "MERGE_MODE", "AUTO_MERGE", "CHERRY_PICK_HEAD", "REVERT_HEAD", "REBASE_HEAD",
     "ORIG_HEAD", "BISECT_LOG", "BISECT_START", "BISECT_NAMES", "BISECT_EXPECTED_REV",
 )
+ACTIVE_OPERATION_STATE = (
+    "rebase-merge", "rebase-apply", "sequencer", "MERGE_HEAD",
+    "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_START",
+)
 
 
 def copy_entry(source, destination):
@@ -116,6 +120,8 @@ def copy_entry(source, destination):
 
 
 def preserve(repo, destination, branch, head, original_head, default, target):
+    if Path(value(repo, "rev-parse", "--show-toplevel")).resolve() != repo.resolve():
+        raise RefreshError("Working tree redirects outside its selected path; left untouched")
     destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     # Recovery may include ignored local credentials. Keep the entire hierarchy private.
     os.chmod(destination.parent, 0o700)
@@ -179,6 +185,15 @@ def preserve(repo, destination, branch, head, original_head, default, target):
     return record_dir
 
 
+def worktree_path(worktrees, relative, prefix=""):
+    stamp = time.strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:12]
+    destination = worktrees / relative / (prefix + stamp)
+    if not destination.resolve().is_relative_to(worktrees):
+        raise RefreshError("Recovery directory symlink escapes the configured root; checkout left untouched")
+    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return destination
+
+
 def refresh(repo, worktrees, relative, remote):
     # Fetch and resolve the remote's actual default before disturbing local files.
     git(repo, "fetch", "--prune", "--no-recurse-submodules", remote)
@@ -206,15 +221,11 @@ def refresh(repo, worktrees, relative, remote):
     symbolic = git(repo, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
     branch = os.fsdecode(symbolic.stdout).strip() or None
     dirty = bool(git(repo, "status", "--porcelain=v1", "--untracked-files=all").stdout)
-    operation = any(git_path(repo, name).exists() for name in OPERATION_STATE
-                    if name != "ORIG_HEAD")
+    operation = any(git_path(repo, name).exists() for name in ACTIVE_OPERATION_STATE)
     if branch == default and head == target and not dirty and not operation:
-        return {"state": "current"}
+        return {"state": "current", "branch": default, "commit": target}
 
-    stamp = time.strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:12]
-    destination = worktrees / relative / stamp
-    if not destination.resolve().is_relative_to(worktrees):
-        raise RefreshError("Recovery directory symlink escapes the configured root; checkout left untouched")
+    destination = worktree_path(worktrees, relative)
     preserve(repo, destination, branch, head, original_head, default, target)
     try:
         released = restore_default(repo, destination, branch, head, default, target, remote)
@@ -275,6 +286,119 @@ def restore_default(repo, destination, branch, head, default, target, remote):
     return released
 
 
+def branch_worktrees(repo):
+    """Associate detached, unfinished rebases with the branch they are replaying."""
+    paths = {}
+    current = None
+    for field in git(repo, "worktree", "list", "--porcelain", "-z").stdout.split(b"\0"):
+        if field.startswith(b"worktree "):
+            current = Path(os.fsdecode(field[len(b"worktree "):]))
+            if not current.is_dir():
+                continue
+            for state in ("rebase-merge", "rebase-apply"):
+                head_name = git_path(current, f"{state}/head-name")
+                if head_name.is_file():
+                    branch = head_name.read_text().strip().removeprefix("refs/heads/")
+                    paths.setdefault(branch, set()).add(current)
+        elif field.startswith(b"branch refs/heads/") and current is not None:
+            branch = os.fsdecode(field[len(b"branch refs/heads/"):])
+            paths.setdefault(branch, set()).add(current)
+    return paths
+
+
+def rebase_branch(repo, branch, candidates, worktrees, relative, default, target):
+    if len(candidates) > 1:
+        raise RefreshError("Branch is checked out in multiple worktrees; cannot safely choose one")
+    source = next(iter(candidates), None)
+    previous = {}
+    if source is not None:
+        marker = git_path(source, "repo-refresh-rebase.json")
+        if marker.is_file():
+            previous = json.loads(marker.read_text())
+            if not isinstance(previous, dict):
+                raise RefreshError("Invalid rebase recovery record; inspect the worktree metadata")
+            if previous.get("branch") != branch:
+                previous = {}
+        unmerged = bool(git(source, "ls-files", "--unmerged").stdout)
+        active = any(git_path(source, name).exists() for name in ACTIVE_OPERATION_STATE)
+        if active or unmerged:
+            return {**previous, "state": "conflicts" if unmerged else "in-progress", "worktree": str(source)}
+        if previous.get("state") == "edits-pending":
+            return previous
+    if git(repo, "merge-base", "--is-ancestor", target, f"refs/heads/{branch}", check=False).returncode == 0:
+        return {"state": "current", **({"worktree": str(source)} if source else {})}
+    if source is None:
+        source = worktree_path(worktrees, relative, "branch-")
+        git(repo, "worktree", "add", source, branch)
+    head = value(source, "rev-parse", "HEAD")
+    recovery = worktree_path(worktrees, relative, "before-rebase-")
+    preserve(source, recovery, branch, head, head, default, target)
+    if value(source, "symbolic-ref", "--short", "HEAD") != branch:
+        raise RefreshError(f"Branch changed during preservation; recovery: {recovery}")
+    marker = git_path(source, "repo-refresh-rebase.json")
+    record = {"branch": branch, "base": target, "original_head": head,
+              "recovery": str(recovery), "worktree": str(source), "state": "running"}
+    write_json(marker, record)
+    previous_stash = git(source, "rev-parse", "--verify", "refs/stash", check=False).stdout.strip()
+    # Native autostash restores tracked edits; an independent recovery worktree
+    # retains index state, untracked/ignored content and the pre-rebase commit.
+    # Never let rebase.updateRefs rewrite other branches without their own backups.
+    result = git(source, "-c", "stash.index=true", "-c", "rebase.updateRefs=false",
+                 "-c", "core.editor=true", "rebase", "--autostash", "--rebase-merges",
+                 "--no-autosquash", target, check=False)
+    unmerged = bool(git(source, "ls-files", "--unmerged").stdout)
+    active = any(git_path(source, name).exists() for name in ("rebase-merge", "rebase-apply"))
+    current_stash = git(source, "rev-parse", "--verify", "refs/stash", check=False).stdout.strip()
+    edits_pending = False
+    if current_stash and current_stash != previous_stash and "autostash" in value(
+        source, "reflog", "show", "--max-count=1", "--format=%gs", "refs/stash",
+    ):
+        record["edits_stash"] = os.fsdecode(current_stash)
+        git(source, "update-ref", f"refs/repo-refresh/{recovery.name}-edits", record["edits_stash"])
+        # --index can refuse to apply a staged patch without leaving conflict
+        # markers, even when rebase exits zero. Retry the merge without index
+        # restoration only when Git left an entirely clean working tree.
+        if not active and not unmerged:
+            edits_pending = True
+            if not git(source, "status", "--porcelain=v1").stdout:
+                restored = git(source, "-c", "stash.index=false", "stash", "apply",
+                               record["edits_stash"], check=False)
+                unmerged = bool(git(source, "ls-files", "--unmerged").stdout)
+                edits_pending = restored.returncode != 0 and not unmerged
+    if unmerged:
+        record["state"] = "conflicts"
+    elif active:
+        record["state"] = "in-progress"
+    elif edits_pending:
+        record["state"] = "edits-pending"
+    elif result.returncode:
+        record["state"] = "edits-pending" if git(
+            source, "merge-base", "--is-ancestor", target, "HEAD", check=False,
+        ).returncode == 0 else "failed"
+    else:
+        record["state"] = "rebased"
+        record["commit"] = value(source, "rev-parse", "HEAD")
+    write_json(marker, record)
+    return record
+
+
+def rebase_branches(repo, worktrees, relative, default, target):
+    paths = branch_worktrees(repo)
+    outcomes = []
+    for reference in value(repo, "for-each-ref", "--format=%(refname)", "refs/heads/").splitlines():
+        branch = reference.removeprefix("refs/heads/")
+        if branch in {default, "main", "master"}:
+            continue
+        try:
+            outcome = rebase_branch(repo, branch, paths.get(branch, set()),
+                                    worktrees, relative, default, target)
+        except (RefreshError, OSError, shutil.Error, ValueError) as error:
+            message = str(error) if isinstance(error, RefreshError) else type(error).__name__
+            outcome = {"state": "failed", "error": message}
+        outcomes.append({"branch": branch, **outcome})
+    return outcomes
+
+
 def refresh_one(repo, root, worktrees, remote):
     outcome = {"repository": str(repo)}
     try:
@@ -285,6 +409,14 @@ def refresh_one(repo, root, worktrees, remote):
         with (common / "repo-refresh.lock").open("a") as repo_lock:
             fcntl.flock(repo_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             outcome.update(refresh(repo, worktrees, repo.relative_to(root), remote))
+            outcome["branches"] = rebase_branches(
+                repo, worktrees, repo.relative_to(root), outcome["branch"], outcome["commit"],
+            )
+            for branch in outcome["branches"]:
+                if branch.get("worktree") == outcome.get("recovery") and branch.get("recovery"):
+                    outcome["development_worktree"] = outcome["recovery"]
+                    outcome["recovery"] = branch["recovery"]
+                    break
     except BlockingIOError:
         outcome.update(state="busy")
     except (RefreshError, OSError, shutil.Error) as error:
@@ -330,10 +462,14 @@ def run(config_path, state_dir):
                 outcome = future.result()
                 outcomes.append(outcome)
                 write_json(state_dir / "status.json", {"checked_at": time.time(), "repositories": outcomes})
-                if outcome["state"] != "current":
+                if outcome["state"] != "current" or any(
+                    branch["state"] != "current" for branch in outcome.get("branches", [])
+                ):
                     print(json.dumps(outcome), flush=True)
         write_json(state_dir / "status.json", {"checked_at": time.time(), "repositories": outcomes})
-        return int(any(item["state"] == "failed" for item in outcomes))
+        return int(any(item["state"] == "failed" or any(
+            branch["state"] == "failed" for branch in item.get("branches", [])
+        ) for item in outcomes))
 
 
 def main():

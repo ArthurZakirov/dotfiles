@@ -133,7 +133,8 @@ def test_forces_default_and_preserves_complete_working_state(scenario, branch):
     assert os.readlink(recovery / "link") == "tracked.txt"
     assert os.access(recovery / "executable", os.X_OK)
     assert recovery.stat().st_mode & 0o077 == 0
-    assert git(recovery, "branch", "--show-current") == (branch if branch and branch != "main" else "")
+    development = Path(outcome.get("development_worktree", str(recovery)))
+    assert git(development, "branch", "--show-current") == (branch if branch and branch != "main" else "")
 
 
 @pytest.mark.parametrize("force_push", [False, True])
@@ -229,6 +230,145 @@ def test_repeated_run_does_not_create_more_recovery_worktrees(scenario):
     assert result.returncode == 0
     assert scenario.outcome()["state"] == "current"
     assert git(scenario.repo, "worktree", "list", "--porcelain") == worktrees
+
+
+@pytest.mark.parametrize("checked_out", [False, True])
+def test_rebases_every_local_feature_branch_and_protects_original_commits(scenario, tmp_path, checked_out):
+    git(scenario.repo, "config", "rebase.updateRefs", "true")
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "feature.txt").write_text("feature work\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Feature commit")
+    original = git(scenario.repo, "rev-parse", "HEAD")
+    git(scenario.repo, "switch", "main")
+    existing = tmp_path / "feature-worktree"
+    if checked_out:
+        git(scenario.repo, "worktree", "add", existing, "feature")
+    git(scenario.repo, "branch", "another-feature", original)
+    scenario.advance()
+    target = git(scenario.remote, "rev-parse", "main")
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    outcomes = {item["branch"]: item for item in scenario.outcome()["branches"]}
+    assert set(outcomes) == {"feature", "another-feature"}
+    for branch, outcome in outcomes.items():
+        assert outcome["state"] == "rebased"
+        assert git(scenario.repo, "merge-base", target, branch) == target
+        assert git(scenario.repo, "rev-parse", branch) != original
+        worktree = Path(outcome["worktree"])
+        assert (worktree / "feature.txt").read_text() == "feature work\n"
+        assert git(worktree, "branch", "--show-current") == branch
+        assert git(Path(outcome["recovery"]), "rev-parse", "HEAD") == original
+    if checked_out:
+        assert Path(outcomes["feature"]["worktree"]) == existing
+    # The updater rewrites local branches only, never publishing them.
+    assert not git(scenario.remote, "for-each-ref", "--format=%(refname)", "refs/heads/feature")
+
+
+def test_rebase_conflicts_remain_visible_and_are_not_restarted_on_the_next_tick(scenario, tmp_path):
+    git(scenario.repo, "branch", "healthy")
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "tracked.txt").write_text("feature change\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Feature")
+    original = git(scenario.repo, "rev-parse", "HEAD")
+    git(scenario.repo, "switch", "main")
+    (scenario.upstream / "tracked.txt").write_text("upstream conflict\n")
+    git(scenario.upstream, "add", ".")
+    git(scenario.upstream, "commit", "-m", "Conflicting upstream")
+    git(scenario.upstream, "push", "origin", "HEAD")
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    branch = scenario.outcome()["branches"][0]
+    assert branch["state"] == "conflicts"
+    assert scenario.outcome()["branches"][1]["state"] == "rebased"
+    worktree = Path(branch["worktree"])
+    assert git(worktree, "ls-files", "--unmerged")
+    assert "<<<<<<<" in (worktree / "tracked.txt").read_text()
+    assert git(Path(branch["recovery"]), "rev-parse", "HEAD") == original
+    before = git(scenario.repo, "worktree", "list", "--porcelain")
+    contents = (worktree / "tracked.txt").read_text()
+
+    repeated = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert repeated.returncode == 0, repeated.stdout + repeated.stderr
+    assert scenario.outcome()["branches"][0]["state"] == "conflicts"
+    assert git(scenario.repo, "worktree", "list", "--porcelain") == before
+    assert (worktree / "tracked.txt").read_text() == contents
+    # Human resolution is respected; the next scheduled run sees a current branch.
+    (worktree / "tracked.txt").write_text("resolved\n")
+    git(worktree, "add", ".")
+    git(worktree, "-c", "core.editor=true", "rebase", "--continue")
+
+    resolved = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert resolved.returncode == 0, resolved.stdout + resolved.stderr
+    assert scenario.outcome()["branches"][0]["state"] == "current"
+    assert git(worktree, "branch", "--show-current") == "feature"
+
+
+def test_dirty_feature_worktree_keeps_staged_and_unstaged_edits_after_rebase(scenario, tmp_path):
+    existing = tmp_path / "feature-worktree"
+    git(scenario.repo, "worktree", "add", "-b", "feature", existing)
+    (existing / "tracked.txt").write_text("staged\n")
+    git(existing, "add", "tracked.txt")
+    (existing / "tracked.txt").write_text("unstaged\n")
+    (existing / "untracked").write_text("untracked\n")
+    (existing / "ignored").mkdir()
+    (existing / "ignored/cache").write_text("ignored\n")
+    scenario.advance()
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    branch = scenario.outcome()["branches"][0]
+    assert branch["state"] == "rebased"
+    assert git(existing, "show", ":tracked.txt") == "staged"
+    assert (existing / "tracked.txt").read_text() == "unstaged\n"
+    assert (existing / "untracked").read_text() == "untracked\n"
+    recovery = Path(branch["recovery"])
+    assert git(recovery, "show", ":tracked.txt") == "staged"
+    assert (recovery / "ignored/cache").read_text() == "ignored\n"
+
+
+def test_excludes_main_master_and_actual_remote_default_from_branch_rebases(scenario):
+    git(scenario.repo, "branch", "master")
+    original = git(scenario.repo, "rev-parse", "master")
+    scenario.advance()
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert scenario.outcome()["branches"] == []
+    assert git(scenario.repo, "rev-parse", "master") == original
+
+
+@pytest.mark.parametrize("staged", [False, True])
+def test_rebase_edit_restore_conflicts_keep_original_changes_recoverable(scenario, tmp_path, staged):
+    existing = tmp_path / "feature-worktree"
+    git(scenario.repo, "worktree", "add", "-b", "feature", existing)
+    (existing / "tracked.txt").write_text("unfinished local edit\n")
+    if staged:
+        git(existing, "add", ".")
+    (scenario.upstream / "tracked.txt").write_text("upstream change\n")
+    git(scenario.upstream, "add", ".")
+    git(scenario.upstream, "commit", "-m", "Upstream")
+    git(scenario.upstream, "push", "origin", "HEAD")
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    branch = scenario.outcome()["branches"][0]
+    assert branch["state"] in {"conflicts", "edits-pending"}
+    recovery = Path(branch["recovery"])
+    assert (recovery / "tracked.txt").read_text() == "unfinished local edit\n"
+    if staged:
+        assert git(recovery, "show", ":tracked.txt") == "unfinished local edit"
+    assert git(existing, "merge-base", "HEAD", "main") == git(scenario.repo, "rev-parse", "main")
 
 
 def test_preservation_failure_leaves_original_checkout_untouched(scenario):
@@ -341,7 +481,8 @@ def test_initialized_unborn_checkout_preserves_staged_files(scenario, tmp_path):
     recovery = Path(scenario.outcome()["recovery"])
     assert (recovery / "local.txt").read_text() == "first staged file\n"
     assert git(recovery, "show", ":local.txt") == "first staged file"
-    assert git(recovery, "branch", "--show-current") == "unfinished"
+    development = Path(scenario.outcome()["development_worktree"])
+    assert git(development, "branch", "--show-current") == "unfinished"
 
 
 def test_sparse_checkout_is_restored_to_a_full_default_checkout(scenario):
@@ -480,6 +621,11 @@ def test_real_launchd_executes_installed_updater(scenario, profile_factory):
     plist.write_bytes(plistlib.dumps(payload))
     (home / "Library/Logs").mkdir(parents=True, exist_ok=True)
     domain = f"gui/{os.getuid()}"
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "tracked.txt").write_text("scheduler feature\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Scheduler feature")
+    git(scenario.repo, "switch", "main")
     scenario.advance()
     try:
         subprocess.run(["launchctl", "bootstrap", domain, str(plist)], check=True, capture_output=True)
@@ -490,6 +636,7 @@ def test_real_launchd_executes_installed_updater(scenario, profile_factory):
         assert status.exists()
         assert (scenario.repo / "upstream.txt").exists()
         assert git(scenario.repo, "branch", "--show-current") == "main"
+        assert json.loads(status.read_text())["repositories"][0]["branches"][0]["state"] == "rebased"
         (scenario.upstream / "tracked.txt").write_text("periodic update\n")
         git(scenario.upstream, "add", ".")
         git(scenario.upstream, "commit", "-m", "Periodic tick")
@@ -503,5 +650,8 @@ def test_real_launchd_executes_installed_updater(scenario, profile_factory):
             time.sleep(0.2)
         assert (scenario.repo / "tracked.txt").read_text() == "periodic update\n"
         assert git(scenario.repo, "branch", "--show-current") == "main"
+        branch = json.loads(status.read_text())["repositories"][0]["branches"][0]
+        assert branch["state"] == "conflicts"
+        assert git(Path(branch["worktree"]), "ls-files", "--unmerged")
     finally:
         subprocess.run(["launchctl", "bootout", f"{domain}/{payload['Label']}"], capture_output=True)

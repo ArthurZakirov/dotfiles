@@ -1,98 +1,154 @@
-# 🔄 Automatically refresh permanent repositories
+# 🔄 Keep repositories and feature branches current
 
-[← Feature index](README.md) · [Setup](../setup.md)
+[← Feature index](README.md) · [Dotfiles setup](../setup.md)
 
-`repo-refresh` keeps repositories under one configured folder on their remote's
-default branch. Before forcing a checkout or replacing local commits, it copies
-the old working state into a recovery worktree. Feature branches remain checked
-out in those recovery worktrees. Detached and default-branch work are preserved
-as detached recovery worktrees with protected Git refs.
-Existing linked development worktrees are excluded from permanent-clone discovery,
-even when they currently live under the configured root.
+`repo-refresh` keeps permanent clones on the latest remote default branch and
+rebases local feature branches onto it. It preserves recovery copies before
+rewriting work and leaves conflicts visible for you to resolve.
 
 ## ⚙️ Install and configure
 
-Install through the normal [dotfiles setup](../setup.md). The
-[initial configuration](../../home/dot_config/repo-refresh/create_private_config.json.tmpl)
-is created only when absent: subsequent applies preserve your local settings.
-The personal profile enables the personal repository folder; the professional
-profile starts disabled. Review the configuration before applying on an existing Mac.
+Use the normal dotfiles installation flow:
 
-Inspect or change the installed configuration:
+1. **Review the defaults** in the
+   [initial configuration](../../home/dot_config/repo-refresh/create_private_config.json.tmpl).
+   Personal installations start enabled; professional installations start disabled.
+2. **Follow the [setup guide](../setup.md)** to preview and apply the changes.
+   To override defaults before the first run, create the local JSON configuration
+   at the path below before applying. Otherwise, chezmoi creates it for you.
+3. **Adjust local settings as needed.** Later dotfiles applies preserve this file.
 
-```sh
-cat ~/.config/repo-refresh/config.json
-code ~/.config/repo-refresh/config.json
-```
+   ```sh
+   code ~/.config/repo-refresh/config.json
+   ```
 
-Set `root` to the folder whose repositories should be managed, and `worktrees`
-to a separate recovery folder outside that root. Both accept `~`. Recovery paths
-retain the repository's relative directory hierarchy, followed by a unique run
-identifier. `remote` selects the remote, defaulting to `origin`; its advertised
-default branch is resolved on every run, rather than assuming `main` or `master`.
-Set `enabled` to `false` to pause future runs. An active run finishes normally.
+The configuration fields define the managed scope:
+
+| Field | What to set |
+| --- | --- |
+| `root` | Folder containing permanent clones; discovery includes subfolders. |
+| `worktrees` | Separate folder for development and recovery worktrees, outside `root`. |
+| `remote` | Remote whose advertised default branch should be followed. |
+| `enabled` | `false` pauses future runs; an active run finishes normally. |
+
+Both folder fields accept absolute paths or `~/` paths. New worktrees retain the
+repository's relative folder hierarchy and receive a unique run identifier.
 
 The [LaunchAgent](../../home/private_Library/private_LaunchAgents/com.arthur.repo-refresh.plist.tmpl)
-runs once at login/load and polls every minute while the Mac is awake. Slow runs
-do not overlap. Offline/authentication failures are reported and retried on the
-next scheduled run; credentials are never requested interactively. The
-[installation hook](../../home/run_after_25-ensure-repo-refresh.sh.tmpl) loads the
-service without restarting an active preservation transaction.
+runs at login/load and once a minute while the Mac is awake. Runs do not overlap.
+The [installation hook](../../home/run_after_25-ensure-repo-refresh.sh.tmpl) avoids
+restarting active transactions. Scheduling changes to an already loaded service
+take effect after logging out and back in.
 
-## 🛟 Preservation and recovery
+## 🔄 What happens automatically
 
-Before replacement, the [updater](../../home/dot_local/bin/executable_repo-refresh)
-preserves tracked files, staged versus unstaged changes, untracked files,
-ignored files, symlinks, executable modes, and conflicted indexes. Submodule
-gitfiles are converted into independent recovery metadata. Previous HEAD and
-default-branch commits receive protected refs. In-progress merge/rebase metadata
-is saved inside the recovery worktree's Git metadata as evidence; the recovery
-worktree is for inspecting and continuing the preserved edits, not automatically
-resuming the interrupted operation.
+Each run follows this sequence:
 
-Find the latest result and recovery paths:
+1. **Fetch and resolve the default branch.** The remote decides whether that is
+   `main`, `master`, or another name. Offline/authentication failures are reported
+   and retried later, without requesting credentials interactively.
+2. **Restore the permanent checkout.** Preserve its previous files, index and
+   commits, then force it onto the fetched default commit—even after divergence,
+   a force-push, or an interrupted Git operation. A displaced feature branch is
+   checked out in a separate development worktree.
+3. **Rebase local feature branches.** Rebase every local branch except `main`,
+   `master`, and the actual default branch onto that commit. Use existing branch
+   worktrees or create missing ones. Branches already containing the default
+   commit need no rebase. Nothing is pushed to the remote.
+
+Linked worktrees are excluded from permanent-clone discovery, but their branches
+still participate in rebasing. Detached recovery copies retain historical state.
+If another worktree holds the default branch, it is detached at its existing
+commit without changing its files or index.
+
+### Branch outcomes
+
+Use `repo-refresh --status` to find each branch's state and relevant paths:
+
+| State | What happened | Next action |
+| --- | --- | --- |
+| `current` | Already contains the refreshed default commit. | None. |
+| `rebased` | Rebase succeeded; Git restored tracked edits where possible. | Continue in the reported worktree. |
+| `conflicts` | Replaying commits or restoring edits exposed conflicts. | Resolve them there; later runs leave them alone. |
+| `in-progress` | A Git operation is unfinished. | Finish or abort it; later runs do not restart it. |
+| `edits-pending` | The branch was updated, but Git could not restore all edits. | Recover edits from the reported backup or saved stash. |
+| `failed` | Fetch, preservation, or a Git command could not complete. | Inspect the reported worktree; other branches and repositories continue. |
+
+**Automatic rebases rewrite local commit IDs and change development-worktree
+files.** Avoid concurrent editing during a scheduled rebase. Conflicts are an
+expected outcome, not a reason to discard work or abort the rebase.
+
+## 🛟 Inspect and recover work
+
+Find the latest run or trigger one immediately:
 
 ```sh
 repo-refresh --status
-# Run the same operation immediately:
 repo-refresh
-# Inspect a recovery path reported by status:
-git -C /path/to/recovery status
-git -C /path/to/recovery rev-parse --git-path repo-refresh/recovery.json
 ```
 
-Recovery worktrees are private and never automatically deleted. They can contain
-ignored credentials and large build directories. Check disk use and retain the
-work you need before explicitly removing recovery worktrees and their protected
-`refs/repo-refresh/` refs. The status file records the latest run; list all older
-recovery worktrees with `git worktree list` in the repository.
+The reported paths distinguish the places you may need:
 
-After preservation, the permanent checkout is reset to the fetched default-branch
-commit even after divergence, a force-push, or an interrupted operation. If that
-default branch is checked out in another worktree, that other worktree is detached
-at its existing commit, preserving its files and index. Ignored files remain in
-the permanent checkout where possible; their recovery copies remain available.
+| Location | Contents |
+| --- | --- |
+| Permanent checkout | The fetched default branch. |
+| Branch worktree | The rebased branch or visible unresolved conflicts. |
+| Recovery worktree | Files and index from before replacement or rebase. |
+| Protected `refs/repo-refresh/` refs | Previous commits and separately retained edit stashes. |
 
-If a fetch or preservation fails, no destructive checkout steps follow. Git lock
-files, filesystem errors, nested linked worktrees, unsupported special files, and
-files observed changing during the copy cause a reported failure and retry.
-Other repositories continue updating. A failure after preservation leaves the
-recovery worktree available even if checkout restoration needs another run.
+### Resolve a branch conflict
 
-**Treat the configured root as automatically replaceable.** Work in development
-worktrees outside that root. Editors and agents do not obey this updater's lock:
-change detection during copying reduces races but cannot guarantee preservation
-of a save made after the final check. No background process can force checkout
-while also guaranteeing every concurrent writer's data without their cooperation.
+Work in the branch worktree from status:
 
-## 🧪 Verification
+1. Inspect `git status` and edit the conflicted files.
+2. Stage the resolutions with `git add`.
+3. For an active rebase, run `git rebase --continue`. For edit-restoration conflicts
+   after the rebase finished, resolve and commit the edits normally.
 
-Run the real local-Git scenarios and isolated chezmoi installation checks:
+### Recover older files or pending edits
+
+Use the recovery path from status. To locate older copies and their records:
+
+```sh
+git worktree list
+git -C /path/to/recovery status
+git -C /path/to/recovery rev-parse --git-path repo-refresh/recovery.json
+git -C /path/to/branch-worktree rev-parse --git-path repo-refresh-rebase.json
+```
+
+The rebase record identifies the pre-rebase copy and any saved edit stash. After
+recovering an `edits-pending` result, remove that branch's `repo-refresh-rebase.json`
+record to acknowledge recovery and allow future rebases.
+
+Recovery copies are private and **never automatically deleted**. They may contain
+ignored credentials and large build directories. Keep what you need before
+explicitly removing old worktrees and their protected refs. Status shows the
+latest run; `git worktree list` also lists older copies.
+
+## 🧪 Implementation and verification
+
+The [updater](../../home/dot_local/bin/executable_repo-refresh) preserves staged
+versus unstaged changes, untracked and ignored files, symlinks, executable modes,
+conflicted indexes, and previous commits. Submodule copies receive independent
+Git metadata. Interrupted-operation metadata is saved as evidence; archived
+operations are not automatically resumed in recovery copies.
+
+Preservation failure prevents destructive replacement or rebase. Locks,
+filesystem failures, nested linked worktrees, special files, and files observed
+changing during copying can prevent preservation. Failure after preservation
+leaves its recovery copy available. Ignored files remain in the permanent
+checkout where possible and are also copied to recovery.
+
+**The managed root is automatically replaceable.** Edit in development worktrees.
+Editors and agents do not obey the updater's locks: change detection reduces
+races, but cannot guarantee preservation of a save made after the final check.
+The same limitation applies to concurrent writes during branch rebases.
+
+Run real local-Git scenarios and isolated installation/reapply checks:
 
 ```sh
 .venv/bin/pytest -q tests/integration/test_repo_refresh.py
 ```
 
-Tests use disposable repositories and local remotes. The macOS scheduler check
-runs only on ephemeral CI; it never starts the updater against the developer's
-repositories.
+Tests use disposable repositories and local remotes. The real macOS scheduler
+test runs only on ephemeral CI, never against the developer's repositories.
