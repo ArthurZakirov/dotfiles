@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -602,6 +603,50 @@ def test_chezmoi_installs_executable_schedule_and_preserves_local_configuration(
     assert (scenario.repo / "upstream.txt").exists()
 
 
+def test_install_hook_recognizes_new_configuration_loaded_after_relogin(scenario, profile_factory, monkeypatch):
+    rendered = profile_factory.render("personal")
+    home = Path.home()
+    destination = home / "Library/LaunchAgents/com.arthur.repo-refresh.plist"
+    destination.parent.mkdir(parents=True)
+    template = ROOT / "home/private_Library/private_LaunchAgents/com.arthur.repo-refresh.plist.tmpl"
+    destination.write_text(profile_factory.chezmoi(rendered.config, "execute-template", "--file", str(template)))
+    revision = plistlib.loads(destination.read_bytes())["EnvironmentVariables"]["REPO_REFRESH_AGENT_REVISION"]
+    hook = profile_factory.render_hook(rendered.config, "personal",
+                                      "run_after_25-ensure-repo-refresh.sh.tmpl", "repo-refresh")
+    fake_bin = home / "fake-bin"
+    fake_bin.mkdir()
+    revision_file = home / "loaded-revision"
+    revision_file.write_text("previously-loaded-revision")
+    for name, contents in {
+        "uname": "#!/bin/sh\necho Darwin\n",
+        "plutil": "#!/bin/sh\nexit 0\n",
+        "launchctl": '#!/bin/sh\n[ "$1" = print ] || exit 88\nprintf "REPO_REFRESH_AGENT_REVISION => %s\\n" "$(cat "$TEST_AGENT_REVISION_FILE")"\n',
+    }.items():
+        command = fake_bin / name
+        command.write_text(contents)
+        command.chmod(0o755)
+    monkeypatch.setenv("PATH", str(fake_bin) + os.pathsep + os.environ["PATH"])
+    monkeypatch.setenv("TEST_AGENT_REVISION_FILE", str(revision_file))
+    marker = home / "Library/Caches/chezmoi/com.arthur.repo-refresh.sha256"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("old-plist-hash\n")
+
+    before_relogin = subprocess.run(["sh", str(hook)], capture_output=True, text=True)
+
+    assert before_relogin.returncode == 0
+    assert "log out and back in" in before_relogin.stderr
+    assert marker.read_text() == "old-plist-hash\n"
+    # Model launchd loading the new generated definition during a new login.
+    revision_file.write_text(revision)
+
+    after_relogin = subprocess.run(["sh", str(hook)], capture_output=True, text=True)
+    repeated = subprocess.run(["sh", str(hook)], capture_output=True, text=True)
+
+    assert after_relogin.returncode == repeated.returncode == 0
+    assert not after_relogin.stderr and not repeated.stderr
+    assert marker.read_text().strip() == hashlib.sha256(destination.read_bytes()).hexdigest()
+
+
 @pytest.mark.skipif(sys.platform != "darwin" or os.environ.get("GITHUB_ACTIONS") != "true",
                     reason="Real launchd tests are restricted to ephemeral macOS CI")
 def test_real_launchd_executes_installed_updater(scenario, profile_factory):
@@ -616,8 +661,10 @@ def test_real_launchd_executes_installed_updater(scenario, profile_factory):
     payload["Label"] += ".test-" + str(os.getpid())
     payload["StartInterval"] = 2  # Exercise a real periodic tick without waiting a minute.
     # The production environment is tested, with synthetic Git identity/config only.
-    payload["EnvironmentVariables"].update({key: value for key, value in os.environ.items()
-                                            if key.startswith("GIT_")})
+    payload["EnvironmentVariables"].update({key: os.environ[key] for key in (
+        "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME",
+        "GIT_COMMITTER_EMAIL", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM",
+    )})
     plist.write_bytes(plistlib.dumps(payload))
     (home / "Library/Logs").mkdir(parents=True, exist_ok=True)
     domain = f"gui/{os.getuid()}"
@@ -637,6 +684,11 @@ def test_real_launchd_executes_installed_updater(scenario, profile_factory):
         assert (scenario.repo / "upstream.txt").exists()
         assert git(scenario.repo, "branch", "--show-current") == "main"
         assert json.loads(status.read_text())["repositories"][0]["branches"][0]["state"] == "rebased"
+        # Real launchd exposes the loaded generation used by the install hook.
+        loaded = subprocess.run(["launchctl", "print", f"{domain}/{payload['Label']}"],
+                                check=True, capture_output=True, text=True)
+        revision = payload["EnvironmentVariables"]["REPO_REFRESH_AGENT_REVISION"]
+        assert f"REPO_REFRESH_AGENT_REVISION => {revision}" in loaded.stdout
         (scenario.upstream / "tracked.txt").write_text("periodic update\n")
         git(scenario.upstream, "add", ".")
         git(scenario.upstream, "commit", "-m", "Periodic tick")

@@ -72,7 +72,7 @@ Use `repo-refresh --status` to find each branch's state and relevant paths:
 | `conflicts` | Replaying commits or restoring edits exposed conflicts. | Resolve them there; later runs leave them alone. |
 | `in-progress` | A Git operation is unfinished. | Finish or abort it; later runs do not restart it. |
 | `edits-pending` | The branch was updated, but Git could not restore all edits. | Recover edits from the reported backup or saved stash. |
-| `failed` | Fetch, preservation, or a Git command could not complete. | Inspect the reported worktree; other branches and repositories continue. |
+| `failed` | Preservation or rebasing could not complete. | Inspect the error and any reported worktree; other branches continue. |
 
 **Automatic rebases rewrite local commit IDs and change development-worktree
 files.** Avoid concurrent editing during a scheduled rebase. Conflicts are an

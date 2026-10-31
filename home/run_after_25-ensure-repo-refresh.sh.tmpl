@@ -12,10 +12,11 @@ marker="$HOME/Library/Caches/chezmoi/$label.sha256"
 mkdir -p "$HOME/Library/Logs" "$(dirname "$marker")"
 plutil -lint "$plist" >/dev/null
 current_hash="$(shasum -a 256 "$plist" | awk '{print $1}')"
-previous_hash="$(cat "$marker" 2>/dev/null || true)"
+desired_revision={{ includeTemplate "repo-refresh-agent" . | sha256sum | quote }}
 
 if launchctl print "$domain/$label" >/dev/null 2>&1; then
-  if [ "$current_hash" != "$previous_hash" ]; then
+  active_revision="$(launchctl print "$domain/$label" | awk '$1 == "REPO_REFRESH_AGENT_REVISION" && $2 == "=>" { gsub(/"/, "", $3); print $3; exit }')"
+  if [ "$active_revision" != "$desired_revision" ]; then
     # Never interrupt a preservation transaction to reload scheduling changes.
     echo "repo-refresh schedule changed; log out and back in to load it after any active run." >&2
     exit 0
