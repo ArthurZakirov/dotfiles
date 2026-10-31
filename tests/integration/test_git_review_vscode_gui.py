@@ -165,6 +165,8 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
         "#!/bin/sh\n"
         f'exec "{real_code}" --disable-gpu '
         f'--disable-workspace-trust --user-data-dir "{profile}" '
+        f'--extensionDevelopmentPath="{probe}" '
+        f'--extensionDevelopmentPath="{extensions / review_extension.name}" '
         f'--extensions-dir "{extensions}" "$@"\n'
     )
     code.chmod(0o755)
@@ -250,7 +252,14 @@ def test_real_vscode_git_extension_sees_single_review_repository(tmp_path):
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline and not python_marker.exists():
             time.sleep(0.5)
-        assert python_marker.exists(), "Python extension did not report its selected interpreter"
+        if not python_marker.exists():
+            stage = Path(str(python_marker) + ".stage")
+            progress = stage.read_text() if stage.exists() else "probe never activated"
+            logs = "\n".join(
+                path.read_text(errors="replace")
+                for path in sorted(profile.glob("logs/**/exthost.log"))
+            )
+            pytest.fail(f"Python probe stalled at {progress}:\n{logs[-6000:]}")
         selection = json.loads(python_marker.read_text())
         assert "error" not in selection, selection
         for phase in ("initial", "refreshed"):
