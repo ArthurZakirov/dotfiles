@@ -1,7 +1,7 @@
 <a id="source-code-snippets"></a>
 # 🧾 Source code snippets and proposed changes
 
-When describing inspected code, quote the relevant source. Let the excerpt establish **what** exists; use surrounding prose to explain **why** it matters or **what follows**.
+When an answer describes inspected code, copy the decisive source lines into a language-tagged excerpt, then add prose explaining their consequence. Verify the copied lines against the current checkout.
 
 ## Give every source excerpt two locations
 

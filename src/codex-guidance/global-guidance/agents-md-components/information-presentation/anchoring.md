@@ -1,7 +1,7 @@
 <a id="anchoring-reader-never-searches"></a>
 # 🔗 Anchoring: the reader never goes searching
 
-When an agent references a concrete thing, the reader should either see the relevant thing inline or be able to reach its source directly. Do not make the reader manually hunt for files, symbols, tickets, commits, tables, pages, or other referenced artifacts.
+When preparing a reference to an existing file, symbol, ticket, or document, locate its actual source first. Insert a verified link or concise excerpt next to the claim it supports. If the destination cannot be confirmed, state the known locator and the limitation.
 
 | When | Then |
 | --- | --- |

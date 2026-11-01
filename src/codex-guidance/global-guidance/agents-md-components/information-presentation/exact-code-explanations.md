@@ -1,7 +1,7 @@
 <a id="exact-code-explanations"></a>
 # 🔎 Exact explanations and navigation of code
 
-Apply these rules to any question or explanation involving repository code, from locating an implementation through diagnosing or modifying it. The user's wording does not limit their applicability.
+When the user asks about repository behavior, implementation locations, code changes, or a suspected defect, first locate and read the relevant source. Use its actual identifiers and operations in the answer.
 
 The examples below are hypothetical illustrations, not observations from the current checkout.
 

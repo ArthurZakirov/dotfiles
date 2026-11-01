@@ -27,4 +27,4 @@ The following rules apply:
 - Interrupted-operation metadata is saved as evidence.
 - Archived operations are not automatically resumed in recovery copies.
 
-When available, use the `information-representation-design` skill for the fuller representation-selection and review method.
+After drafting a list or paragraph, compare it with the `When` cases above. Rewrite remaining chained inventories and mixed rule groups before sending or saving.
