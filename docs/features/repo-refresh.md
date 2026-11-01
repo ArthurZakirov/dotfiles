@@ -36,7 +36,8 @@ repository's relative folder hierarchy. Development worktree directories use a
 filesystem-safe version of their branch name (for example,
 `feat/repository-sync` becomes `feat-repository-sync`). Recovery directories
 start with `recovery-` followed by the branch name and a unique suffix (for
-example, `recovery-feat-repository-sync-20261101T070000-abc123`). A recovery
+example, `recovery-feat-repository-sync-2026-11-01--07-00-00-abc123`).
+The timestamp uses local time in `YYYY-MM-DD--HH-mm-ss` format. A recovery
 of a detached checkout identifies its commit instead of claiming a branch.
 Existing directories with the same slug receive a unique suffix rather than
 being overwritten. For branch names consisting only of symbols, the name keeps

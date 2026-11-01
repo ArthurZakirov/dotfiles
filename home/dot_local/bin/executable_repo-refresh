@@ -207,7 +207,7 @@ def worktree_path(worktrees, relative, branch, recovery=False):
     destination = parent / slug
     if recovery or destination.exists() or destination.is_symlink():
         # Distinguish historical snapshots and slug collisions while retaining the branch name.
-        suffix = time.strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:12]
+        suffix = time.strftime("%Y-%m-%d--%H-%M-%S") + "-" + uuid.uuid4().hex[:12]
         destination = parent / f"{slug}-{suffix}"
     return destination
 

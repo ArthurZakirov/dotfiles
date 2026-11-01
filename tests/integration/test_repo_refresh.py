@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import subprocess
 import sys
 import time
@@ -247,7 +248,10 @@ def test_development_and_recovery_worktree_names_identify_the_branch(scenario):
     development = Path(outcome["development_worktree"])
     recovery = Path(outcome["recovery"])
     assert development.name == "feat-clear-branch-purpose"
-    assert recovery.name.startswith("recovery-feat-clear-branch-purpose-")
+    assert re.fullmatch(
+        r"recovery-feat-clear-branch-purpose-\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2}-[0-9a-f]{12}",
+        recovery.name,
+    )
     assert git(development, "branch", "--show-current") == "feat/clear-branch-purpose"
     assert (development / "feature.txt").read_text() == "keep this work\n"
     assert (recovery / "feature.txt").read_text() == "keep this work\n"
@@ -284,7 +288,10 @@ def test_default_branch_recovery_name_identifies_its_source(scenario):
 
     assert result.returncode == 0, result.stdout + result.stderr
     recovery = Path(scenario.outcome()["recovery"])
-    assert recovery.name.startswith("recovery-main-")
+    assert re.fullmatch(
+        r"recovery-main-\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2}-[0-9a-f]{12}",
+        recovery.name,
+    )
     assert (recovery / "tracked.txt").read_text() == "local edits\n"
 
 
