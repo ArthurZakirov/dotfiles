@@ -5,4 +5,5 @@
 # @raycast.packageName Configuration Files
 # @raycast.description Open the repositories folder in VS Code
 
-exec "$HOME/.config/raycast/lib/open-target.sh" directory "$HOME/Repos"
+root="$("$HOME/.config/raycast/lib/resolve-repos-dir.sh")" || exit 1
+exec "$HOME/.config/raycast/lib/open-target.sh" directory "$root"

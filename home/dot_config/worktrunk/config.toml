@@ -1,0 +1,2 @@
+# Keep branch worktrees beside the permanent repository checkout.
+worktree-path = "{{ repo_path }}/../{{ repo }}.worktrees/{{ branch | sanitize }}"

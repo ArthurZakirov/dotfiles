@@ -39,23 +39,24 @@ It also resolves the `chezmoi dotfiles` repository dynamically.
 ## Managed file and folder shortcuts
 
 The following eight commands replace the entries in the existing local
-`~/.config/raycast/quicklinks.json`. Their Raycast titles match the original
-Quicklink names, and they open the same destinations in VS Code:
+`~/.config/raycast/quicklinks.json`. They open the corresponding destinations in VS Code; the former
+`repos/personal` shortcut is now `repos-external`:
 
 | Raycast command | Destination | Type |
 | --- | --- | --- |
 | `quicklinks.json` | `~/.config/raycast/quicklinks.json` | File |
 | `.local/bin scripts` | `~/.local/bin` | Folder |
 | `.zshrc` | `~/.zshrc` | File |
-| `repos/personal` | `~/Repos/personal` | Folder |
+| `repos-external` | `~/Repos-external` (or configured equivalent) | Folder |
 | `repos` | `~/Repos` | Folder |
 | `config.toml` | `~/.codex/config.toml` | File |
 | `.codex` | `~/.codex` | Folder |
 | `chezmoi dotfiles` | Git root containing `chezmoi source-path` | Folder |
 
 The `chezmoi dotfiles` command resolves the repository root dynamically, so it
-does not depend on a machine-specific checkout or symlink. The repository
-shortcuts use DevMac's `~/Repos` directory convention.
+does not depend on a machine-specific checkout or symlink. Repository shortcuts
+resolve `root` from `~/.config/repo-refresh/config.json` (default `~/Repos`);
+external repositories use the sibling directory with the `-external` suffix.
 
 Three additional commands open the config files discussed when designing this
 feature:

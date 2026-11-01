@@ -1,6 +1,5 @@
 {
-  "enabled": {{ if eq .profile "personal" }}true{{ else }}false{{ end }},
-  "root": "~/Repos/personal",
-  "worktrees": "~/Worktrees",
+  "enabled": true,
+  "root": {{ (.reposDir | default (printf "%s/Repos" .chezmoi.homeDir)) | quote }},
   "remote": "origin"
 }

@@ -76,13 +76,31 @@ def scenario(tmp_path, monkeypatch):
                    check=True, capture_output=True)
     git(upstream, "remote", "add", "origin", remote)
     root = tmp_path / "Repos"
-    repo = root / "personal" / "project"
+    repo = root / "project"
     repo.parent.mkdir(parents=True)
     subprocess.run(["git", "clone", str(remote), str(repo)], check=True, capture_output=True)
     config = tmp_path / "config.json"
-    worktrees = tmp_path / "Worktrees"
-    config.write_text(json.dumps({"root": str(root), "worktrees": str(worktrees)}))
+    worktrees = root / "project.worktrees"
+    config.write_text(json.dumps({"root": str(root)}))
     return Scenario(repo, upstream, remote, config, tmp_path / "state", worktrees)
+
+
+def test_only_direct_clone_directories_are_refreshed(scenario, tmp_path):
+    nested = scenario.repo.parent / "tmp" / "experiment"
+    nested.parent.mkdir()
+    subprocess.run(["git", "clone", str(scenario.remote), str(nested)],
+                   check=True, capture_output=True)
+    git(nested, "switch", "-c", "unfinished")
+    (nested / "untracked.txt").write_text("keep me\n")
+    scenario.advance()
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (scenario.repo / "upstream.txt").is_file()
+    assert git(nested, "branch", "--show-current") == "unfinished"
+    assert (nested / "untracked.txt").read_text() == "keep me\n"
+    assert len(json.loads((scenario.state / "status.json").read_text())["repositories"]) == 1
 
 
 @pytest.mark.parametrize("branch", ["main", "master", "trunk"])
@@ -247,6 +265,8 @@ def test_development_and_recovery_worktree_names_identify_the_branch(scenario):
     outcome = scenario.outcome()
     development = Path(outcome["development_worktree"])
     recovery = Path(outcome["recovery"])
+    assert development.parent == scenario.repo.with_name("project.worktrees")
+    assert recovery.parent == development.parent
     assert development.name == "feat-clear-branch-purpose"
     assert re.fullmatch(
         r"recovery-feat-clear-branch-purpose-\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2}-[0-9a-f]{12}",
@@ -478,14 +498,13 @@ def test_redirected_working_tree_is_not_reset_without_its_files_being_preserved(
 
 def test_recovery_directory_symlink_cannot_redirect_copy_into_source(scenario):
     git(scenario.repo, "switch", "-c", "feature")
-    scenario.worktrees.mkdir()
-    (scenario.worktrees / "personal").symlink_to(scenario.repo)
+    scenario.worktrees.symlink_to(scenario.repo)
 
     result = subprocess.run(scenario.command, capture_output=True, text=True)
 
     assert result.returncode == 1
     assert git(scenario.repo, "branch", "--show-current") == "feature"
-    assert not (scenario.repo / "project").exists()
+    assert not (scenario.repo / "recovery-main").exists()
 
 
 def test_git_lock_failure_retains_a_usable_recovery(scenario):
@@ -543,14 +562,16 @@ def test_existing_linked_development_worktrees_are_not_repeatedly_reclaimed(scen
 
 
 def test_initialized_unborn_checkout_preserves_staged_files(scenario, tmp_path):
-    root = tmp_path / "unborn"
+    parent = tmp_path / "unborn-parent"
+    parent.mkdir()
+    root = parent / "project"
     root.mkdir()
     git(root, "init", "-b", "unfinished")
     git(root, "remote", "add", "origin", scenario.remote)
     (root / "local.txt").write_text("first staged file\n")
     git(root, "add", ".")
     config = json.loads(scenario.config.read_text())
-    config["root"] = str(root)
+    config["root"] = str(parent)
     scenario.config.write_text(json.dumps(config))
 
     result = subprocess.run(scenario.command, capture_output=True, text=True)
@@ -626,15 +647,15 @@ def test_ignored_collision_is_preserved_before_remote_file_replaces_it(scenario)
     assert (recovery / "ignored/local").read_text() == "local ignored content\n"
 
 
-@pytest.mark.parametrize("mode", ["disabled", "overlap", "locked", "empty-root", "invalid-enabled"])
+@pytest.mark.parametrize("mode", ["disabled", "legacy-worktrees", "locked", "empty-root", "invalid-enabled"])
 def test_configuration_and_run_lock_prevent_mutation(scenario, mode):
     git(scenario.repo, "switch", "-c", "feature")
     config = json.loads(scenario.config.read_text())
     handle = None
     if mode == "disabled":
         config["enabled"] = False
-    elif mode == "overlap":
-        config["worktrees"] = str(scenario.repo / "recovery")
+    elif mode == "legacy-worktrees":
+        config["worktrees"] = str(scenario.worktrees)
     elif mode == "empty-root":
         config["root"] = ""
     elif mode == "invalid-enabled":
@@ -650,7 +671,7 @@ def test_configuration_and_run_lock_prevent_mutation(scenario, mode):
         if handle:
             handle.close()
 
-    assert result.returncode == (1 if mode in ("overlap", "empty-root", "invalid-enabled") else 0)
+    assert result.returncode == (1 if mode in ("legacy-worktrees", "empty-root", "invalid-enabled") else 0)
     assert git(scenario.repo, "branch", "--show-current") == "feature"
     assert not scenario.worktrees.exists()
 

@@ -69,18 +69,12 @@ def write_json(path, payload):
 
 
 def repositories(root):
-    """Stop at repository boundaries; don't follow directory symlinks or submodules."""
-    for current, directories, files in os.walk(root, followlinks=False):
-        directories[:] = sorted(d for d in directories if d != ".git")
-        if ".git" in files:
-            # Linked development worktrees are not additional permanent clones.
-            directories.clear()
-            metadata = git(Path(current), "rev-parse", "--absolute-git-dir", check=False)
-            if metadata.returncode or not (Path(os.fsdecode(metadata.stdout).strip()) / "commondir").exists():
-                yield Path(current)
-        elif (Path(current) / ".git").is_dir():
-            directories.clear()
-            yield Path(current)
+    """Manage only direct clones; ignore nested experiments and worktree siblings."""
+    for repo in sorted(root.iterdir()):
+        # Only immediate Git clones are managed; nested experiments and linked
+        # worktrees are not permanent default-branch checkouts.
+        if repo.is_dir() and not repo.is_symlink() and (repo / ".git").is_dir():
+            yield repo
 
 
 def inventory(repo):
@@ -186,7 +180,7 @@ def preserve(repo, destination, branch, head, original_head, default, target):
     return record_dir
 
 
-def worktree_path(worktrees, relative, branch, recovery=False):
+def worktree_path(repo, branch, recovery=False):
     # A worktree's folder must identify the branch or detached commit it contains.
     slug = "".join(char if char.isalnum() or char in "._-" else "-" for char in branch)
     slug = slug.strip(".-_")
@@ -198,10 +192,11 @@ def worktree_path(worktrees, relative, branch, recovery=False):
         while len(slug.encode("utf-8")) > 100:
             slug = slug[:-1]
         slug = f"{slug.rstrip('.-_')}-{hashlib.sha256(branch.encode()).hexdigest()[:10]}"
-    parent = worktrees / relative
-    if not parent.resolve().is_relative_to(worktrees):
-        raise RefreshError("Worktree directory symlink escapes the configured root; checkout left untouched")
+    parent = repo.with_name(f"{repo.name}.worktrees")
+    if parent.is_symlink() or parent.resolve().parent != repo.parent.resolve():
+        raise RefreshError("Worktree directory redirects outside the repository's parent; checkout left untouched")
     parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(parent, 0o700)
     if recovery:
         slug = f"recovery-{slug}"
     destination = parent / slug
@@ -212,7 +207,7 @@ def worktree_path(worktrees, relative, branch, recovery=False):
     return destination
 
 
-def refresh(repo, worktrees, relative, remote):
+def refresh(repo, remote):
     # Fetch and resolve the remote's actual default before disturbing local files.
     git(repo, "fetch", "--prune", "--no-recurse-submodules", remote)
     advertised = value(repo, "ls-remote", "--symref", remote, "HEAD")
@@ -244,7 +239,7 @@ def refresh(repo, worktrees, relative, remote):
         return {"state": "current", "branch": default, "commit": target}
 
     label = branch or f"detached-{head[:12]}"
-    destination = worktree_path(worktrees, relative, label, recovery=branch in (None, default))
+    destination = worktree_path(repo, label, recovery=branch in (None, default))
     preserve(repo, destination, branch, head, original_head, default, target)
     try:
         released = restore_default(repo, destination, branch, head, default, target, remote)
@@ -325,7 +320,7 @@ def branch_worktrees(repo):
     return paths
 
 
-def rebase_branch(repo, branch, candidates, worktrees, relative, default, target):
+def rebase_branch(repo, branch, candidates, default, target):
     if len(candidates) > 1:
         raise RefreshError("Branch is checked out in multiple worktrees; cannot safely choose one")
     source = next(iter(candidates), None)
@@ -347,10 +342,10 @@ def rebase_branch(repo, branch, candidates, worktrees, relative, default, target
     if git(repo, "merge-base", "--is-ancestor", target, f"refs/heads/{branch}", check=False).returncode == 0:
         return {"state": "current", **({"worktree": str(source)} if source else {})}
     if source is None:
-        source = worktree_path(worktrees, relative, branch)
+        source = worktree_path(repo, branch)
         git(repo, "worktree", "add", source, branch)
     head = value(source, "rev-parse", "HEAD")
-    recovery = worktree_path(worktrees, relative, branch, recovery=True)
+    recovery = worktree_path(repo, branch, recovery=True)
     preserve(source, recovery, branch, head, head, default, target)
     if value(source, "symbolic-ref", "--short", "HEAD") != branch:
         raise RefreshError(f"Branch changed during preservation; recovery: {recovery}")
@@ -401,7 +396,7 @@ def rebase_branch(repo, branch, candidates, worktrees, relative, default, target
     return record
 
 
-def rebase_branches(repo, worktrees, relative, default, target):
+def rebase_branches(repo, default, target):
     paths = branch_worktrees(repo)
     outcomes = []
     for reference in value(repo, "for-each-ref", "--format=%(refname)", "refs/heads/").splitlines():
@@ -410,7 +405,7 @@ def rebase_branches(repo, worktrees, relative, default, target):
             continue
         try:
             outcome = rebase_branch(repo, branch, paths.get(branch, set()),
-                                    worktrees, relative, default, target)
+                                    default, target)
         except (RefreshError, OSError, shutil.Error, ValueError) as error:
             message = str(error) if isinstance(error, RefreshError) else type(error).__name__
             outcome = {"state": "failed", "error": message}
@@ -418,7 +413,7 @@ def rebase_branches(repo, worktrees, relative, default, target):
     return outcomes
 
 
-def refresh_one(repo, root, worktrees, remote):
+def refresh_one(repo, remote):
     outcome = {"repository": str(repo)}
     try:
         if Path(value(repo, "rev-parse", "--show-toplevel")).resolve() != repo.resolve():
@@ -427,10 +422,8 @@ def refresh_one(repo, root, worktrees, remote):
         common = Path(value(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"))
         with (common / "repo-refresh.lock").open("a") as repo_lock:
             fcntl.flock(repo_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            outcome.update(refresh(repo, worktrees, repo.relative_to(root), remote))
-            outcome["branches"] = rebase_branches(
-                repo, worktrees, repo.relative_to(root), outcome["branch"], outcome["commit"],
-            )
+            outcome.update(refresh(repo, remote))
+            outcome["branches"] = rebase_branches(repo, outcome["branch"], outcome["commit"])
             for branch in outcome["branches"]:
                 if branch.get("worktree") == outcome.get("recovery") and branch.get("recovery"):
                     outcome["development_worktree"] = outcome["recovery"]
@@ -451,20 +444,18 @@ def run(config_path, state_dir):
     config = json.loads(config_path.read_text())
     if not isinstance(config.get("enabled", True), bool):
         raise RefreshError("enabled must be a JSON boolean")
-    for key in ("root", "worktrees"):
-        setting = config.get(key)
-        if (not isinstance(setting, str) or not setting.strip()
-                or not Path(setting).expanduser().is_absolute()):
-            raise RefreshError(f"{key} must be an absolute path or start with ~/")
-    root = Path(config["root"]).expanduser().resolve()
-    worktrees = Path(config["worktrees"]).expanduser().resolve()
+    setting = config.get("root")
+    if (not isinstance(setting, str) or not setting.strip()
+            or not Path(setting).expanduser().is_absolute()):
+        raise RefreshError("root must be an absolute path or start with ~/")
+    if "worktrees" in config:
+        raise RefreshError("Remove obsolete 'worktrees' setting; paths are derived from each repository")
+    root = Path(setting).expanduser().resolve()
     remote = config.get("remote", "origin")
     if not isinstance(remote, str) or not remote or remote.startswith("-"):
         raise RefreshError("remote must be a nonempty Git remote name")
     if not config.get("enabled", True):
         return 0
-    if root == worktrees or root in worktrees.parents or worktrees in root.parents:
-        raise RefreshError("Repository and recovery roots must not overlap")
     if not root.is_dir():
         raise RefreshError("Configured repository root is not a directory")
     state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -475,7 +466,7 @@ def run(config_path, state_dir):
             return 0
         outcomes = []
         with ThreadPoolExecutor(max_workers=4) as pool:
-            pending = [pool.submit(refresh_one, repo, root, worktrees, remote)
+            pending = [pool.submit(refresh_one, repo, remote)
                        for repo in repositories(root)]
             for future in as_completed(pending):
                 outcome = future.result()

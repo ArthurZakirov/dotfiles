@@ -42,6 +42,9 @@ def install_launcher(home: Path) -> None:
     installed.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(LAUNCHER, installed)
     installed.chmod(0o755)
+    resolver = home / ".config/raycast/lib/resolve-repos-dir.sh"
+    shutil.copyfile(ROOT / "home/dot_config/raycast/lib/executable_resolve-repos-dir.sh", resolver)
+    resolver.chmod(0o755)
 
 
 @pytest.mark.parametrize(("command", "relative_path"), CONFIG_COMMANDS.items())
@@ -107,7 +110,7 @@ LEGACY_QUICKLINKS = {
     "open-raycast-quicklinks": ("quicklinks.json", ".config/raycast/quicklinks.json", "file"),
     "open-local-bin": (".local/bin scripts", ".local/bin", "directory"),
     "open-zsh-config": (".zshrc", ".zshrc", "file"),
-    "open-personal-repos": ("repos/personal", "Repos/personal", "directory"),
+    "open-external-repos": ("repos-external", "Repos-external", "directory"),
     "open-repos": ("repos", "Repos", "directory"),
     "open-codex-config": ("config.toml", ".codex/config.toml", "file"),
     "open-codex-directory": (".codex", ".codex", "directory"),

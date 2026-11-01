@@ -12,7 +12,7 @@ Use the normal dotfiles installation flow:
 
 1. **Review the defaults** in the
    [initial configuration](../../home/dot_config/repo-refresh/create_private_config.json.tmpl).
-   Personal installations start enabled; professional installations start disabled.
+   Both Mac installations use the same defaults.
 2. **Follow the [setup guide](../setup.md)** to preview and apply the changes.
    To override defaults before the first run, create the local JSON configuration
    at the path below before applying. Otherwise, chezmoi creates it for you.
@@ -26,14 +26,18 @@ The configuration fields define the managed scope:
 
 | Field | What to set |
 | --- | --- |
-| `root` | Folder containing permanent clones; discovery includes subfolders. |
-| `worktrees` | Separate folder for development and recovery worktrees, outside `root`. |
+| `root` | Directory containing permanent clones directly (no nested repository groups). |
 | `remote` | Remote whose advertised default branch should be followed. |
 | `enabled` | `false` pauses future runs; an active run finishes normally. |
 
-Both folder fields accept absolute paths or `~/` paths. New worktrees retain the
-repository's relative folder hierarchy. Development worktree directories use a
-filesystem-safe version of their branch name (for example,
+The root is set during chezmoi initialization via `REPOS_DIR` (saved as
+`reposDir` in the local chezmoi configuration; default:
+`~/Repos`), used by the shell and the initial repo-refresh configuration.
+The local `~/.config/repo-refresh/config.json` can override it afterward.
+The updater creates worktrees beside each clone, never in a global directory:
+`<root>/<repo>.worktrees/<branch-slug>`. For example,
+`~/Repos/dotfiles.worktrees/feat-repository-sync`. Development worktree
+directories use a filesystem-safe version of their branch name (for example,
 `feat/repository-sync` becomes `feat-repository-sync`). Recovery directories
 start with `recovery-` followed by the branch name and a unique suffix (for
 example, `recovery-feat-repository-sync-2026-11-01--07-00-00-abc123`).
@@ -43,6 +47,10 @@ Existing directories with the same slug receive a unique suffix rather than
 being overwritten. For branch names consisting only of symbols, the name keeps
 an escaped version of each character (for example, `+++` becomes
 `branch-u2b-u2b-u2b`) rather than incorrectly using `detached`.
+
+The managed [Worktrunk user configuration](../../home/dot_config/worktrunk/config.toml)
+uses the same repository-sibling layout for new `wt switch` worktrees.
+Agents should also use this directory for directly created Git worktrees.
 
 The [LaunchAgent](../../home/private_Library/private_LaunchAgents/com.arthur.repo-refresh.plist.tmpl)
 runs at login/load and once a minute while the Mac is awake. Runs do not overlap.
@@ -130,7 +138,11 @@ The rebase record identifies the pre-rebase copy and any saved edit stash. After
 recovering an `edits-pending` result, remove that branch's `repo-refresh-rebase.json`
 record to acknowledge recovery and allow future rebases.
 
-Recovery copies are private and **never automatically deleted**. They may contain
+Recovery copies are private and **never automatically deleted**.
+Do not put unrelated clones inside `<repo>.worktrees`; they belong in a
+separate repository directory. Existing worktrees created by external agents
+are reusable by the updater, but those agents must also follow this convention
+for new worktrees. They may contain
 ignored credentials and large build directories. Keep what you need before
 explicitly removing old worktrees and their protected refs. Status shows the
 latest run; `git worktree list` also lists older copies.
