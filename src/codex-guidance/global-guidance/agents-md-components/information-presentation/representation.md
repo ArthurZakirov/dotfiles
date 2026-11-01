@@ -10,4 +10,21 @@
 | A paragraph mixes an inventory with separate rules, exceptions, or consequences. | Put the inventory under its own lead-in and bullets. Then use a second lead-in such as `The following rules apply:` with **one bullet per independent rule**. Do not pack unrelated rules into one paragraph or append them as more inventory bullets. |
 | A new sentence introduces a different point, action, or reason. | Start a new paragraph or bullet instead of appending it to a dense block. Keep connected causal explanations as prose; do not mechanically force every sentence onto its own line. |
 
+**Example: an inventory and separate rules must produce two bulleted groups, not a list followed by a run-on paragraph.**
+
+The updater preserves:
+
+- staged versus unstaged changes
+- untracked and ignored files
+- symlinks
+- executable modes
+- conflicted indexes
+- previous commits
+
+The following rules apply:
+
+- Submodule copies receive independent Git metadata.
+- Interrupted-operation metadata is saved as evidence.
+- Archived operations are not automatically resumed in recovery copies.
+
 When available, use the `information-representation-design` skill for the fuller representation-selection and review method.
