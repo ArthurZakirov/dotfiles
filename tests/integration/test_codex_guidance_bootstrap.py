@@ -125,6 +125,12 @@ def test_information_representation_guidance_is_always_rendered(tmp_path):
     assert "including intermediate work-in-progress updates, partial answers, and final replies" in guidance
     assert "including intermediate work-in-progress updates, partial findings" in guidance
     assert "Before sending each message" in guidance
+    assert "The rules apply to the **accumulating sequence of messages**" in guidance
+    assert "**short, descriptive bold title or heading**" in guidance
+    assert "even one sentence long" in guidance
+    assert "do **not** inflate a short update into a table" in guidance
+    assert "Report meaningful milestones, findings, blockers, or next steps" in guidance
+    assert "Brief progress updates need not contain headings, lists, or tables" not in guidance
     assert "[🧩 Information representation design](#information-representation-design)" in guidance
     for index in range(1, 5):
         assert guidance.count(f'<a id="stage-{index}"></a>') == 1
