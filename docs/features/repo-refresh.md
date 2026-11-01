@@ -32,7 +32,14 @@ The configuration fields define the managed scope:
 | `enabled` | `false` pauses future runs; an active run finishes normally. |
 
 Both folder fields accept absolute paths or `~/` paths. New worktrees retain the
-repository's relative folder hierarchy and receive a unique run identifier.
+repository's relative folder hierarchy. Development worktree directories use a
+filesystem-safe version of their branch name (for example,
+`feat/repository-sync` becomes `feat-repository-sync`). Recovery directories
+start with `recovery-` followed by the branch name and a unique suffix (for
+example, `recovery-feat-repository-sync-20261101T070000-abc123`). A recovery
+of a detached checkout identifies its commit instead of claiming a branch.
+Existing directories with the same slug receive a unique suffix rather than
+being overwritten.
 
 The [LaunchAgent](../../home/private_Library/private_LaunchAgents/com.arthur.repo-refresh.plist.tmpl)
 runs at login/load and once a minute while the Mac is awake. Runs do not overlap.

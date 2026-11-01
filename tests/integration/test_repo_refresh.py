@@ -233,6 +233,54 @@ def test_repeated_run_does_not_create_more_recovery_worktrees(scenario):
     assert git(scenario.repo, "worktree", "list", "--porcelain") == worktrees
 
 
+def test_development_and_recovery_worktree_names_identify_the_branch(scenario):
+    git(scenario.repo, "switch", "-c", "feat/clear-branch-purpose")
+    (scenario.repo / "feature.txt").write_text("keep this work\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Feature")
+    scenario.advance()
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    outcome = scenario.outcome()
+    development = Path(outcome["development_worktree"])
+    recovery = Path(outcome["recovery"])
+    assert development.name == "feat-clear-branch-purpose"
+    assert recovery.name.startswith("recovery-feat-clear-branch-purpose-")
+    assert git(development, "branch", "--show-current") == "feat/clear-branch-purpose"
+    assert (development / "feature.txt").read_text() == "keep this work\n"
+    assert (recovery / "feature.txt").read_text() == "keep this work\n"
+
+
+def test_default_branch_recovery_name_identifies_its_source(scenario):
+    (scenario.repo / "tracked.txt").write_text("local edits\n")
+    scenario.advance()
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    recovery = Path(scenario.outcome()["recovery"])
+    assert recovery.name.startswith("recovery-main-")
+    assert (recovery / "tracked.txt").read_text() == "local edits\n"
+
+
+def test_equivalent_slugs_get_distinct_worktree_paths(scenario):
+    git(scenario.repo, "branch", "feat/foo-bar")
+    git(scenario.repo, "branch", "feat-foo/bar")
+    scenario.advance()
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    outcomes = {entry["branch"]: entry for entry in scenario.outcome()["branches"]}
+    names = {branch: Path(entry["worktree"]).name for branch, entry in outcomes.items()}
+    assert len(set(names.values())) == 2
+    assert all(name.startswith("feat-foo-bar") for name in names.values())
+    for branch, entry in outcomes.items():
+        assert git(Path(entry["worktree"]), "branch", "--show-current") == branch
+
+
 @pytest.mark.parametrize("checked_out", [False, True])
 def test_rebases_every_local_feature_branch_and_protects_original_commits(scenario, tmp_path, checked_out):
     git(scenario.repo, "config", "rebase.updateRefs", "true")

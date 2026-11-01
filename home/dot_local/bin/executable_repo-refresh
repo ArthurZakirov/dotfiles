@@ -2,6 +2,7 @@
 """Refresh permanent checkouts and rebase local branches with recovery worktrees."""
 
 import argparse
+import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import fcntl
 import json
@@ -185,12 +186,26 @@ def preserve(repo, destination, branch, head, original_head, default, target):
     return record_dir
 
 
-def worktree_path(worktrees, relative, prefix=""):
-    stamp = time.strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:12]
-    destination = worktrees / relative / (prefix + stamp)
-    if not destination.resolve().is_relative_to(worktrees):
-        raise RefreshError("Recovery directory symlink escapes the configured root; checkout left untouched")
-    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+def worktree_path(worktrees, relative, branch, recovery=False):
+    # A worktree's folder must identify the branch or detached commit it contains.
+    slug = "".join(char if char.isalnum() or char in "._-" else "-" for char in branch)
+    slug = slug.strip(".-_") or "detached"
+    if len(slug.encode("utf-8")) > 120:
+        # Keep long names within filesystem component limits without ambiguity.
+        while len(slug.encode("utf-8")) > 100:
+            slug = slug[:-1]
+        slug = f"{slug.rstrip('.-_')}-{hashlib.sha256(branch.encode()).hexdigest()[:10]}"
+    parent = worktrees / relative
+    if not parent.resolve().is_relative_to(worktrees):
+        raise RefreshError("Worktree directory symlink escapes the configured root; checkout left untouched")
+    parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if recovery:
+        slug = f"recovery-{slug}"
+    destination = parent / slug
+    if recovery or destination.exists() or destination.is_symlink():
+        # Distinguish historical snapshots and slug collisions while retaining the branch name.
+        suffix = time.strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:12]
+        destination = parent / f"{slug}-{suffix}"
     return destination
 
 
@@ -225,7 +240,8 @@ def refresh(repo, worktrees, relative, remote):
     if branch == default and head == target and not dirty and not operation:
         return {"state": "current", "branch": default, "commit": target}
 
-    destination = worktree_path(worktrees, relative)
+    label = branch or f"detached-{head[:12]}"
+    destination = worktree_path(worktrees, relative, label, recovery=branch in (None, default))
     preserve(repo, destination, branch, head, original_head, default, target)
     try:
         released = restore_default(repo, destination, branch, head, default, target, remote)
@@ -328,10 +344,10 @@ def rebase_branch(repo, branch, candidates, worktrees, relative, default, target
     if git(repo, "merge-base", "--is-ancestor", target, f"refs/heads/{branch}", check=False).returncode == 0:
         return {"state": "current", **({"worktree": str(source)} if source else {})}
     if source is None:
-        source = worktree_path(worktrees, relative, "branch-")
+        source = worktree_path(worktrees, relative, branch)
         git(repo, "worktree", "add", source, branch)
     head = value(source, "rev-parse", "HEAD")
-    recovery = worktree_path(worktrees, relative, "before-rebase-")
+    recovery = worktree_path(worktrees, relative, branch, recovery=True)
     preserve(source, recovery, branch, head, head, default, target)
     if value(source, "symbolic-ref", "--short", "HEAD") != branch:
         raise RefreshError(f"Branch changed during preservation; recovery: {recovery}")
