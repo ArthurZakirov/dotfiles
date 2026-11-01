@@ -39,7 +39,9 @@ start with `recovery-` followed by the branch name and a unique suffix (for
 example, `recovery-feat-repository-sync-20261101T070000-abc123`). A recovery
 of a detached checkout identifies its commit instead of claiming a branch.
 Existing directories with the same slug receive a unique suffix rather than
-being overwritten.
+being overwritten. For branch names consisting only of symbols, the name keeps
+an escaped version of each character (for example, `+++` becomes
+`branch-u2b-u2b-u2b`) rather than incorrectly using `detached`.
 
 The [LaunchAgent](../../home/private_Library/private_LaunchAgents/com.arthur.repo-refresh.plist.tmpl)
 runs at login/load and once a minute while the Mac is awake. Runs do not overlap.

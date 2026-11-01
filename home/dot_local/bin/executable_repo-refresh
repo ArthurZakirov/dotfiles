@@ -189,7 +189,10 @@ def preserve(repo, destination, branch, head, original_head, default, target):
 def worktree_path(worktrees, relative, branch, recovery=False):
     # A worktree's folder must identify the branch or detached commit it contains.
     slug = "".join(char if char.isalnum() or char in "._-" else "-" for char in branch)
-    slug = slug.strip(".-_") or "detached"
+    slug = slug.strip(".-_")
+    if not slug:
+        # Preserve the identity of valid branches consisting only of symbols.
+        slug = "branch-" + "-".join(f"u{ord(char):x}" for char in branch)
     if len(slug.encode("utf-8")) > 120:
         # Keep long names within filesystem component limits without ambiguity.
         while len(slug.encode("utf-8")) > 100:

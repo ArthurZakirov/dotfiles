@@ -253,6 +253,29 @@ def test_development_and_recovery_worktree_names_identify_the_branch(scenario):
     assert (recovery / "feature.txt").read_text() == "keep this work\n"
 
 
+@pytest.mark.parametrize(
+    ("branch", "expected_slug"),
+    [("+++", "branch-u2b-u2b-u2b"), ("🚀", "branch-u1f680")],
+)
+def test_symbol_only_branch_names_remain_identifiable(scenario, branch, expected_slug):
+    git(scenario.repo, "switch", "-c", branch)
+    (scenario.repo / "feature.txt").write_text("symbol-only branch work\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Feature")
+    scenario.advance()
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    outcome = scenario.outcome()
+    development = Path(outcome["development_worktree"])
+    recovery = Path(outcome["recovery"])
+    assert development.name == expected_slug
+    assert recovery.name.startswith(f"recovery-{expected_slug}-")
+    assert git(development, "branch", "--show-current") == branch
+    assert (recovery / "feature.txt").read_text() == "symbol-only branch work\n"
+
+
 def test_default_branch_recovery_name_identifies_its_source(scenario):
     (scenario.repo / "tracked.txt").write_text("local edits\n")
     scenario.advance()
