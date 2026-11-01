@@ -7,23 +7,82 @@ fi
 
 label=com.arthur.repo-refresh
 plist="$HOME/Library/LaunchAgents/$label.plist"
+config="$HOME/.config/repo-refresh/config.json"
 domain="gui/$(id -u)"
+service="$domain/$label"
 marker="$HOME/Library/Caches/chezmoi/$label.sha256"
+lock="$HOME/.local/state/repo-refresh/run.lock"
 mkdir -p "$HOME/Library/Logs" "$(dirname "$marker")"
 plutil -lint "$plist" >/dev/null
-current_hash="$(shasum -a 256 "$plist" | awk '{print $1}')"
-desired_revision={{ includeTemplate "repo-refresh-agent" . | sha256sum | quote }}
 
-if launchctl print "$domain/$label" >/dev/null 2>&1; then
-  active_revision="$(launchctl print "$domain/$label" | awk '$1 == "REPO_REFRESH_AGENT_REVISION" && $2 == "=>" { gsub(/"/, "", $3); print $3; exit }')"
+# The rendered, repository-managed config is authoritative for BOTH the
+# updater and its LaunchAgent. An invalid setting must not start the service.
+enabled="$(python3 - "$config" <<'PYTHON'
+import json
+from pathlib import Path
+import sys
+
+setting = json.loads(Path(sys.argv[1]).read_text())["enabled"]
+if type(setting) is not bool:
+    raise ValueError("repo-refresh enabled must be a JSON boolean")
+print("true" if setting else "false")
+PYTHON
+)"
+
+loaded() {
+  launchctl print "$service" >/dev/null 2>&1
+}
+
+# Never interrupt an updater while it holds the cross-repository run lock.
+idle() {
+  if [ ! -e "$lock" ]; then
+    return 0
+  fi
+  python3 - "$lock" <<'PYTHON'
+import fcntl
+from pathlib import Path
+import sys
+
+with Path(sys.argv[1]).open("a") as handle:
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        sys.exit(1)
+PYTHON
+}
+
+if [ "$enabled" = false ]; then
+  # Disable persistence immediately, even if a running refresh must finish.
+  launchctl disable "$service"
+  if loaded; then
+    if ! idle; then
+      echo "repo-refresh disabled; a refresh is running. Reapply after it finishes to unload the agent." >&2
+      exit 1
+    fi
+    launchctl bootout "$service"
+  fi
+  rm -f "$marker"
+  exit 0
+fi
+
+# Re-enable a service disabled during a previous apply or safety incident.
+launchctl enable "$service"
+desired_revision={{ includeTemplate "repo-refresh-agent" . | sha256sum | quote }}
+if loaded; then
+  active_revision="$(launchctl print "$service" | awk '$1 == "REPO_REFRESH_AGENT_REVISION" && $2 == "=>" { gsub(/"/, "", $3); print $3; exit }')"
   if [ "$active_revision" != "$desired_revision" ]; then
-    # Never interrupt a preservation transaction to reload scheduling changes.
-    echo "repo-refresh schedule changed; log out and back in to load it after any active run." >&2
-    exit 0
+    if ! idle; then
+      echo "repo-refresh definition changed during an active refresh. Reapply after it finishes." >&2
+      exit 1
+    fi
+    launchctl bootout "$service"
+    launchctl bootstrap "$domain" "$plist"
   fi
 else
   launchctl bootstrap "$domain" "$plist"
 fi
+
+current_hash="$(shasum -a 256 "$plist" | awk '{print $1}')"
 temporary="$(mktemp "$marker.XXXXXX")"
 printf '%s\n' "$current_hash" > "$temporary"
 mv "$temporary" "$marker"

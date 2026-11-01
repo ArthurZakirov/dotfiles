@@ -37,7 +37,7 @@ def build() -> dict[Path, bytes]:
         )
         refs = codex_home / "agents-md-references"
         return {
-            Path("AGENTS.md"): (codex_home / "AGENTS.md").read_bytes(),
+            Path("AGENTS.md.tmpl"): (codex_home / "AGENTS.md").read_bytes(),
             **{
                 Path("agents-md-references") / source.name: source.read_bytes()
                 for source in refs.iterdir()
@@ -52,7 +52,7 @@ def main() -> int:
     args = parser.parse_args()
     expected = build()
     target_paths = {
-        Path("AGENTS.md"),
+        Path("AGENTS.md.tmpl"),
         *(
             Path("agents-md-references") / path.name
             for path in (TARGET / "agents-md-references").glob("*")
