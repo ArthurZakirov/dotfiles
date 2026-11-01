@@ -1,15 +1,34 @@
 <a id="exact-code-explanations"></a>
 # 🔎 Exact explanations and navigation of code
 
-Apply these rules whenever a response **locates, identifies, explains, compares, diagnoses, reviews, tests, or proposes changing code**. They apply whether the question asks *where* something happens, *which file* implements it, *why* it happens, *what* it does, or *how* to modify it. Do not require the user to ask for a "code explanation."
+Apply these rules to any question or explanation involving repository code, from locating an implementation through diagnosing or modifying it. The user's wording does not limit their applicability.
 
-The examples below are illustrative, not claims about the active repository. Pair each correction with its own bad example in the same row.
+The examples below are hypothetical illustrations, not observations from the current checkout.
 
-| When | Then, including the bad → good contrast |
-| --- | --- |
-| Naming any inspected identifier, function, method, variable, column, expression, literal, or argument. | Reproduce its **exact source spelling**, capitalization, leading underscores, punctuation, operators, and quote characters. Use inline backticks for literal code when a verified symbol link is unavailable; when resolvable, follow the link-label rules under Anchoring without altering the target. **Bad:** "the underscore keep intervals before rebuild function." **Good:** `_keep_intervals_before_rebuild`. Do not paraphrase identifiers into spoken-out punctuation. |
-| Explaining an implementation using abstraction, jargon, or an invented metaphor instead of the executable operation. | Replace vague wording with the actual identifier, comparison, call, and result. Treat `left edge`, `tail`, `prefix`, `envelope`, `owns`, `carries`, `partition`, `disjoint`, `boundary`, `idempotent`, and `semantics` as **examples of the same failure mode**, not separate kinds of rules. Keep technical terminology when it is a real name, a necessary domain term, or useful *after* the specific mechanism is clear. **Bad:** "The left-edge partition owns the earlier days." **Good:** "Rows where `state_date < rebuild_start` are passed to `_keep_intervals_before_rebuild`." |
-| Describing a condition, interval, branch, or affected set of rows. | Show the actual predicate and say what happens when it is true or false, instead of substituting a conceptual label. **Bad:** "The older dates are kept." **Good:** "For `state_date < rebuild_start`, the existing row is kept; for `state_date >= rebuild_start`, it is rebuilt." Verify these outcomes against source rather than inferring them from the predicate alone. |
-| Explaining a reported or observed bug where the values are known. | Show the relevant input, actual incorrect result, and expected result without fabricating observations. **Bad:** "The old left edge is wrong." **Good (hypothetical):** "With `valid_from='2026-10-01'` and `rebuild_start='2026-10-10'`, the code starts emitting dates at `valid_from` (`2026-10-01`); it should start at `rebuild_start` (`2026-10-10`)." Mark constructed demonstrations as hypothetical. |
+## Preserve exact source identifiers
 
-Use a verified source excerpt when describing actual code; see **Source code snippets** below. Do not automatically attach input/output demonstrations to every function or variable: show concrete values when they resolve a real ambiguity or establish the reported behavior, not as filler.
+When naming inspected code, reproduce **every character exactly as it appears in the source**. Use inline code backticks for literals; when a verified symbol link is available, use a plain-text link label and retain the exact symbol at its destination.
+
+- **Bad:** "the underscore keep intervals before rebuild function."
+- **Good:** `_keep_intervals_before_rebuild`.
+
+## Describe the actual operation and values
+
+Explain code by pointing to the relevant source expression and what it actually does. Vague metaphors such as "left edge" or "owns" and abstract terms such as "partition" or "idempotent" cause the same problem when they replace the concrete operation. Use technical terms when they clarify an already identified mechanism.
+
+**Example — which rows are processed**
+
+- **Bad:** "The left-edge partition owns the earlier days."
+- **Good:** "Rows satisfying `state_date < rebuild_start` are passed to `_keep_intervals_before_rebuild`."
+
+**Example — what a condition changes**
+
+- **Bad:** "The older dates are kept."
+- **Good:** "For `state_date < rebuild_start` the existing rows are kept; rows with `state_date >= rebuild_start` are rebuilt."
+
+**Example — why an output is incorrect**
+
+- **Bad:** "The old left edge is wrong."
+- **Good (hypothetical):** "With `valid_from='2026-10-01'` and `rebuild_start='2026-10-10'`, the output starts at `2026-10-01`; the expected start is `2026-10-10`."
+
+Verify claims about real behavior against the source or observed output. Show representative inputs, values, or resulting outputs when they make an otherwise abstract behavior easier to understand; identify constructed examples as hypothetical. For inspected code, provide the relevant scoped excerpt as specified under Source code snippets.

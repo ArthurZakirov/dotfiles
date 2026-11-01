@@ -1,29 +1,34 @@
 <a id="source-code-snippets"></a>
 # 🧾 Source code snippets and proposed changes
 
-Use these rules when quoting **inspected file contents** in any user-facing text or human-readable artifact. Do not confuse source quotations with independent executable commands supplied for the reader to run.
+When describing inspected code, quote the relevant source. Let the excerpt establish **what** exists; use surrounding prose to explain **why** it matters or **what follows**.
 
-| When | Then |
-| --- | --- |
-| Describing existing code, a handler, a field, a config value, or the implementation of a behavior. | **Show the relevant source lines** when available. The excerpt establishes **what** exists; surrounding prose explains **why** it matters or **what follows**. Do not replace an available source excerpt with a vague claim such as "the handler does X" or "there's a column for that." |
-| Publishing a source-code fence. | Put a verified clickable **file-and-line link immediately above** the fence. Put the exact source-relative path as a comment on the **first line inside** the fence so the location survives copying. This is two locations with different purposes, not duplicate prose. If a link cannot be verified, state that and use a concrete path/locator instead of inventing an href. |
-| Quoting a function or method. | Include its enclosing **exact** `def` line and, for a method, the enclosing `class` line. Keep only relevant body lines, marking **each omitted span** with `# ...` (or the source language's comment syntax). Do not begin the meaningful Python excerpt at a bare `return` or expression without showing the function it belongs to. Do not invent `def` / `class` for module-level code. |
-| Quoting another file type. | Keep enough real syntax to establish scope: the heading for Markdown, parent keys for YAML/JSON, the `SELECT` or CTE name for SQL, or the nearest meaningful declaration for other languages. Retain actual language tags and syntax highlighting context; avoid bare, unscoped identifier fragments. Use the language's comment syntax for source-location annotations (`#` for YAML/Python, `--` for SQL, `<!-- -->` for Markdown). For JSON, tag an annotated excerpt `jsonc` with a `// path` comment; do not present that excerpt as strict JSON. |
-| Quoting Markdown for its **meaning** rather than its syntax. | Prefer a short blockquote or your own explanation and a source link. If Markdown syntax itself matters, use a `markdown` fence, include the relevant heading, and quote only the necessary lines. |
-| Proposing or reporting a code edit. | Provide **two separately labeled excerpts**, **BEFORE** and **AFTER**, covering the same relevant lines with the same enclosing scope. Never show only AFTER, and never use one source fence with prose about what changed. For proposed edits, label AFTER as proposed rather than suggesting it already exists at the linked source. Both excerpts retain the source location and path comment where a verified destination exists. |
-| Showing a change inside a larger AFTER excerpt. | Mark inserted lines with `# NEW` and replaced lines with `# CHANGED`, using the language's comment syntax, and put the **old line commented immediately above** its replacement. Keep untouched context lines unmarked. These are annotated review snippets, not executable patches; do not imply that comments should be inserted into production code. |
+## Give every source excerpt two locations
 
-**Illustrative Python excerpt** (the link below is a format illustration, not a verified source):
+- **Above the fence:** a verified, clickable link identifying the file and relevant line numbers.
+- **Inside the fence:** the exact source-relative path as the first line, written as a comment that survives copying.
 
-`[the_function — file and lines](src/path/to/file.py#L1-L8)`
+Use a real language tag. If the source location is not verifiable, provide its exact known locator and state that the link is unresolved.
 
-```python
-# src/path/to/file.py
-class TheClass:
-    # ...
-    def the_function(self, arg):
-        # ...
-        a = b + c
-```
+## Preserve the enclosing structure
 
-For runnable shell commands, show an executable `sh` or `bash` fence with real argument values where appropriate; the source-excerpt rules above do not require inventing a containing function or a file link for a new command.
+Keep the relevant lines and their real enclosing structure. Each omitted span is marked with the source language's comment syntax.
+
+- **Python:** include the actual `def` line; for a method, also include the enclosing `class` line. Mark omitted spans with `# ...`.
+- **Markdown:** include the heading under which the quoted content appears. Use `<!-- ... -->` for omissions if quoting literal Markdown.
+- **YAML:** include the enclosing parent keys. Use `# ...` for omissions and the path comment.
+- **JSON:** include the enclosing object keys. For an annotated excerpt with `//` comments, use a `jsonc` fence rather than `json`.
+- **SQL:** include the `SELECT` statement or CTE name. Use `-- ...` for omissions and the path comment.
+- **Other languages:** show the nearest real enclosing declaration, using that language's comment syntax.
+
+## Compare code changes
+
+- **BEFORE:** show the original relevant lines, including enclosing scope and both source locations.
+- **AFTER:** show the same relevant lines with the proposed or applied modification. Label proposed code as proposed.
+- **Within a longer AFTER excerpt:** mark added lines `# NEW` and replacements `# CHANGED` (or the language's comment equivalent). Place each replaced old line in a comment immediately above the new line. Leave unchanged lines unmarked. These annotations illustrate a change; they are not production code.
+
+## Match the excerpt to the reader's purpose
+
+- **Explaining existing behavior:** show the actual lines instead of referring vaguely to a handler or field.
+- **Quoting Markdown wording:** use a blockquote or concise paraphrase plus a link when the text's meaning matters. Use a `markdown` fence with its heading when its syntax matters.
+- **Providing runnable commands:** use an executable `sh` or `bash` fence with appropriate arguments. Standalone commands do not need fictitious source file comments or containing function declarations.
