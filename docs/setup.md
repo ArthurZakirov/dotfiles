@@ -39,10 +39,17 @@ fi
      cp -p "$config" "${config}.backup.$(date +%Y%m%d-%H%M%S)"
    fi
    ```
-2. Run the [official chezmoi installer](https://www.chezmoi.io/install/). Select **personal** or **professional** when prompted. Approve any expected macOS administrator or Command Line Tools prompts:
+2. Run the [official chezmoi installer](https://www.chezmoi.io/install/). Set
+   `REPOS_DIR` to the **absolute directory where your primary repositories
+   should live** before initialization. It is stored as `reposDir` in the
+   local chezmoi configuration and used to configure `repo-refresh`.
+   The default is `$HOME/Repos`; external clones use `${REPOS_DIR}-external`.
+   Select your Mac profile when prompted and approve any expected macOS
+   administrator or Command Line Tools prompts:
 
    ```sh
    export GITHUB_USERNAME="ArthurZakirov"
+   export REPOS_DIR="$HOME/Repos"  # Choose the primary directory before first initialization.
    sh -c "$(curl -fsLS https://get.chezmoi.io)" -- init --apply "$GITHUB_USERNAME"
    ```
 3. Open a new Terminal, then verify:

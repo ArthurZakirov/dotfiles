@@ -2,6 +2,7 @@
 """Refresh permanent checkouts and rebase local branches with recovery worktrees."""
 
 import argparse
+import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import fcntl
 import json
@@ -68,26 +69,21 @@ def write_json(path, payload):
 
 
 def repositories(root):
-    """Stop at repository boundaries; don't follow directory symlinks or submodules."""
-    for current, directories, files in os.walk(root, followlinks=False):
-        directories[:] = sorted(d for d in directories if d != ".git")
-        if ".git" in files:
-            # Linked development worktrees are not additional permanent clones.
-            directories.clear()
-            metadata = git(Path(current), "rev-parse", "--absolute-git-dir", check=False)
-            if metadata.returncode or not (Path(os.fsdecode(metadata.stdout).strip()) / "commondir").exists():
-                yield Path(current)
-        elif (Path(current) / ".git").is_dir():
-            directories.clear()
-            yield Path(current)
+    """Manage only direct clones; ignore nested experiments and worktree siblings."""
+    for repo in sorted(root.iterdir()):
+        # Only immediate Git clones are managed; nested experiments and linked
+        # worktrees are not permanent default-branch checkouts.
+        if repo.is_dir() and not repo.is_symlink() and (repo / ".git").is_dir():
+            yield repo
 
 
-def inventory(repo):
-    """Detect files changing while recovery is being copied, including ignored files."""
+def inventory(repo, excluded_directories=()):
+    """Detect changes to preserved files, including ignored non-cache data."""
     result = {}
     for current, directories, files in os.walk(repo, followlinks=False):
         if Path(current) == repo:
-            directories[:] = [name for name in directories if name != ".git"]
+            directories[:] = [name for name in directories
+                              if name != ".git" and name not in excluded_directories]
             files = [name for name in files if name != ".git"]
         for name in directories + files:
             path = Path(current) / name
@@ -125,7 +121,20 @@ def preserve(repo, destination, branch, head, original_head, default, target):
     destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     # Recovery may include ignored local credentials. Keep the entire hierarchy private.
     os.chmod(destination.parent, 0o700)
-    before = inventory(repo)
+    # Preserve all untracked data except well-known rebuildable dependencies
+    # and build output, and only when Git confirms the directory is ignored.
+    excluded_caches = set()
+    for name in ("node_modules", ".next", "out"):
+        directory = repo / name
+        if (directory.is_dir() and not directory.is_symlink()
+                and git(repo, "check-ignore", "-q", "--", name, check=False).returncode == 0
+                and not git(repo, "ls-files", "--", name).stdout):
+            excluded_caches.add(name)
+    before = inventory(repo, excluded_caches)
+    estimated_bytes = sum(size for _, size, _, _ in before.values())
+    free_bytes = shutil.disk_usage(destination.parent).free
+    if free_bytes < estimated_bytes + 2 * 1024**3:
+        raise RefreshError("Insufficient free space for a recovery; no new worktree created")
     original_index = git_path(repo, "index")
     index_bytes = original_index.read_bytes() if original_index.exists() else None
     recovery_ref = f"refs/repo-refresh/{destination.name}"
@@ -142,7 +151,7 @@ def preserve(repo, destination, branch, head, original_head, default, target):
               "recovery_ref": recovery_ref, "complete": False}
     write_json(record_dir / "recovery.json", record)
     for entry in repo.iterdir():
-        if entry.name != ".git":
+        if entry.name != ".git" and entry.name not in excluded_caches:
             copy_entry(entry, destination / entry.name)
 
     # Submodules use gitfiles pointing back into the original checkout. Give their
@@ -171,7 +180,7 @@ def preserve(repo, destination, branch, head, original_head, default, target):
             copy_entry(source, record_dir / name)
     current_head = git(repo, "rev-parse", "--verify", "HEAD", check=False)
     observed_head = os.fsdecode(current_head.stdout).strip() if current_head.returncode == 0 else None
-    if (before != inventory(repo) or observed_head != original_head
+    if (before != inventory(repo, excluded_caches) or observed_head != original_head
             or (original_index.read_bytes() if original_index.exists() else None) != index_bytes):
         raise RefreshError("Checkout changed during preservation; original left untouched; retry next cycle")
     default_ref = f"refs/heads/{default}"
@@ -185,16 +194,34 @@ def preserve(repo, destination, branch, head, original_head, default, target):
     return record_dir
 
 
-def worktree_path(worktrees, relative, prefix=""):
-    stamp = time.strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:12]
-    destination = worktrees / relative / (prefix + stamp)
-    if not destination.resolve().is_relative_to(worktrees):
-        raise RefreshError("Recovery directory symlink escapes the configured root; checkout left untouched")
-    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+def worktree_path(repo, branch, recovery=False):
+    # A worktree's folder must identify the branch or detached commit it contains.
+    slug = "".join(char if char.isalnum() or char in "._-" else "-" for char in branch)
+    slug = slug.strip(".-_")
+    if not slug:
+        # Preserve the identity of valid branches consisting only of symbols.
+        slug = "branch-" + "-".join(f"u{ord(char):x}" for char in branch)
+    if len(slug.encode("utf-8")) > 120:
+        # Keep long names within filesystem component limits without ambiguity.
+        while len(slug.encode("utf-8")) > 100:
+            slug = slug[:-1]
+        slug = f"{slug.rstrip('.-_')}-{hashlib.sha256(branch.encode()).hexdigest()[:10]}"
+    parent = repo.with_name(f"{repo.name}.worktrees")
+    if parent.is_symlink() or parent.resolve().parent != repo.parent.resolve():
+        raise RefreshError("Worktree directory redirects outside the repository's parent; checkout left untouched")
+    parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(parent, 0o700)
+    if recovery:
+        slug = f"recovery-{slug}"
+    destination = parent / slug
+    if recovery or destination.exists() or destination.is_symlink():
+        # Distinguish historical snapshots and slug collisions while retaining the branch name.
+        suffix = time.strftime("%Y-%m-%d--%H-%M-%S") + "-" + uuid.uuid4().hex[:12]
+        destination = parent / f"{slug}-{suffix}"
     return destination
 
 
-def refresh(repo, worktrees, relative, remote):
+def refresh(repo, remote):
     # Fetch and resolve the remote's actual default before disturbing local files.
     git(repo, "fetch", "--prune", "--no-recurse-submodules", remote)
     advertised = value(repo, "ls-remote", "--symref", remote, "HEAD")
@@ -225,7 +252,8 @@ def refresh(repo, worktrees, relative, remote):
     if branch == default and head == target and not dirty and not operation:
         return {"state": "current", "branch": default, "commit": target}
 
-    destination = worktree_path(worktrees, relative)
+    label = branch or f"detached-{head[:12]}"
+    destination = worktree_path(repo, label, recovery=branch in (None, default))
     preserve(repo, destination, branch, head, original_head, default, target)
     try:
         released = restore_default(repo, destination, branch, head, default, target, remote)
@@ -306,7 +334,7 @@ def branch_worktrees(repo):
     return paths
 
 
-def rebase_branch(repo, branch, candidates, worktrees, relative, default, target):
+def rebase_branch(repo, branch, candidates, default, target):
     if len(candidates) > 1:
         raise RefreshError("Branch is checked out in multiple worktrees; cannot safely choose one")
     source = next(iter(candidates), None)
@@ -323,15 +351,17 @@ def rebase_branch(repo, branch, candidates, worktrees, relative, default, target
         active = any(git_path(source, name).exists() for name in ACTIVE_OPERATION_STATE)
         if active or unmerged:
             return {**previous, "state": "conflicts" if unmerged else "in-progress", "worktree": str(source)}
-        if previous.get("state") == "edits-pending":
+        # Failed rebases require manual resolution. Retrying every minute
+        # would create another full recovery worktree without fixing the cause.
+        if previous.get("state") in {"edits-pending", "failed"}:
             return previous
     if git(repo, "merge-base", "--is-ancestor", target, f"refs/heads/{branch}", check=False).returncode == 0:
         return {"state": "current", **({"worktree": str(source)} if source else {})}
     if source is None:
-        source = worktree_path(worktrees, relative, "branch-")
+        source = worktree_path(repo, branch)
         git(repo, "worktree", "add", source, branch)
     head = value(source, "rev-parse", "HEAD")
-    recovery = worktree_path(worktrees, relative, "before-rebase-")
+    recovery = worktree_path(repo, branch, recovery=True)
     preserve(source, recovery, branch, head, head, default, target)
     if value(source, "symbolic-ref", "--short", "HEAD") != branch:
         raise RefreshError(f"Branch changed during preservation; recovery: {recovery}")
@@ -382,7 +412,108 @@ def rebase_branch(repo, branch, candidates, worktrees, relative, default, target
     return record
 
 
-def rebase_branches(repo, worktrees, relative, default, target):
+def merged_evidence(repo, branch, target):
+    """Prove inclusion by ancestry or an exact squash commit, using Git only."""
+    tip = value(repo, "rev-parse", f"refs/heads/{branch}")
+    if git(repo, "merge-base", "--is-ancestor", tip, target, check=False).returncode == 0:
+        return "ancestor"
+    merged = git(repo, "merge-base", "--all", tip, target, check=False)
+    if merged.returncode:
+        return None
+    bases = os.fsdecode(merged.stdout).splitlines()
+    if len(bases) != 1 or bases[0] == target:
+        return None
+    base = bases[0]
+    changes = git(repo, "diff", "--raw", "--no-renames", "--no-abbrev", "-z",
+                  base, tip).stdout
+    if not changes:
+        return None
+    paths = git(repo, "diff", "--name-only", "--no-renames", "-z", base, tip).stdout
+    names = [os.fsdecode(name) for name in paths.split(b"\0") if name]
+    # Restrict history to first-parent commits that touch the branch's files.
+    # A squash usually creates one such commit. A matching message is not proof.
+    candidates = value(repo, "log", "--first-parent", "--max-count=300",
+                       "--format=%H", f"{base}..{target}", "--", *names)
+    for commit in candidates.splitlines():
+        parent = value(repo, "rev-parse", f"{commit}^1")
+        actual = git(repo, "diff", "--raw", "--no-renames", "--no-abbrev",
+                     "-z", parent, commit).stdout
+        if changes == actual:
+            return f"squash:{commit[:12]}"
+    return None
+
+
+def safe_merged_worktree(repo, worktree):
+    """Protect every local change except confirmed ignored build caches."""
+    parent = repo.with_name(repo.name + ".worktrees")
+    if (worktree.parent != parent or parent.is_symlink()
+            or worktree.is_symlink() or not worktree.is_dir()):
+        return False
+    if Path(value(worktree, "rev-parse", "--show-toplevel")) != worktree:
+        return False
+    if any(git_path(worktree, name).exists() for name in ACTIVE_OPERATION_STATE):
+        return False
+    if git(worktree, "ls-files", "--unmerged").stdout:
+        return False
+    status = git(worktree, "status", "--porcelain=v1", "-z",
+                 "--untracked-files=all", "--ignored=matching").stdout
+    allowed_caches = {"node_modules", ".next", "out"}
+    for entry in status.split(b"\0"):
+        if not entry:
+            continue
+        if not entry.startswith(b"!! "):
+            return False
+        relative = os.fsdecode(entry[3:]).rstrip("/")
+        path = worktree / relative
+        if (relative not in allowed_caches or not path.is_dir() or path.is_symlink()
+                or git(worktree, "check-ignore", "-q", "--", relative,
+                       check=False).returncode != 0
+                or git(worktree, "ls-files", "--", relative).stdout):
+            return False
+    return True
+
+
+def clean_merged_branch(repo, branch, candidates, remote, default, target):
+    proof = merged_evidence(repo, branch, target)
+    if not proof:
+        return None
+    if len(candidates) > 1:
+        return {"state": "merged-protected", "reason": "Multiple branch worktrees",
+                "proof": proof}
+    source = next(iter(candidates), None)
+    if source is not None and not safe_merged_worktree(repo, source):
+        return {"state": "merged-protected", "reason": "Uncommitted or protected files",
+                "worktree": str(source), "proof": proof}
+    original = value(repo, "rev-parse", f"refs/heads/{branch}")
+    # A changed default or branch tip invalidates our earlier proof.
+    if (value(repo, "rev-parse", f"refs/remotes/{remote}/{default}") != target
+            or value(repo, "rev-parse", f"refs/heads/{branch}") != original):
+        return {"state": "merged-protected", "reason": "Refs changed during verification"}
+    remote_state = "absent"
+    remote_ref = f"refs/remotes/{remote}/{branch}"
+    if git(repo, "show-ref", "--verify", remote_ref, check=False).returncode == 0:
+        remote_tip = value(repo, "rev-parse", remote_ref)
+        # Only delete a corresponding remote branch if the fetched tip matches
+        # the local tip; a different remote history may contain additional work.
+        if remote_tip != original:
+            remote_state = "different-tip-preserved"
+        else:
+            advertised = value(repo, "ls-remote", "--heads", remote, f"refs/heads/{branch}")
+            if advertised.split()[:1] != [remote_tip]:
+                remote_state = "changed-preserved"
+            else:
+                result = git(repo, "push", f"--force-with-lease=refs/heads/{branch}:{remote_tip}",
+                             remote, f":refs/heads/{branch}", check=False)
+                remote_state = "deleted" if result.returncode == 0 else "deletion-rejected"
+    if source is not None:
+        git(repo, "worktree", "remove", "--force", source)
+    # Squash-merged tips are not ancestors; -D is safe only after proof above.
+    git(repo, "branch", "-D", branch)
+    return {"state": "merged-cleaned", "proof": proof,
+            "remote": remote_state, **({"worktree_removed": str(source)} if source else {})}
+
+
+def rebase_branches(repo, default, target, remote):
     paths = branch_worktrees(repo)
     outcomes = []
     for reference in value(repo, "for-each-ref", "--format=%(refname)", "refs/heads/").splitlines():
@@ -390,8 +521,11 @@ def rebase_branches(repo, worktrees, relative, default, target):
         if branch in {default, "main", "master"}:
             continue
         try:
-            outcome = rebase_branch(repo, branch, paths.get(branch, set()),
-                                    worktrees, relative, default, target)
+            outcome = clean_merged_branch(repo, branch, paths.get(branch, set()),
+                                          remote, default, target)
+            if outcome is None:
+                outcome = rebase_branch(repo, branch, paths.get(branch, set()),
+                                        default, target)
         except (RefreshError, OSError, shutil.Error, ValueError) as error:
             message = str(error) if isinstance(error, RefreshError) else type(error).__name__
             outcome = {"state": "failed", "error": message}
@@ -399,7 +533,7 @@ def rebase_branches(repo, worktrees, relative, default, target):
     return outcomes
 
 
-def refresh_one(repo, root, worktrees, remote):
+def refresh_one(repo, remote):
     outcome = {"repository": str(repo)}
     try:
         if Path(value(repo, "rev-parse", "--show-toplevel")).resolve() != repo.resolve():
@@ -408,10 +542,8 @@ def refresh_one(repo, root, worktrees, remote):
         common = Path(value(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"))
         with (common / "repo-refresh.lock").open("a") as repo_lock:
             fcntl.flock(repo_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            outcome.update(refresh(repo, worktrees, repo.relative_to(root), remote))
-            outcome["branches"] = rebase_branches(
-                repo, worktrees, repo.relative_to(root), outcome["branch"], outcome["commit"],
-            )
+            outcome.update(refresh(repo, remote))
+            outcome["branches"] = rebase_branches(repo, outcome["branch"], outcome["commit"], remote)
             for branch in outcome["branches"]:
                 if branch.get("worktree") == outcome.get("recovery") and branch.get("recovery"):
                     outcome["development_worktree"] = outcome["recovery"]
@@ -432,20 +564,18 @@ def run(config_path, state_dir):
     config = json.loads(config_path.read_text())
     if not isinstance(config.get("enabled", True), bool):
         raise RefreshError("enabled must be a JSON boolean")
-    for key in ("root", "worktrees"):
-        setting = config.get(key)
-        if (not isinstance(setting, str) or not setting.strip()
-                or not Path(setting).expanduser().is_absolute()):
-            raise RefreshError(f"{key} must be an absolute path or start with ~/")
-    root = Path(config["root"]).expanduser().resolve()
-    worktrees = Path(config["worktrees"]).expanduser().resolve()
+    setting = config.get("root")
+    if (not isinstance(setting, str) or not setting.strip()
+            or not Path(setting).expanduser().is_absolute()):
+        raise RefreshError("root must be an absolute path or start with ~/")
+    if "worktrees" in config:
+        raise RefreshError("Remove obsolete 'worktrees' setting; paths are derived from each repository")
+    root = Path(setting).expanduser().resolve()
     remote = config.get("remote", "origin")
     if not isinstance(remote, str) or not remote or remote.startswith("-"):
         raise RefreshError("remote must be a nonempty Git remote name")
     if not config.get("enabled", True):
         return 0
-    if root == worktrees or root in worktrees.parents or worktrees in root.parents:
-        raise RefreshError("Repository and recovery roots must not overlap")
     if not root.is_dir():
         raise RefreshError("Configured repository root is not a directory")
     state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -456,7 +586,7 @@ def run(config_path, state_dir):
             return 0
         outcomes = []
         with ThreadPoolExecutor(max_workers=4) as pool:
-            pending = [pool.submit(refresh_one, repo, root, worktrees, remote)
+            pending = [pool.submit(refresh_one, repo, remote)
                        for repo in repositories(root)]
             for future in as_completed(pending):
                 outcome = future.result()

@@ -3,6 +3,7 @@ sourceDir = "<DOTFILES_REPO>"
 [data]
     profile = "professional"
     githubUsername = "ArthurZakirov"
+    reposDir = "<HOME>/Repos"
     bwsAccount = ""
 
 [diff]

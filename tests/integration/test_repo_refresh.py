@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import subprocess
 import sys
 import time
@@ -75,13 +76,215 @@ def scenario(tmp_path, monkeypatch):
                    check=True, capture_output=True)
     git(upstream, "remote", "add", "origin", remote)
     root = tmp_path / "Repos"
-    repo = root / "personal" / "project"
+    repo = root / "project"
     repo.parent.mkdir(parents=True)
     subprocess.run(["git", "clone", str(remote), str(repo)], check=True, capture_output=True)
     config = tmp_path / "config.json"
-    worktrees = tmp_path / "Worktrees"
-    config.write_text(json.dumps({"root": str(root), "worktrees": str(worktrees)}))
+    worktrees = root / "project.worktrees"
+    config.write_text(json.dumps({"root": str(root)}))
     return Scenario(repo, upstream, remote, config, tmp_path / "state", worktrees)
+
+
+@pytest.mark.parametrize("integration", ["merge", "squash"])
+@pytest.mark.parametrize("default", ["main", "master"])
+def test_merged_branch_is_cleaned_locally_and_on_remote(scenario, integration, default):
+    if default == "master":
+        git(scenario.upstream, "branch", "master", "main")
+        git(scenario.upstream, "switch", "master")
+        git(scenario.upstream, "push", "origin", "master")
+        git(scenario.remote, "symbolic-ref", "HEAD", "refs/heads/master")
+        git(scenario.repo, "fetch", "origin", "master")
+        git(scenario.repo, "switch", "-c", "master", "origin/master")
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "feature.txt").write_text("shipped\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Implement feature")
+    (scenario.repo / "detail.txt").write_text("more work\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Complete feature")
+    git(scenario.repo, "push", "-u", "origin", "feature")
+    git(scenario.repo, "switch", default)
+    scenario.worktrees.mkdir()
+    worktree = scenario.worktrees / "feature"
+    git(scenario.repo, "worktree", "add", worktree, "feature")
+
+    git(scenario.upstream, "fetch", "origin", "feature")
+    if integration == "squash":
+        git(scenario.upstream, "merge", "--squash", "origin/feature")
+        git(scenario.upstream, "commit", "-m", "Squash delivery with a different message")
+    else:
+        git(scenario.upstream, "merge", "--no-ff", "-m", "Merge delivered feature",
+            "origin/feature")
+    git(scenario.upstream, "push", "origin", default)
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    cleaned = scenario.outcome()["branches"][0]
+    assert cleaned["state"] == "merged-cleaned"
+    assert cleaned["proof"].startswith("squash:" if integration == "squash" else "ancestor")
+    assert cleaned["remote"] == "deleted"
+    assert not worktree.exists()
+    assert git(scenario.repo, "show-ref", "--verify", "refs/heads/feature",
+               check=False) == ""
+    assert git(scenario.remote, "show-ref", "--verify", "refs/heads/feature",
+               check=False) == ""
+
+
+@pytest.mark.parametrize("local_data", ["tracked", "untracked", "ignored"])
+def test_merged_branch_preserves_worktree_with_local_data(scenario, local_data):
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "feature.txt").write_text("shipped\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Feature")
+    git(scenario.repo, "push", "origin", "feature")
+    git(scenario.repo, "switch", "main")
+    scenario.worktrees.mkdir()
+    worktree = scenario.worktrees / "feature"
+    git(scenario.repo, "worktree", "add", worktree, "feature")
+    if local_data == "tracked":
+        (worktree / "feature.txt").write_text("uncommitted edit\n")
+    elif local_data == "untracked":
+        (worktree / "notes.txt").write_text("unique local notes\n")
+    else:
+        (worktree / "ignored").mkdir()
+        (worktree / "ignored/secret.txt").write_text("unique ignored data\n")
+    git(scenario.upstream, "fetch", "origin", "feature")
+    git(scenario.upstream, "merge", "--squash", "origin/feature")
+    git(scenario.upstream, "commit", "-m", "Squashed implementation")
+    git(scenario.upstream, "push", "origin", "main")
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    branch = scenario.outcome()["branches"][0]
+    assert branch["state"] == "merged-protected"
+    assert "Uncommitted" in branch["reason"]
+    assert worktree.exists()
+    assert git(scenario.repo, "rev-parse", "refs/heads/feature")
+    assert git(scenario.remote, "rev-parse", "refs/heads/feature")
+
+
+def test_clean_merged_branch_removes_only_confirmed_build_caches(scenario):
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "feature.txt").write_text("shipped\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Feature")
+    git(scenario.repo, "push", "origin", "feature")
+    git(scenario.repo, "switch", "main")
+    scenario.worktrees.mkdir()
+    worktree = scenario.worktrees / "feature"
+    git(scenario.repo, "worktree", "add", worktree, "feature")
+    with (worktree / ".gitignore").open("a") as ignore:
+        ignore.write("/node_modules/\n/.next/\n/out/\n")
+    for name in ("node_modules", ".next", "out"):
+        folder = worktree / name
+        folder.mkdir()
+        (folder / "cache").write_text("generated\n")
+    # The .gitignore is tracked and would block cleanup, so commit it on branch.
+    git(worktree, "add", ".gitignore")
+    git(worktree, "commit", "-m", "Ignore build output")
+    git(worktree, "push", "origin", "feature")
+    git(scenario.upstream, "fetch", "origin", "feature")
+    git(scenario.upstream, "merge", "--squash", "origin/feature")
+    git(scenario.upstream, "commit", "-m", "Publish website")
+    git(scenario.upstream, "push", "origin", "main")
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert scenario.outcome()["branches"][0]["state"] == "merged-cleaned"
+    assert not worktree.exists()
+
+
+def test_partial_squash_does_not_trigger_branch_deletion(scenario):
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "one.txt").write_text("one\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Part one")
+    first = git(scenario.repo, "rev-parse", "HEAD")
+    (scenario.repo / "two.txt").write_text("two\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Part two")
+    git(scenario.repo, "push", "origin", "feature")
+    git(scenario.repo, "switch", "main")
+    git(scenario.upstream, "fetch", "origin", "feature")
+    git(scenario.upstream, "cherry-pick", first)
+    git(scenario.upstream, "push", "origin", "main")
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode in (0, 1)
+    assert scenario.outcome()["branches"][0]["state"] != "merged-cleaned"
+    assert git(scenario.repo, "rev-parse", "refs/heads/feature")
+    assert git(scenario.remote, "rev-parse", "refs/heads/feature")
+
+
+def test_squash_with_matching_commit_message_is_not_enough(scenario):
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "feature.txt").write_text("unfinished content\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Same summary")
+    git(scenario.repo, "push", "origin", "feature")
+    git(scenario.repo, "switch", "main")
+    (scenario.upstream / "different.txt").write_text("different content\n")
+    git(scenario.upstream, "add", ".")
+    git(scenario.upstream, "commit", "-m", "Same summary")
+    git(scenario.upstream, "push", "origin", "main")
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode in (0, 1)
+    assert scenario.outcome()["branches"][0]["state"] != "merged-cleaned"
+    assert git(scenario.repo, "rev-parse", "refs/heads/feature")
+    assert git(scenario.remote, "rev-parse", "refs/heads/feature")
+
+
+def test_remote_branch_with_additional_commits_is_preserved(scenario):
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "feature.txt").write_text("shipped\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Feature")
+    original = git(scenario.repo, "rev-parse", "HEAD")
+    git(scenario.repo, "push", "origin", "feature")
+    git(scenario.repo, "switch", "main")
+    git(scenario.upstream, "fetch", "origin", "feature")
+    git(scenario.upstream, "merge", "--squash", "origin/feature")
+    git(scenario.upstream, "commit", "-m", "Squashed feature")
+    git(scenario.upstream, "push", "origin", "main")
+    git(scenario.upstream, "switch", "-c", "feature", "origin/feature")
+    (scenario.upstream / "extra.txt").write_text("new remote work\n")
+    git(scenario.upstream, "add", ".")
+    git(scenario.upstream, "commit", "-m", "Extra unmerged work")
+    newer = git(scenario.upstream, "rev-parse", "HEAD")
+    git(scenario.upstream, "push", "origin", "feature")
+    git(scenario.upstream, "switch", "main")
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert scenario.outcome()["branches"][0]["state"] == "merged-cleaned"
+    assert scenario.outcome()["branches"][0]["remote"] == "different-tip-preserved"
+    assert git(scenario.remote, "rev-parse", "refs/heads/feature") == newer
+    assert newer != original
+
+
+def test_only_direct_clone_directories_are_refreshed(scenario, tmp_path):
+    nested = scenario.repo.parent / "tmp" / "experiment"
+    nested.parent.mkdir()
+    subprocess.run(["git", "clone", str(scenario.remote), str(nested)],
+                   check=True, capture_output=True)
+    git(nested, "switch", "-c", "unfinished")
+    (nested / "untracked.txt").write_text("keep me\n")
+    scenario.advance()
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (scenario.repo / "upstream.txt").is_file()
+    assert git(nested, "branch", "--show-current") == "unfinished"
+    assert (nested / "untracked.txt").read_text() == "keep me\n"
+    assert len(json.loads((scenario.state / "status.json").read_text())["repositories"]) == 1
 
 
 @pytest.mark.parametrize("branch", ["main", "master", "trunk"])
@@ -233,6 +436,91 @@ def test_repeated_run_does_not_create_more_recovery_worktrees(scenario):
     assert git(scenario.repo, "worktree", "list", "--porcelain") == worktrees
 
 
+def test_development_and_recovery_worktree_names_identify_the_branch(scenario):
+    git(scenario.repo, "switch", "-c", "feat/clear-branch-purpose")
+    (scenario.repo / "feature.txt").write_text("keep this work\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Feature")
+    scenario.advance()
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    outcome = scenario.outcome()
+    development = Path(outcome["development_worktree"])
+    recovery = Path(outcome["recovery"])
+    assert development.parent == scenario.repo.with_name("project.worktrees")
+    assert recovery.parent == development.parent
+    assert development.name == "feat-clear-branch-purpose"
+    assert re.fullmatch(
+        r"recovery-feat-clear-branch-purpose-\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2}-[0-9a-f]{12}",
+        recovery.name,
+    )
+    assert git(development, "branch", "--show-current") == "feat/clear-branch-purpose"
+    assert (development / "feature.txt").read_text() == "keep this work\n"
+    assert (recovery / "feature.txt").read_text() == "keep this work\n"
+
+
+@pytest.mark.parametrize(
+    ("branch", "expected_slug"),
+    [("+++", "branch-u2b-u2b-u2b"), ("🚀", "branch-u1f680")],
+)
+def test_symbol_only_branch_names_remain_identifiable(scenario, branch, expected_slug):
+    git(scenario.repo, "switch", "-c", branch)
+    (scenario.repo / "feature.txt").write_text("symbol-only branch work\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Feature")
+    scenario.advance()
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    outcome = scenario.outcome()
+    development = Path(outcome["development_worktree"])
+    recovery = Path(outcome["recovery"])
+    assert development.name == expected_slug
+    assert recovery.name.startswith(f"recovery-{expected_slug}-")
+    assert git(development, "branch", "--show-current") == branch
+    assert (recovery / "feature.txt").read_text() == "symbol-only branch work\n"
+
+
+def test_default_branch_recovery_name_identifies_its_source(scenario):
+    (scenario.repo / "tracked.txt").write_text("local edits\n")
+    scenario.advance()
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    recovery = Path(scenario.outcome()["recovery"])
+    assert re.fullmatch(
+        r"recovery-main-\d{4}-\d{2}-\d{2}--\d{2}-\d{2}-\d{2}-[0-9a-f]{12}",
+        recovery.name,
+    )
+    assert (recovery / "tracked.txt").read_text() == "local edits\n"
+
+
+def test_equivalent_slugs_get_distinct_worktree_paths(scenario):
+    git(scenario.repo, "branch", "feat/foo-bar")
+    git(scenario.repo, "branch", "feat-foo/bar")
+    for branch in ("feat/foo-bar", "feat-foo/bar"):
+        git(scenario.repo, "switch", branch)
+        (scenario.repo / f"{branch.replace('/', '-')}.txt").write_text(branch + "\n")
+        git(scenario.repo, "add", ".")
+        git(scenario.repo, "commit", "-m", f"Distinct work for {branch}")
+    git(scenario.repo, "switch", "main")
+    scenario.advance()
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    outcomes = {entry["branch"]: entry for entry in scenario.outcome()["branches"]}
+    names = {branch: Path(entry["worktree"]).name for branch, entry in outcomes.items()}
+    assert len(set(names.values())) == 2
+    assert all(name.startswith("feat-foo-bar") for name in names.values())
+    for branch, entry in outcomes.items():
+        assert git(Path(entry["worktree"]), "branch", "--show-current") == branch
+
+
 @pytest.mark.parametrize("checked_out", [False, True])
 def test_rebases_every_local_feature_branch_and_protects_original_commits(scenario, tmp_path, checked_out):
     git(scenario.repo, "config", "rebase.updateRefs", "true")
@@ -268,8 +556,61 @@ def test_rebases_every_local_feature_branch_and_protects_original_commits(scenar
     assert not git(scenario.remote, "for-each-ref", "--format=%(refname)", "refs/heads/feature")
 
 
+def test_failed_rebase_is_not_retried_every_minute(scenario):
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "feature.txt").write_text("feature work\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Feature")
+    git(scenario.repo, "switch", "main")
+    linked = scenario.worktrees / "feature"
+    scenario.worktrees.mkdir()
+    git(scenario.repo, "worktree", "add", linked, "feature")
+    marker = Path(git(linked, "rev-parse", "--path-format=absolute",
+                      "--git-path", "repo-refresh-rebase.json"))
+    previous = {"branch": "feature", "state": "failed",
+                "worktree": str(linked), "base": git(scenario.repo, "rev-parse", "HEAD")}
+    marker.write_text(json.dumps(previous))
+    scenario.advance()
+
+    first = subprocess.run(scenario.command, capture_output=True, text=True)
+    saved_worktrees = git(scenario.repo, "worktree", "list", "--porcelain")
+    repeated = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert first.returncode == 1, first.stdout + first.stderr
+    assert repeated.returncode == 1, repeated.stdout + repeated.stderr
+    assert scenario.outcome()["branches"][0] == previous
+    assert git(scenario.repo, "worktree", "list", "--porcelain") == saved_worktrees
+    assert marker.read_text() == json.dumps(previous)
+
+
+def test_generated_ignored_caches_are_not_copied_into_recovery(scenario):
+    git(scenario.repo, "switch", "-c", "feature")
+    with (scenario.repo / ".gitignore").open("a") as stream:
+        stream.write("/node_modules/\n/.next/\n/out/\n")
+    for folder in ("node_modules", ".next", "out"):
+        cache = scenario.repo / folder
+        cache.mkdir()
+        (cache / "generated.tmp").write_text("rebuildable\n")
+    (scenario.repo / "ignored").mkdir()
+    (scenario.repo / "ignored/valuable-local.txt").write_text("preserve me\n")
+    scenario.advance()
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    recovery = Path(scenario.outcome()["recovery"])
+    assert (recovery / "ignored/valuable-local.txt").read_text() == "preserve me\n"
+    assert all(not (recovery / name).exists()
+               for name in ("node_modules", ".next", "out"))
+    assert (scenario.repo.with_name("project.worktrees") / "feature").exists()
+
+
 def test_rebase_conflicts_remain_visible_and_are_not_restarted_on_the_next_tick(scenario, tmp_path):
-    git(scenario.repo, "branch", "healthy")
+    git(scenario.repo, "switch", "-c", "healthy")
+    (scenario.repo / "healthy.txt").write_text("independent unmerged work\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Healthy branch work")
+    git(scenario.repo, "switch", "main")
     git(scenario.repo, "switch", "-c", "feature")
     (scenario.repo / "tracked.txt").write_text("feature change\n")
     git(scenario.repo, "add", ".")
@@ -315,6 +656,9 @@ def test_rebase_conflicts_remain_visible_and_are_not_restarted_on_the_next_tick(
 def test_dirty_feature_worktree_keeps_staged_and_unstaged_edits_after_rebase(scenario, tmp_path):
     existing = tmp_path / "feature-worktree"
     git(scenario.repo, "worktree", "add", "-b", "feature", existing)
+    (existing / "committed-feature.txt").write_text("unique unmerged commit\n")
+    git(existing, "add", ".")
+    git(existing, "commit", "-m", "Unmerged feature change")
     (existing / "tracked.txt").write_text("staged\n")
     git(existing, "add", "tracked.txt")
     (existing / "tracked.txt").write_text("unstaged\n")
@@ -352,6 +696,9 @@ def test_excludes_main_master_and_actual_remote_default_from_branch_rebases(scen
 def test_rebase_edit_restore_conflicts_keep_original_changes_recoverable(scenario, tmp_path, staged):
     existing = tmp_path / "feature-worktree"
     git(scenario.repo, "worktree", "add", "-b", "feature", existing)
+    (existing / "committed-feature.txt").write_text("unique unmerged commit\n")
+    git(existing, "add", ".")
+    git(existing, "commit", "-m", "Unmerged feature change")
     (existing / "tracked.txt").write_text("unfinished local edit\n")
     if staged:
         git(existing, "add", ".")
@@ -400,14 +747,13 @@ def test_redirected_working_tree_is_not_reset_without_its_files_being_preserved(
 
 def test_recovery_directory_symlink_cannot_redirect_copy_into_source(scenario):
     git(scenario.repo, "switch", "-c", "feature")
-    scenario.worktrees.mkdir()
-    (scenario.worktrees / "personal").symlink_to(scenario.repo)
+    scenario.worktrees.symlink_to(scenario.repo)
 
     result = subprocess.run(scenario.command, capture_output=True, text=True)
 
     assert result.returncode == 1
     assert git(scenario.repo, "branch", "--show-current") == "feature"
-    assert not (scenario.repo / "project").exists()
+    assert not (scenario.repo / "recovery-main").exists()
 
 
 def test_git_lock_failure_retains_a_usable_recovery(scenario):
@@ -465,14 +811,16 @@ def test_existing_linked_development_worktrees_are_not_repeatedly_reclaimed(scen
 
 
 def test_initialized_unborn_checkout_preserves_staged_files(scenario, tmp_path):
-    root = tmp_path / "unborn"
+    parent = tmp_path / "unborn-parent"
+    parent.mkdir()
+    root = parent / "project"
     root.mkdir()
     git(root, "init", "-b", "unfinished")
     git(root, "remote", "add", "origin", scenario.remote)
     (root / "local.txt").write_text("first staged file\n")
     git(root, "add", ".")
     config = json.loads(scenario.config.read_text())
-    config["root"] = str(root)
+    config["root"] = str(parent)
     scenario.config.write_text(json.dumps(config))
 
     result = subprocess.run(scenario.command, capture_output=True, text=True)
@@ -548,15 +896,15 @@ def test_ignored_collision_is_preserved_before_remote_file_replaces_it(scenario)
     assert (recovery / "ignored/local").read_text() == "local ignored content\n"
 
 
-@pytest.mark.parametrize("mode", ["disabled", "overlap", "locked", "empty-root", "invalid-enabled"])
+@pytest.mark.parametrize("mode", ["disabled", "legacy-worktrees", "locked", "empty-root", "invalid-enabled"])
 def test_configuration_and_run_lock_prevent_mutation(scenario, mode):
     git(scenario.repo, "switch", "-c", "feature")
     config = json.loads(scenario.config.read_text())
     handle = None
     if mode == "disabled":
         config["enabled"] = False
-    elif mode == "overlap":
-        config["worktrees"] = str(scenario.repo / "recovery")
+    elif mode == "legacy-worktrees":
+        config["worktrees"] = str(scenario.worktrees)
     elif mode == "empty-root":
         config["root"] = ""
     elif mode == "invalid-enabled":
@@ -572,13 +920,15 @@ def test_configuration_and_run_lock_prevent_mutation(scenario, mode):
         if handle:
             handle.close()
 
-    assert result.returncode == (1 if mode in ("overlap", "empty-root", "invalid-enabled") else 0)
+    assert result.returncode == (1 if mode in ("legacy-worktrees", "empty-root", "invalid-enabled") else 0)
     assert git(scenario.repo, "branch", "--show-current") == "feature"
     assert not scenario.worktrees.exists()
 
 
-def test_chezmoi_installs_executable_schedule_and_preserves_local_configuration(scenario, profile_factory):
-    rendered = profile_factory.render("personal")
+@pytest.mark.parametrize("profile", ["personal", "professional"])
+def test_chezmoi_installs_executable_schedule_and_preserves_local_configuration(
+        scenario, profile_factory, profile):
+    rendered = profile_factory.render(profile)
     home = Path.home()  # scenario fixture supplies a disposable HOME
     command = ["chezmoi", "--source", str(ROOT), "--config", str(rendered.config),
                "--destination", str(home), "apply", "--exclude", "scripts", "--force"]
@@ -588,7 +938,7 @@ def test_chezmoi_installs_executable_schedule_and_preserves_local_configuration(
     executable = home / ".local/bin/repo-refresh"
     assert os.access(executable, os.X_OK)
     config = home / ".config/repo-refresh/config.json"
-    assert json.loads(config.read_text())["enabled"] is True
+    assert json.loads(config.read_text())["enabled"] is False
     plist = home / "Library/LaunchAgents/com.arthur.repo-refresh.plist"
     schedule = plistlib.loads(plist.read_bytes())
     assert schedule["StartInterval"] == 60

@@ -10,10 +10,8 @@ fi
 typeset -U path
 path=("$HOME/.local/bin" $path)
 export ZSH="$HOME/.oh-my-zsh"
-export REPOS_DIR="$HOME/Repos"
-export PERSONAL_REPOS_DIR="$REPOS_DIR/personal"
-export THIRD_PARTY_REPOS_DIR="$REPOS_DIR/third-party"
-export PROFESSIONAL_REPOS_DIR="$REPOS_DIR/professional"
+export REPOS_DIR={{ (.reposDir | default (printf "%s/Repos" .chezmoi.homeDir)) | quote }}
+export EXTERNAL_REPOS_DIR="${REPOS_DIR}-external"
 export TICKETS_DIR="$HOME/Tickets"
 
 # ZSH CONFIGURATION
