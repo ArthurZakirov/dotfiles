@@ -366,6 +366,55 @@ def test_rebases_every_local_feature_branch_and_protects_original_commits(scenar
     assert not git(scenario.remote, "for-each-ref", "--format=%(refname)", "refs/heads/feature")
 
 
+def test_failed_rebase_is_not_retried_every_minute(scenario):
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "feature.txt").write_text("feature work\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Feature")
+    git(scenario.repo, "switch", "main")
+    linked = scenario.worktrees / "feature"
+    scenario.worktrees.mkdir()
+    git(scenario.repo, "worktree", "add", linked, "feature")
+    marker = Path(git(linked, "rev-parse", "--path-format=absolute",
+                      "--git-path", "repo-refresh-rebase.json"))
+    previous = {"branch": "feature", "state": "failed",
+                "worktree": str(linked), "base": git(scenario.repo, "rev-parse", "HEAD")}
+    marker.write_text(json.dumps(previous))
+    scenario.advance()
+
+    first = subprocess.run(scenario.command, capture_output=True, text=True)
+    saved_worktrees = git(scenario.repo, "worktree", "list", "--porcelain")
+    repeated = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert first.returncode == 1, first.stdout + first.stderr
+    assert repeated.returncode == 1, repeated.stdout + repeated.stderr
+    assert scenario.outcome()["branches"][0] == previous
+    assert git(scenario.repo, "worktree", "list", "--porcelain") == saved_worktrees
+    assert marker.read_text() == json.dumps(previous)
+
+
+def test_generated_ignored_caches_are_not_copied_into_recovery(scenario):
+    git(scenario.repo, "switch", "-c", "feature")
+    with (scenario.repo / ".gitignore").open("a") as stream:
+        stream.write("/node_modules/\n/.next/\n/out/\n")
+    for folder in ("node_modules", ".next", "out"):
+        cache = scenario.repo / folder
+        cache.mkdir()
+        (cache / "generated.tmp").write_text("rebuildable\n")
+    (scenario.repo / "ignored").mkdir()
+    (scenario.repo / "ignored/valuable-local.txt").write_text("preserve me\n")
+    scenario.advance()
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    recovery = Path(scenario.outcome()["recovery"])
+    assert (recovery / "ignored/valuable-local.txt").read_text() == "preserve me\n"
+    assert all(not (recovery / name).exists()
+               for name in ("node_modules", ".next", "out"))
+    assert (scenario.repo.with_name("project.worktrees") / "feature").exists()
+
+
 def test_rebase_conflicts_remain_visible_and_are_not_restarted_on_the_next_tick(scenario, tmp_path):
     git(scenario.repo, "branch", "healthy")
     git(scenario.repo, "switch", "-c", "feature")
@@ -676,8 +725,10 @@ def test_configuration_and_run_lock_prevent_mutation(scenario, mode):
     assert not scenario.worktrees.exists()
 
 
-def test_chezmoi_installs_executable_schedule_and_preserves_local_configuration(scenario, profile_factory):
-    rendered = profile_factory.render("personal")
+@pytest.mark.parametrize("profile", ["personal", "professional"])
+def test_chezmoi_installs_executable_schedule_and_preserves_local_configuration(
+        scenario, profile_factory, profile):
+    rendered = profile_factory.render(profile)
     home = Path.home()  # scenario fixture supplies a disposable HOME
     command = ["chezmoi", "--source", str(ROOT), "--config", str(rendered.config),
                "--destination", str(home), "apply", "--exclude", "scripts", "--force"]
@@ -687,7 +738,7 @@ def test_chezmoi_installs_executable_schedule_and_preserves_local_configuration(
     executable = home / ".local/bin/repo-refresh"
     assert os.access(executable, os.X_OK)
     config = home / ".config/repo-refresh/config.json"
-    assert json.loads(config.read_text())["enabled"] is True
+    assert json.loads(config.read_text())["enabled"] is False
     plist = home / "Library/LaunchAgents/com.arthur.repo-refresh.plist"
     schedule = plistlib.loads(plist.read_bytes())
     assert schedule["StartInterval"] == 60

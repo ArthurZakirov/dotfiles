@@ -12,7 +12,9 @@ Use the normal dotfiles installation flow:
 
 1. **Review the defaults** in the
    [initial configuration](../../home/dot_config/repo-refresh/create_private_config.json.tmpl).
-   Both Mac installations use the same defaults.
+   Both Mac installations use the same defaults. The updater starts **disabled**;
+   enable it explicitly in the local configuration only after checking available
+   disk space and any unresolved branches.
 2. **Follow the [setup guide](../setup.md)** to preview and apply the changes.
    To override defaults before the first run, create the local JSON configuration
    at the path below before applying. Otherwise, chezmoi creates it for you.
@@ -90,7 +92,7 @@ Use `repo-refresh --status` to find each branch's state and relevant paths:
 | `conflicts` | Replaying commits or restoring edits exposed conflicts. | Resolve them there; later runs leave them alone. |
 | `in-progress` | A Git operation is unfinished. | Finish or abort it; later runs do not restart it. |
 | `edits-pending` | The branch was updated, but Git could not restore all edits. | Recover edits from the reported backup or saved stash. |
-| `failed` | Preservation or rebasing could not complete. | Inspect the error and any reported worktree; other branches continue. |
+| `failed` | Preservation or rebasing could not complete. | Inspect the failed worktree and its saved recovery; the updater does **not** retry this branch automatically. |
 
 **Automatic rebases rewrite local commit IDs and change development-worktree
 files.** Avoid concurrent editing during a scheduled rebase. Conflicts are an
@@ -138,7 +140,17 @@ The rebase record identifies the pre-rebase copy and any saved edit stash. After
 recovering an `edits-pending` result, remove that branch's `repo-refresh-rebase.json`
 record to acknowledge recovery and allow future rebases.
 
-Recovery copies are private and **never automatically deleted**.
+Recovery copies are private and **never automatically deleted**. Backups retain
+tracked edits, staged state, untracked files, and ignored data, **except**
+confirmed ignored build directories `node_modules`, `.next`, and `out`, which
+are regenerable and excluded to prevent duplicating hundreds of megabytes per
+recovery. Git-tracked content in these directories is never excluded. Before
+creating a recovery, at least 2 GiB of additional free disk space must remain.
+
+After investigating a `failed` rebase, resolve the problem and explicitly
+remove that worktree's `repo-refresh-rebase.json` marker to permit another
+attempt; until then the updater will report the failure without retrying.
+
 Do not put unrelated clones inside `<repo>.worktrees`; they belong in a
 separate repository directory. Existing worktrees created by external agents
 are reusable by the updater, but those agents must also follow this convention

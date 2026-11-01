@@ -77,12 +77,13 @@ def repositories(root):
             yield repo
 
 
-def inventory(repo):
-    """Detect files changing while recovery is being copied, including ignored files."""
+def inventory(repo, excluded_directories=()):
+    """Detect changes to preserved files, including ignored non-cache data."""
     result = {}
     for current, directories, files in os.walk(repo, followlinks=False):
         if Path(current) == repo:
-            directories[:] = [name for name in directories if name != ".git"]
+            directories[:] = [name for name in directories
+                              if name != ".git" and name not in excluded_directories]
             files = [name for name in files if name != ".git"]
         for name in directories + files:
             path = Path(current) / name
@@ -120,7 +121,20 @@ def preserve(repo, destination, branch, head, original_head, default, target):
     destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     # Recovery may include ignored local credentials. Keep the entire hierarchy private.
     os.chmod(destination.parent, 0o700)
-    before = inventory(repo)
+    # Preserve all untracked data except well-known rebuildable dependencies
+    # and build output, and only when Git confirms the directory is ignored.
+    excluded_caches = set()
+    for name in ("node_modules", ".next", "out"):
+        directory = repo / name
+        if (directory.is_dir() and not directory.is_symlink()
+                and git(repo, "check-ignore", "-q", "--", name, check=False).returncode == 0
+                and not git(repo, "ls-files", "--", name).stdout):
+            excluded_caches.add(name)
+    before = inventory(repo, excluded_caches)
+    estimated_bytes = sum(size for _, size, _, _ in before.values())
+    free_bytes = shutil.disk_usage(destination.parent).free
+    if free_bytes < estimated_bytes + 2 * 1024**3:
+        raise RefreshError("Insufficient free space for a recovery; no new worktree created")
     original_index = git_path(repo, "index")
     index_bytes = original_index.read_bytes() if original_index.exists() else None
     recovery_ref = f"refs/repo-refresh/{destination.name}"
@@ -137,7 +151,7 @@ def preserve(repo, destination, branch, head, original_head, default, target):
               "recovery_ref": recovery_ref, "complete": False}
     write_json(record_dir / "recovery.json", record)
     for entry in repo.iterdir():
-        if entry.name != ".git":
+        if entry.name != ".git" and entry.name not in excluded_caches:
             copy_entry(entry, destination / entry.name)
 
     # Submodules use gitfiles pointing back into the original checkout. Give their
@@ -166,7 +180,7 @@ def preserve(repo, destination, branch, head, original_head, default, target):
             copy_entry(source, record_dir / name)
     current_head = git(repo, "rev-parse", "--verify", "HEAD", check=False)
     observed_head = os.fsdecode(current_head.stdout).strip() if current_head.returncode == 0 else None
-    if (before != inventory(repo) or observed_head != original_head
+    if (before != inventory(repo, excluded_caches) or observed_head != original_head
             or (original_index.read_bytes() if original_index.exists() else None) != index_bytes):
         raise RefreshError("Checkout changed during preservation; original left untouched; retry next cycle")
     default_ref = f"refs/heads/{default}"
@@ -337,7 +351,9 @@ def rebase_branch(repo, branch, candidates, default, target):
         active = any(git_path(source, name).exists() for name in ACTIVE_OPERATION_STATE)
         if active or unmerged:
             return {**previous, "state": "conflicts" if unmerged else "in-progress", "worktree": str(source)}
-        if previous.get("state") == "edits-pending":
+        # Failed rebases require manual resolution. Retrying every minute
+        # would create another full recovery worktree without fixing the cause.
+        if previous.get("state") in {"edits-pending", "failed"}:
             return previous
     if git(repo, "merge-base", "--is-ancestor", target, f"refs/heads/{branch}", check=False).returncode == 0:
         return {"state": "current", **({"worktree": str(source)} if source else {})}
