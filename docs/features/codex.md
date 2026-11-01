@@ -35,7 +35,7 @@ checked-in results, inspect the diff, then apply:
 # From the Dotfiles Git root, with project Python dependencies installed:
 python3 src/codex-guidance/render.py
 python3 src/codex-guidance/render.py --check
-git diff -- home/dot_codex/AGENTS.md home/dot_codex/agents-md-references
+git diff -- home/dot_codex/AGENTS.md.tmpl home/dot_codex/agents-md-references
 chezmoi --no-pager diff "$HOME/.codex"
 chezmoi apply "$HOME/.codex/AGENTS.md" "$HOME/.codex/agents-md-references"
 ```

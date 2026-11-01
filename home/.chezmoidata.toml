@@ -1,0 +1,4 @@
+[repoRefresh]
+    # Source of truth for chezmoi apply and the macOS LaunchAgent.
+    # Start disabled until repository refreshes are intentionally enabled.
+    enabled = false
