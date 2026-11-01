@@ -1,5 +1,5 @@
 {
-  "enabled": false,
+  "enabled": {{ .repoRefresh.enabled }},
   "root": {{ (.reposDir | default (printf "%s/Repos" .chezmoi.homeDir)) | quote }},
   "remote": "origin"
 }

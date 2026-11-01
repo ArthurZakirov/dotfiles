@@ -926,7 +926,7 @@ def test_configuration_and_run_lock_prevent_mutation(scenario, mode):
 
 
 @pytest.mark.parametrize("profile", ["personal", "professional"])
-def test_chezmoi_installs_executable_schedule_and_preserves_local_configuration(
+def test_chezmoi_installs_executable_schedule_and_reconciles_configuration(
         scenario, profile_factory, profile):
     rendered = profile_factory.render(profile)
     home = Path.home()  # scenario fixture supplies a disposable HOME
@@ -942,9 +942,21 @@ def test_chezmoi_installs_executable_schedule_and_preserves_local_configuration(
     plist = home / "Library/LaunchAgents/com.arthur.repo-refresh.plist"
     schedule = plistlib.loads(plist.read_bytes())
     assert schedule["StartInterval"] == 60
+    # A locally changed config no longer overrides the versioned feature setting.
     config.write_text(scenario.config.read_text())
     subprocess.run(command, check=True, capture_output=True)
-    assert config.read_text() == scenario.config.read_text()
+    assert json.loads(config.read_text())["enabled"] is False
+    enabled_command = [
+        "chezmoi", "--source", str(ROOT), "--config", str(rendered.config),
+        "--destination", str(home), "--override-data",
+        json.dumps({"repoRefresh": {"enabled": True}, "reposDir": str(scenario.repo.parent)}),
+        "apply", "--exclude", "scripts", "--force",
+        str(config),
+    ]
+    subprocess.run(enabled_command, check=True, capture_output=True)
+    assert json.loads(config.read_text()) == {
+        "enabled": True, "root": str(scenario.repo.parent), "remote": "origin",
+    }
     scenario.advance()
 
     result = subprocess.run([sys.executable, str(executable)], capture_output=True, text=True)
@@ -953,48 +965,159 @@ def test_chezmoi_installs_executable_schedule_and_preserves_local_configuration(
     assert (scenario.repo / "upstream.txt").exists()
 
 
-def test_install_hook_recognizes_new_configuration_loaded_after_relogin(scenario, profile_factory, monkeypatch):
+@pytest.mark.parametrize("profile", ["personal", "professional"])
+def test_repo_refresh_switch_controls_config_and_agent_guidance(
+        scenario, profile_factory, profile):
+    rendered = profile_factory.render(profile)
+    home = Path.home()
+    config = home / ".config/repo-refresh/config.json"
+    guidance = home / ".codex/AGENTS.md"
+    guidance.parent.mkdir(parents=True, exist_ok=True)
+    config.parent.mkdir(parents=True, exist_ok=True)
+    for enabled in (False, True, False):
+        command = [
+            "chezmoi", "--source", str(ROOT), "--config", str(rendered.config),
+            "--destination", str(home), "--override-data",
+            json.dumps({"repoRefresh": {"enabled": enabled}}),
+            "apply", "--exclude", "scripts", "--force", str(config), str(guidance),
+        ]
+
+        result = subprocess.run(command, text=True, capture_output=True)
+
+        assert result.returncode == 0, result.stderr
+        assert json.loads(config.read_text())["enabled"] is enabled
+        assert ("Automatic repository and worktree maintenance" in guidance.read_text()) is enabled
+        assert "Creating or relocating a linked Git worktree" in guidance.read_text()
+
+
+def test_install_hook_reconciles_enabled_state_and_loaded_revision(
+        scenario, profile_factory, monkeypatch):
     rendered = profile_factory.render("personal")
     home = Path.home()
     destination = home / "Library/LaunchAgents/com.arthur.repo-refresh.plist"
     destination.parent.mkdir(parents=True)
     template = ROOT / "home/private_Library/private_LaunchAgents/com.arthur.repo-refresh.plist.tmpl"
-    destination.write_text(profile_factory.chezmoi(rendered.config, "execute-template", "--file", str(template)))
-    revision = plistlib.loads(destination.read_bytes())["EnvironmentVariables"]["REPO_REFRESH_AGENT_REVISION"]
+    destination.write_text(profile_factory.chezmoi(
+        rendered.config, "execute-template", "--file", str(template)))
+    revision = plistlib.loads(destination.read_bytes())[
+        "EnvironmentVariables"]["REPO_REFRESH_AGENT_REVISION"]
     hook = profile_factory.render_hook(rendered.config, "personal",
                                       "run_after_25-ensure-repo-refresh.sh.tmpl", "repo-refresh")
     fake_bin = home / "fake-bin"
     fake_bin.mkdir()
-    revision_file = home / "loaded-revision"
-    revision_file.write_text("previously-loaded-revision")
+    service = home / "fake-service"
+    service.mkdir()
     for name, contents in {
         "uname": "#!/bin/sh\necho Darwin\n",
         "plutil": "#!/bin/sh\nexit 0\n",
-        "launchctl": '#!/bin/sh\n[ "$1" = print ] || exit 88\nprintf "REPO_REFRESH_AGENT_REVISION => %s\\n" "$(cat "$TEST_AGENT_REVISION_FILE")"\n',
+        "launchctl": """#!/bin/sh
+set -eu
+dir="$TEST_AGENT_DIR"
+assert_refresh_locked() {
+  python3 - "$TEST_AGENT_LOCK" <<'PYLOCK'
+import fcntl
+import sys
+
+with open(sys.argv[1], "a") as lock:
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        pass
+    else:
+        raise SystemExit("launchctl transition ran without a held refresh lock")
+PYLOCK
+}
+case "$1" in
+  print)
+    test -e "$dir/loaded" || exit 3
+    printf 'REPO_REFRESH_AGENT_REVISION => %s\n' "$(cat "$dir/revision")"
+    ;;
+  enable)
+    rm -f "$dir/disabled"
+    printf 'enable\n' >> "$dir/actions"
+    ;;
+  disable)
+    touch "$dir/disabled"
+    printf 'disable\n' >> "$dir/actions"
+    ;;
+  bootstrap)
+    test ! -e "$dir/disabled" || exit 10
+    if test -e "$dir/restarting"; then
+      assert_refresh_locked
+      rm "$dir/restarting"
+    fi
+    touch "$dir/loaded"
+    printf '%s\n' "$TEST_DESIRED_REVISION" > "$dir/revision"
+    printf 'bootstrap\n' >> "$dir/actions"
+    ;;
+  bootout)
+    assert_refresh_locked
+    touch "$dir/restarting"
+    rm -f "$dir/loaded"
+    printf 'bootout\n' >> "$dir/actions"
+    ;;
+  *)
+    exit 97
+    ;;
+esac
+""",
     }.items():
         command = fake_bin / name
         command.write_text(contents)
         command.chmod(0o755)
     monkeypatch.setenv("PATH", str(fake_bin) + os.pathsep + os.environ["PATH"])
-    monkeypatch.setenv("TEST_AGENT_REVISION_FILE", str(revision_file))
+    monkeypatch.setenv("TEST_AGENT_DIR", str(service))
+    monkeypatch.setenv("TEST_DESIRED_REVISION", revision)
+    monkeypatch.setenv("TEST_AGENT_LOCK", str(home / ".local/state/repo-refresh/run.lock"))
+    config = home / ".config/repo-refresh/config.json"
+    config.parent.mkdir(parents=True)
     marker = home / "Library/Caches/chezmoi/com.arthur.repo-refresh.sha256"
-    marker.parent.mkdir(parents=True)
-    marker.write_text("old-plist-hash\n")
 
-    before_relogin = subprocess.run(["sh", str(hook)], capture_output=True, text=True)
+    def apply(enabled):
+        config.write_text(json.dumps({"enabled": enabled}))
+        return subprocess.run(["sh", str(hook)], capture_output=True, text=True)
 
-    assert before_relogin.returncode == 0
-    assert "log out and back in" in before_relogin.stderr
-    assert marker.read_text() == "old-plist-hash\n"
-    # Model launchd loading the new generated definition during a new login.
-    revision_file.write_text(revision)
+    # Disabled applies persist and do not bootstrap an unloaded service.
+    assert apply(False).returncode == 0
+    assert (service / "disabled").is_file()
+    assert not (service / "loaded").exists()
+    assert not marker.exists()
 
-    after_relogin = subprocess.run(["sh", str(hook)], capture_output=True, text=True)
-    repeated = subprocess.run(["sh", str(hook)], capture_output=True, text=True)
-
-    assert after_relogin.returncode == repeated.returncode == 0
-    assert not after_relogin.stderr and not repeated.stderr
+    # Enable an already-disabled service, then repeat idempotently.
+    assert apply(True).returncode == 0
+    assert apply(True).returncode == 0
+    assert not (service / "disabled").exists()
+    assert (service / "loaded").is_file()
     assert marker.read_text().strip() == hashlib.sha256(destination.read_bytes()).hexdigest()
+
+    # A running transaction blocks a restart rather than being terminated.
+    (service / "revision").write_text("old-launchagent-definition\n")
+    lock = home / ".local/state/repo-refresh/run.lock"
+    lock.parent.mkdir(parents=True)
+    with lock.open("a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        blocked = apply(True)
+        assert blocked.returncode == 1
+        assert "running refresh" in blocked.stderr
+        assert (service / "loaded").exists()
+    assert apply(True).returncode == 0
+
+    # Disabling persists immediately, but never interrupts an active refresh.
+    with lock.open("a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        blocked = apply(False)
+        assert blocked.returncode == 1
+        assert (service / "disabled").exists()
+        assert (service / "loaded").exists()
+    assert apply(False).returncode == 0
+    assert apply(False).returncode == 0
+    assert not (service / "loaded").exists()
+    assert (service / "disabled").exists()
+    assert not marker.exists()
+    assert (service / "actions").read_text().splitlines() == [
+        "disable", "enable", "bootstrap", "enable", "enable", "enable",
+        "bootout", "bootstrap", "disable", "disable", "bootout", "disable",
+    ]
 
 
 @pytest.mark.skipif(sys.platform != "darwin" or os.environ.get("GITHUB_ACTIONS") != "true",

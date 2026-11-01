@@ -83,7 +83,7 @@ def test_canonical_guidance_is_only_in_the_repository():
     assert (CANONICAL / "scripts/bootstrap-agents-md.py").is_file()
     assert (CANONICAL / "render.py").is_file()
     assert not (SOURCE / "guidance-source").exists()
-    guidance = (SOURCE / "AGENTS.md").read_text(encoding="utf-8")
+    guidance = (SOURCE / "AGENTS.md.tmpl").read_text(encoding="utf-8")
     assert "src/codex-guidance/global-guidance/agents-md-manifest.yaml" in guidance
     assert "Resolved order:" not in guidance
     assert "agents-md-components/" not in guidance
@@ -431,7 +431,7 @@ def test_live_voice_waits_for_explicit_spoken_turn_completion():
 
 
 def test_mode_specific_guidance_is_removed_from_global_agents_md():
-    global_guidance = (SOURCE / "AGENTS.md").read_text()
+    global_guidance = (SOURCE / "AGENTS.md.tmpl").read_text()
     canonical = CANONICAL / "global-guidance"
     manifest = (canonical / "agents-md-manifest.yaml").read_text()
 
@@ -494,7 +494,7 @@ def test_voice_frontend_owns_walkthrough_and_backend_owns_editor_commands():
     assert "Guided interactive walkthroughs" not in detailed
     assert "voice frontend" not in detailed.lower()
     assert (SOURCE / "agents-md-references" / reference).read_text().endswith(detailed)
-    assert reference in (SOURCE / "AGENTS.md").read_text()
+    assert reference in (SOURCE / "AGENTS.md.tmpl").read_text()
 
 
 def test_voice_frontend_never_claims_backend_tool_actions():

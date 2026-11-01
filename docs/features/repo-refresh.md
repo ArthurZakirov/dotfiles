@@ -10,19 +10,20 @@ rewriting work and leaves conflicts visible for you to resolve.
 
 Use the normal dotfiles installation flow:
 
-1. **Review the defaults** in the
-   [initial configuration](../../home/dot_config/repo-refresh/create_private_config.json.tmpl).
-   Both Mac installations use the same defaults. The updater starts **disabled**;
-   enable it explicitly in the local configuration only after checking available
-   disk space and any unresolved branches.
-2. **Follow the [setup guide](../setup.md)** to preview and apply the changes.
-   To override defaults before the first run, create the local JSON configuration
-   at the path below before applying. Otherwise, chezmoi creates it for you.
-3. **Adjust local settings as needed.** Later dotfiles applies preserve this file.
-
-   ```sh
-   code ~/.config/repo-refresh/config.json
-   ```
+1. **Choose the versioned feature state** in
+   [`home/.chezmoidata.toml`](../../home/.chezmoidata.toml). Set
+   `repoRefresh.enabled = true` to enable or `false` to disable. The default
+   is **false** until recovery worktrees and unresolved rebase conflicts have
+   been checked.
+2. **Run `chezmoi apply`** following the [setup guide](../setup.md).
+   Chezmoi rewrites the [runtime configuration](../../home/dot_config/repo-refresh/private_config.json.tmpl)
+   and regenerates the global `~/.codex/AGENTS.md` from the same value.
+3. **Verify actual service state.** On macOS, the
+   [installation hook](../../home/run_after_25-ensure-repo-refresh.sh.tmpl)
+   enables and loads the LaunchAgent when the value is `true`, or disables
+   and unloads it when `false`. Repeated applications reconcile an already
+   loaded or previously disabled service. If a refresh holds the run lock,
+   the hook does not interrupt it; reapply after the active transaction finishes.
 
 The configuration fields define the managed scope:
 
@@ -30,12 +31,15 @@ The configuration fields define the managed scope:
 | --- | --- |
 | `root` | Directory containing permanent clones directly (no nested repository groups). |
 | `remote` | Remote whose advertised default branch should be followed. |
-| `enabled` | `false` pauses future runs; an active run finishes normally. |
+| `enabled` | Rendered from the versioned `repoRefresh.enabled` feature switch; controls both the updater and the macOS LaunchAgent. |
 
 The root is set during chezmoi initialization via `REPOS_DIR` (saved as
 `reposDir` in the local chezmoi configuration; default:
 `~/Repos`), used by the shell and the initial repo-refresh configuration.
-The local `~/.config/repo-refresh/config.json` can override it afterward.
+The rendered `~/.config/repo-refresh/config.json` is not an independent
+configuration source: later `chezmoi apply` runs replace manual edits.
+Change the versioned switch in `home/.chezmoidata.toml`, or update the
+existing chezmoi data for machine-specific `reposDir` settings.
 The updater creates worktrees beside each clone, never in a global directory:
 `<root>/<repo>.worktrees/<branch-slug>`. For example,
 `~/Repos/dotfiles.worktrees/feat-repository-sync`. Development worktree
