@@ -5,7 +5,7 @@
 
 | When | Then |
 | --- | --- |
-| Writing, editing, reviewing, or sending **every user-facing chat reply or message** (including intermediate work-in-progress updates, partial answers, and final replies), and creating or modifying **any other human-readable text**—including documentation, Markdown, PR descriptions and reviews, tickets, emails, websites, articles, agent instructions or skills, and other human-readable outputs. | **Apply all four stages below** while composing or revising that message or artifact, and check the result before sending, saving, or publishing it. Apply the relevant rules within each stage regardless of message length or medium; do not skip the process for short replies. |
+| Writing, editing, reviewing, or sending **every user-facing chat reply or message** (including intermediate work-in-progress updates, partial answers, and final replies), and creating or modifying **any other human-readable text**—including documentation, Markdown, PR descriptions and reviews, tickets, emails, websites, articles, agent instructions or skills, and other human-readable outputs. | **Apply all four stages below** while composing or revising that message or artifact, and check the result before sending, saving, or publishing it. Within each stage, apply the rules relevant to the content and medium. |
 
 **Writing process — four stages**
 
@@ -16,7 +16,7 @@ For **each chat message or other human-readable text covered by the condition ab
 3. **[🎛️ Stage 3 — Apply rules to the chosen format](#stage-3).** Apply the rules for the formats actually used; do not introduce unnecessary tables, code, or visuals.
 4. **[🔗 Stage 4 — Anchor sources and recurring references](#stage-4).** Make inspectable sources and repeated references stable and navigable where relevant.
 
-Revisit earlier stages whenever a later choice creates new semantic groups. Apply the stages proportionately to the medium: a brief reply may need no explicit headings, but its content must still satisfy the applicable structure, representation, and clarity rules.
+Revisit earlier stages whenever a later choice creates new semantic groups.
 
 <a id="stage-1"></a>
 ## 🧭 Stage 1 — Structure the reader's route

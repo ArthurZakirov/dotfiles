@@ -122,6 +122,8 @@ def test_information_representation_guidance_is_always_rendered(tmp_path):
     assert "**every user-facing chat reply or message**" in guidance
     assert "**any other human-readable text**" in guidance
     assert "**Apply all four stages below**" in guidance
+    assert "Within each stage, apply the rules relevant to the content and medium." in guidance
+    assert "do not skip the process for short replies" not in guidance
     assert "including intermediate work-in-progress updates, partial answers, and final replies" in guidance
     assert "including intermediate work-in-progress updates, partial findings" in guidance
     assert "Before sending each message" in guidance
