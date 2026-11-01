@@ -24,6 +24,7 @@ components:
       - path: agents-md-components/information-presentation/anchoring.md
       - path: agents-md-components/information-presentation/representation.md
       - path: agents-md-components/information-presentation/exact-code-explanations.md
+      - path: agents-md-components/information-presentation/source-code-snippets.md
       - path: agents-md-components/information-presentation/structural-semantic-coherence.md
       - path: agents-md-components/information-presentation/visual-semantics.md
       - path: agents-md-components/information-presentation/chat-response-presentation.md

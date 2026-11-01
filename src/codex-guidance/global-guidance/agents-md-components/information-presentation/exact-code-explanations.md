@@ -1,23 +1,15 @@
 <a id="exact-code-explanations"></a>
-# 🔎 Exact explanations of code
+# 🔎 Exact explanations and navigation of code
 
-When explaining existing code, identify the **actual function, expression, variable, column, value, or output** instead of describing an imagined object or relationship.
+Apply these rules whenever a response **locates, identifies, explains, compares, diagnoses, reviews, tests, or proposes changing code**. They apply whether the question asks *where* something happens, *which file* implements it, *why* it happens, *what* it does, or *how* to modify it. Do not require the user to ask for a "code explanation."
 
-| When | Then |
+The examples below are illustrative, not claims about the active repository. Pair each correction with its own bad example in the same row.
+
+| When | Then, including the bad → good contrast |
 | --- | --- |
-| Explaining what code does. | Name the executable expression or function and the exact affected rows, fields, or values. Avoid metaphors such as `left edge`, `both halves`, `tail`, `envelope`, `owns`, `carries`, or `is responsible for` unless quoting an actual identifier. |
-| Explaining a code change. | Show a concrete input → output example with actual values when available. For a bug, state the failing input, observed incorrect output, and expected output. Mark hypothetical examples explicitly. |
-| Using abstract terminology about the code. | Replace words such as `partition`, `disjoint`, `invariant`, `idempotent`, `boundary`, and `semantics` with the relevant expression, variable, function, or value. Keep such a word only when it is an actual code identifier or is indispensable to a directly cited external specification. |
-| Explaining a condition or interval. | Write the expression, e.g. `state_date < rebuild_start`, and state which rows satisfy it and what the code writes for those rows. |
+| Naming any inspected identifier, function, method, variable, column, expression, literal, or argument. | Reproduce its **exact source spelling**, capitalization, leading underscores, punctuation, operators, and quote characters. Use inline backticks for literal code when a verified symbol link is unavailable; when resolvable, follow the link-label rules under Anchoring without altering the target. **Bad:** "the underscore keep intervals before rebuild function." **Good:** `_keep_intervals_before_rebuild`. Do not paraphrase identifiers into spoken-out punctuation. |
+| Explaining an implementation using abstraction, jargon, or an invented metaphor instead of the executable operation. | Replace vague wording with the actual identifier, comparison, call, and result. Treat `left edge`, `tail`, `prefix`, `envelope`, `owns`, `carries`, `partition`, `disjoint`, `boundary`, `idempotent`, and `semantics` as **examples of the same failure mode**, not separate kinds of rules. Keep technical terminology when it is a real name, a necessary domain term, or useful *after* the specific mechanism is clear. **Bad:** "The left-edge partition owns the earlier days." **Good:** "Rows where `state_date < rebuild_start` are passed to `_keep_intervals_before_rebuild`." |
+| Describing a condition, interval, branch, or affected set of rows. | Show the actual predicate and say what happens when it is true or false, instead of substituting a conceptual label. **Bad:** "The older dates are kept." **Good:** "For `state_date < rebuild_start`, the existing row is kept; for `state_date >= rebuild_start`, it is rebuilt." Verify these outcomes against source rather than inferring them from the predicate alone. |
+| Explaining a reported or observed bug where the values are known. | Show the relevant input, actual incorrect result, and expected result without fabricating observations. **Bad:** "The old left edge is wrong." **Good (hypothetical):** "With `valid_from='2026-10-01'` and `rebuild_start='2026-10-10'`, the code starts emitting dates at `valid_from` (`2026-10-01`); it should start at `rebuild_start` (`2026-10-10`)." Mark constructed demonstrations as hypothetical. |
 
-**Not:** "Days before the rebuild start now have an owner."
-
-**Write:** "Rows with `state_date < rebuild_start` are now written by `_keep_intervals_before_rebuild`."
-
-**Not:** "The kept prefix carries `is_current=False`."
-
-**Write:** "Those rows get `is_current=False`; no row has `is_current=True` unless the rebuild writes one."
-
-**Not:** "The old left edge is wrong."
-
-**Write:** "The explode starts at `valid_from`; it must start at `rebuild_start`."
+Use a verified source excerpt when describing actual code; see **Source code snippets** below. Do not automatically attach input/output demonstrations to every function or variable: show concrete values when they resolve a real ambiguity or establish the reported behavior, not as filler.
