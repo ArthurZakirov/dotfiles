@@ -109,3 +109,28 @@ def test_canonical_document_staging_guidance_is_consistent():
     assert "self-source/.local-workspace/documents/" in routing
     assert ".local-workspace/documents/" in documents
     assert "outside Git repositories" not in routing
+
+
+def test_information_representation_guidance_is_always_rendered(tmp_path):
+    """Every agent reply and human-readable artifact must receive the four-stage guidance."""
+    installed = bootstrap(tmp_path, "--manifest", str(BASE_MANIFEST))
+
+    assert installed.returncode == 0, installed.stderr
+    guidance = (tmp_path / ".codex/AGENTS.md").read_text()
+
+    assert guidance.count('<a id="information-representation-design"></a>') == 1
+    assert "**every user-facing chat reply or message**" in guidance
+    assert "**any other human-readable text**" in guidance
+    assert "**Apply all four stages below**" in guidance
+    assert "including intermediate work-in-progress updates, partial answers, and final replies" in guidance
+    assert "including intermediate work-in-progress updates, partial findings" in guidance
+    assert "Before sending each message" in guidance
+    assert "[🧩 Information representation design](#information-representation-design)" in guidance
+    for index in range(1, 5):
+        assert guidance.count(f'<a id="stage-{index}"></a>') == 1
+        assert f"](#stage-{index})" in guidance
+
+    # The full source is embedded, not gated behind choosing a separate skill.
+    assert "#### T2 — Group scannable items by semantic type" in guidance
+    assert "###### Negative example — Unframed" in guidance
+    assert "When available, use the information-representation-design skill" not in guidance

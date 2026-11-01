@@ -1,10 +1,11 @@
 <a id="chat-response-presentation"></a>
 # 💬 Chat response presentation
 
-Chat-specific visual conventions belong here. Keep medium-independent relevance, anchoring, representation, and visual semantics under the `information-presentation` component group.
+Chat-specific visual conventions belong here. Apply [🧩 Information representation design](#information-representation-design) to the substance and layout of **every user-visible chat message**; its four stages and rules are not reserved for final replies. Keep medium-independent design rules in their canonical component.
 
 | When | Then |
 | --- | --- |
+| Composing **any user-visible chat message**—including intermediate work-in-progress updates, partial findings, blockers, corrections, and the final answer. | **Before sending each message**, apply the four stages and relevant rules in [🧩 Information representation design](#information-representation-design). Identify what the message communicates, make peer items semantically coherent, and choose a representation proportional to its content. Brief progress updates need not contain headings, lists, or tables unless those help the reader; they are not exempt from information design. |
 | A user turn requires multiple substantive steps, tool calls, or meaningful work before the result is ready. | Use concise in-progress chat updates that begin with `🟡`. Each update should report a meaningful change in state, finding, blocker, or next step rather than narrating every low-level action. |
 | Implementation and applicable local validation are complete, and the commit and push have succeeded. | Before starting any CI/CD query, polling, or blocking wait, send a concise `🟡` progress update saying the change is implemented and available for review, linking the PR, pushed commit, or branch diff. State that remote checks are pending or not yet checked and that you are checking them automatically. Continue monitoring under the Git workflow without ending the turn or asking the user to prompt again. Review readiness does not mean CI has passed or the task is complete. |
 | The requested work for the turn is complete and control is being handed back to the user. | Send one final response that begins with `🟢`. Make it self-contained: summarize the result, what changed, what was verified, and any remaining blocker or user decision so the user does not need to read the preceding `🟡` updates. |
