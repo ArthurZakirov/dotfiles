@@ -71,13 +71,26 @@ Each run follows this sequence:
    commits, then force it onto the fetched default commit—even after divergence,
    a force-push, or an interrupted Git operation. A displaced feature branch is
    checked out in a separate development worktree.
-3. **Rebase local feature branches.** Rebase every local branch except `main`,
-   `master`, and the actual default branch onto that commit. Use existing branch
-   worktrees or create missing ones. Branches already containing the default
-   commit need no rebase. Nothing is pushed to the remote.
+3. **Remove verified merged branches.** Before rebasing, verify integration
+   using local Git history only, independently of GitHub or Bitbucket. A branch
+   qualifies when its tip is an ancestor of the fetched remote default, or when
+   its complete cumulative file changes exactly match a single commit in that
+   default's first-parent history (a conservative squash-merge check). Commit
+   messages never establish merge status. Delete an eligible local worktree and
+   branch only when no tracked, untracked, or valuable ignored data would be
+   lost. Known ignored build caches can be discarded. For a same-name remote
+   branch, delete only when its tip matches the verified local tip, using a
+   force-with-lease condition; preserve diverged or protected remote branches.
+   Uncertain merges and dirty worktrees are reported and retained.
+4. **Rebase remaining feature branches.** Rebase unmerged branches except
+   `main`, `master`, and the actual default branch onto that commit. Use
+   existing worktrees or create missing ones. Already-current branches need no
+   rebase. Rebases remain local; only verified merged-branch cleanup deletes
+   remote branches.
 
 Linked worktrees are excluded from permanent-clone discovery, but their branches
-still participate in rebasing. Detached recovery copies retain historical state.
+still participate in cleanup and rebasing. Detached recovery copies are
+retained separately, since they can contain unique uncommitted historical data.
 If another worktree holds the default branch, it is detached at its existing
 commit without changing its files or index.
 
@@ -88,6 +101,8 @@ Use `repo-refresh --status` to find each branch's state and relevant paths:
 | State | What happened | Next action |
 | --- | --- | --- |
 | `current` | Already contains the refreshed default commit. | None. |
+| `merged-cleaned` | Git verified a merged or exact squash-equivalent branch. | Local branch/worktree removed; check the remote-deletion result. |
+| `merged-protected` | A merged branch has uncommitted data or an unverified worktree path. | Inspect it manually; no automatic rebase or deletion occurs. |
 | `rebased` | Rebase succeeded; Git restored tracked edits where possible. | Continue in the reported worktree. |
 | `conflicts` | Replaying commits or restoring edits exposed conflicts. | Resolve them there; later runs leave them alone. |
 | `in-progress` | A Git operation is unfinished. | Finish or abort it; later runs do not restart it. |

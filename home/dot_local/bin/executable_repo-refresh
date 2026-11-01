@@ -412,7 +412,108 @@ def rebase_branch(repo, branch, candidates, default, target):
     return record
 
 
-def rebase_branches(repo, default, target):
+def merged_evidence(repo, branch, target):
+    """Prove inclusion by ancestry or an exact squash commit, using Git only."""
+    tip = value(repo, "rev-parse", f"refs/heads/{branch}")
+    if git(repo, "merge-base", "--is-ancestor", tip, target, check=False).returncode == 0:
+        return "ancestor"
+    merged = git(repo, "merge-base", "--all", tip, target, check=False)
+    if merged.returncode:
+        return None
+    bases = os.fsdecode(merged.stdout).splitlines()
+    if len(bases) != 1 or bases[0] == target:
+        return None
+    base = bases[0]
+    changes = git(repo, "diff", "--raw", "--no-renames", "--no-abbrev", "-z",
+                  base, tip).stdout
+    if not changes:
+        return None
+    paths = git(repo, "diff", "--name-only", "--no-renames", "-z", base, tip).stdout
+    names = [os.fsdecode(name) for name in paths.split(b"\0") if name]
+    # Restrict history to first-parent commits that touch the branch's files.
+    # A squash usually creates one such commit. A matching message is not proof.
+    candidates = value(repo, "log", "--first-parent", "--max-count=300",
+                       "--format=%H", f"{base}..{target}", "--", *names)
+    for commit in candidates.splitlines():
+        parent = value(repo, "rev-parse", f"{commit}^1")
+        actual = git(repo, "diff", "--raw", "--no-renames", "--no-abbrev",
+                     "-z", parent, commit).stdout
+        if changes == actual:
+            return f"squash:{commit[:12]}"
+    return None
+
+
+def safe_merged_worktree(repo, worktree):
+    """Protect every local change except confirmed ignored build caches."""
+    parent = repo.with_name(repo.name + ".worktrees")
+    if (worktree.parent != parent or parent.is_symlink()
+            or worktree.is_symlink() or not worktree.is_dir()):
+        return False
+    if Path(value(worktree, "rev-parse", "--show-toplevel")) != worktree:
+        return False
+    if any(git_path(worktree, name).exists() for name in ACTIVE_OPERATION_STATE):
+        return False
+    if git(worktree, "ls-files", "--unmerged").stdout:
+        return False
+    status = git(worktree, "status", "--porcelain=v1", "-z",
+                 "--untracked-files=all", "--ignored=matching").stdout
+    allowed_caches = {"node_modules", ".next", "out"}
+    for entry in status.split(b"\0"):
+        if not entry:
+            continue
+        if not entry.startswith(b"!! "):
+            return False
+        relative = os.fsdecode(entry[3:]).rstrip("/")
+        path = worktree / relative
+        if (relative not in allowed_caches or not path.is_dir() or path.is_symlink()
+                or git(worktree, "check-ignore", "-q", "--", relative,
+                       check=False).returncode != 0
+                or git(worktree, "ls-files", "--", relative).stdout):
+            return False
+    return True
+
+
+def clean_merged_branch(repo, branch, candidates, remote, default, target):
+    proof = merged_evidence(repo, branch, target)
+    if not proof:
+        return None
+    if len(candidates) > 1:
+        return {"state": "merged-protected", "reason": "Multiple branch worktrees",
+                "proof": proof}
+    source = next(iter(candidates), None)
+    if source is not None and not safe_merged_worktree(repo, source):
+        return {"state": "merged-protected", "reason": "Uncommitted or protected files",
+                "worktree": str(source), "proof": proof}
+    original = value(repo, "rev-parse", f"refs/heads/{branch}")
+    # A changed default or branch tip invalidates our earlier proof.
+    if (value(repo, "rev-parse", f"refs/remotes/{remote}/{default}") != target
+            or value(repo, "rev-parse", f"refs/heads/{branch}") != original):
+        return {"state": "merged-protected", "reason": "Refs changed during verification"}
+    remote_state = "absent"
+    remote_ref = f"refs/remotes/{remote}/{branch}"
+    if git(repo, "show-ref", "--verify", remote_ref, check=False).returncode == 0:
+        remote_tip = value(repo, "rev-parse", remote_ref)
+        # Only delete a corresponding remote branch if the fetched tip matches
+        # the local tip; a different remote history may contain additional work.
+        if remote_tip != original:
+            remote_state = "different-tip-preserved"
+        else:
+            advertised = value(repo, "ls-remote", "--heads", remote, f"refs/heads/{branch}")
+            if advertised.split()[:1] != [remote_tip]:
+                remote_state = "changed-preserved"
+            else:
+                result = git(repo, "push", f"--force-with-lease=refs/heads/{branch}:{remote_tip}",
+                             remote, f":refs/heads/{branch}", check=False)
+                remote_state = "deleted" if result.returncode == 0 else "deletion-rejected"
+    if source is not None:
+        git(repo, "worktree", "remove", "--force", source)
+    # Squash-merged tips are not ancestors; -D is safe only after proof above.
+    git(repo, "branch", "-D", branch)
+    return {"state": "merged-cleaned", "proof": proof,
+            "remote": remote_state, **({"worktree_removed": str(source)} if source else {})}
+
+
+def rebase_branches(repo, default, target, remote):
     paths = branch_worktrees(repo)
     outcomes = []
     for reference in value(repo, "for-each-ref", "--format=%(refname)", "refs/heads/").splitlines():
@@ -420,8 +521,11 @@ def rebase_branches(repo, default, target):
         if branch in {default, "main", "master"}:
             continue
         try:
-            outcome = rebase_branch(repo, branch, paths.get(branch, set()),
-                                    default, target)
+            outcome = clean_merged_branch(repo, branch, paths.get(branch, set()),
+                                          remote, default, target)
+            if outcome is None:
+                outcome = rebase_branch(repo, branch, paths.get(branch, set()),
+                                        default, target)
         except (RefreshError, OSError, shutil.Error, ValueError) as error:
             message = str(error) if isinstance(error, RefreshError) else type(error).__name__
             outcome = {"state": "failed", "error": message}
@@ -439,7 +543,7 @@ def refresh_one(repo, remote):
         with (common / "repo-refresh.lock").open("a") as repo_lock:
             fcntl.flock(repo_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             outcome.update(refresh(repo, remote))
-            outcome["branches"] = rebase_branches(repo, outcome["branch"], outcome["commit"])
+            outcome["branches"] = rebase_branches(repo, outcome["branch"], outcome["commit"], remote)
             for branch in outcome["branches"]:
                 if branch.get("worktree") == outcome.get("recovery") and branch.get("recovery"):
                     outcome["development_worktree"] = outcome["recovery"]

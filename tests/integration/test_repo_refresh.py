@@ -85,6 +85,190 @@ def scenario(tmp_path, monkeypatch):
     return Scenario(repo, upstream, remote, config, tmp_path / "state", worktrees)
 
 
+@pytest.mark.parametrize("integration", ["merge", "squash"])
+@pytest.mark.parametrize("default", ["main", "master"])
+def test_merged_branch_is_cleaned_locally_and_on_remote(scenario, integration, default):
+    if default == "master":
+        git(scenario.upstream, "branch", "master", "main")
+        git(scenario.upstream, "switch", "master")
+        git(scenario.upstream, "push", "origin", "master")
+        git(scenario.remote, "symbolic-ref", "HEAD", "refs/heads/master")
+        git(scenario.repo, "fetch", "origin", "master")
+        git(scenario.repo, "switch", "-c", "master", "origin/master")
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "feature.txt").write_text("shipped\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Implement feature")
+    (scenario.repo / "detail.txt").write_text("more work\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Complete feature")
+    git(scenario.repo, "push", "-u", "origin", "feature")
+    git(scenario.repo, "switch", default)
+    scenario.worktrees.mkdir()
+    worktree = scenario.worktrees / "feature"
+    git(scenario.repo, "worktree", "add", worktree, "feature")
+
+    git(scenario.upstream, "fetch", "origin", "feature")
+    if integration == "squash":
+        git(scenario.upstream, "merge", "--squash", "origin/feature")
+        git(scenario.upstream, "commit", "-m", "Squash delivery with a different message")
+    else:
+        git(scenario.upstream, "merge", "--no-ff", "-m", "Merge delivered feature",
+            "origin/feature")
+    git(scenario.upstream, "push", "origin", default)
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    cleaned = scenario.outcome()["branches"][0]
+    assert cleaned["state"] == "merged-cleaned"
+    assert cleaned["proof"].startswith("squash:" if integration == "squash" else "ancestor")
+    assert cleaned["remote"] == "deleted"
+    assert not worktree.exists()
+    assert git(scenario.repo, "show-ref", "--verify", "refs/heads/feature",
+               check=False) == ""
+    assert git(scenario.remote, "show-ref", "--verify", "refs/heads/feature",
+               check=False) == ""
+
+
+@pytest.mark.parametrize("local_data", ["tracked", "untracked", "ignored"])
+def test_merged_branch_preserves_worktree_with_local_data(scenario, local_data):
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "feature.txt").write_text("shipped\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Feature")
+    git(scenario.repo, "push", "origin", "feature")
+    git(scenario.repo, "switch", "main")
+    scenario.worktrees.mkdir()
+    worktree = scenario.worktrees / "feature"
+    git(scenario.repo, "worktree", "add", worktree, "feature")
+    if local_data == "tracked":
+        (worktree / "feature.txt").write_text("uncommitted edit\n")
+    elif local_data == "untracked":
+        (worktree / "notes.txt").write_text("unique local notes\n")
+    else:
+        (worktree / "ignored").mkdir()
+        (worktree / "ignored/secret.txt").write_text("unique ignored data\n")
+    git(scenario.upstream, "fetch", "origin", "feature")
+    git(scenario.upstream, "merge", "--squash", "origin/feature")
+    git(scenario.upstream, "commit", "-m", "Squashed implementation")
+    git(scenario.upstream, "push", "origin", "main")
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    branch = scenario.outcome()["branches"][0]
+    assert branch["state"] == "merged-protected"
+    assert "Uncommitted" in branch["reason"]
+    assert worktree.exists()
+    assert git(scenario.repo, "rev-parse", "refs/heads/feature")
+    assert git(scenario.remote, "rev-parse", "refs/heads/feature")
+
+
+def test_clean_merged_branch_removes_only_confirmed_build_caches(scenario):
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "feature.txt").write_text("shipped\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Feature")
+    git(scenario.repo, "push", "origin", "feature")
+    git(scenario.repo, "switch", "main")
+    scenario.worktrees.mkdir()
+    worktree = scenario.worktrees / "feature"
+    git(scenario.repo, "worktree", "add", worktree, "feature")
+    with (worktree / ".gitignore").open("a") as ignore:
+        ignore.write("/node_modules/\n/.next/\n/out/\n")
+    for name in ("node_modules", ".next", "out"):
+        folder = worktree / name
+        folder.mkdir()
+        (folder / "cache").write_text("generated\n")
+    # The .gitignore is tracked and would block cleanup, so commit it on branch.
+    git(worktree, "add", ".gitignore")
+    git(worktree, "commit", "-m", "Ignore build output")
+    git(worktree, "push", "origin", "feature")
+    git(scenario.upstream, "fetch", "origin", "feature")
+    git(scenario.upstream, "merge", "--squash", "origin/feature")
+    git(scenario.upstream, "commit", "-m", "Publish website")
+    git(scenario.upstream, "push", "origin", "main")
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert scenario.outcome()["branches"][0]["state"] == "merged-cleaned"
+    assert not worktree.exists()
+
+
+def test_partial_squash_does_not_trigger_branch_deletion(scenario):
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "one.txt").write_text("one\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Part one")
+    first = git(scenario.repo, "rev-parse", "HEAD")
+    (scenario.repo / "two.txt").write_text("two\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Part two")
+    git(scenario.repo, "push", "origin", "feature")
+    git(scenario.repo, "switch", "main")
+    git(scenario.upstream, "fetch", "origin", "feature")
+    git(scenario.upstream, "cherry-pick", first)
+    git(scenario.upstream, "push", "origin", "main")
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode in (0, 1)
+    assert scenario.outcome()["branches"][0]["state"] != "merged-cleaned"
+    assert git(scenario.repo, "rev-parse", "refs/heads/feature")
+    assert git(scenario.remote, "rev-parse", "refs/heads/feature")
+
+
+def test_squash_with_matching_commit_message_is_not_enough(scenario):
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "feature.txt").write_text("unfinished content\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Same summary")
+    git(scenario.repo, "push", "origin", "feature")
+    git(scenario.repo, "switch", "main")
+    (scenario.upstream / "different.txt").write_text("different content\n")
+    git(scenario.upstream, "add", ".")
+    git(scenario.upstream, "commit", "-m", "Same summary")
+    git(scenario.upstream, "push", "origin", "main")
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode in (0, 1)
+    assert scenario.outcome()["branches"][0]["state"] != "merged-cleaned"
+    assert git(scenario.repo, "rev-parse", "refs/heads/feature")
+    assert git(scenario.remote, "rev-parse", "refs/heads/feature")
+
+
+def test_remote_branch_with_additional_commits_is_preserved(scenario):
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "feature.txt").write_text("shipped\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Feature")
+    original = git(scenario.repo, "rev-parse", "HEAD")
+    git(scenario.repo, "push", "origin", "feature")
+    git(scenario.repo, "switch", "main")
+    git(scenario.upstream, "fetch", "origin", "feature")
+    git(scenario.upstream, "merge", "--squash", "origin/feature")
+    git(scenario.upstream, "commit", "-m", "Squashed feature")
+    git(scenario.upstream, "push", "origin", "main")
+    git(scenario.upstream, "switch", "-c", "feature", "origin/feature")
+    (scenario.upstream / "extra.txt").write_text("new remote work\n")
+    git(scenario.upstream, "add", ".")
+    git(scenario.upstream, "commit", "-m", "Extra unmerged work")
+    newer = git(scenario.upstream, "rev-parse", "HEAD")
+    git(scenario.upstream, "push", "origin", "feature")
+    git(scenario.upstream, "switch", "main")
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert scenario.outcome()["branches"][0]["state"] == "merged-cleaned"
+    assert scenario.outcome()["branches"][0]["remote"] == "different-tip-preserved"
+    assert git(scenario.remote, "rev-parse", "refs/heads/feature") == newer
+    assert newer != original
+
+
 def test_only_direct_clone_directories_are_refreshed(scenario, tmp_path):
     nested = scenario.repo.parent / "tmp" / "experiment"
     nested.parent.mkdir()
@@ -318,6 +502,12 @@ def test_default_branch_recovery_name_identifies_its_source(scenario):
 def test_equivalent_slugs_get_distinct_worktree_paths(scenario):
     git(scenario.repo, "branch", "feat/foo-bar")
     git(scenario.repo, "branch", "feat-foo/bar")
+    for branch in ("feat/foo-bar", "feat-foo/bar"):
+        git(scenario.repo, "switch", branch)
+        (scenario.repo / f"{branch.replace('/', '-')}.txt").write_text(branch + "\n")
+        git(scenario.repo, "add", ".")
+        git(scenario.repo, "commit", "-m", f"Distinct work for {branch}")
+    git(scenario.repo, "switch", "main")
     scenario.advance()
 
     result = subprocess.run(scenario.command, capture_output=True, text=True)
@@ -416,7 +606,11 @@ def test_generated_ignored_caches_are_not_copied_into_recovery(scenario):
 
 
 def test_rebase_conflicts_remain_visible_and_are_not_restarted_on_the_next_tick(scenario, tmp_path):
-    git(scenario.repo, "branch", "healthy")
+    git(scenario.repo, "switch", "-c", "healthy")
+    (scenario.repo / "healthy.txt").write_text("independent unmerged work\n")
+    git(scenario.repo, "add", ".")
+    git(scenario.repo, "commit", "-m", "Healthy branch work")
+    git(scenario.repo, "switch", "main")
     git(scenario.repo, "switch", "-c", "feature")
     (scenario.repo / "tracked.txt").write_text("feature change\n")
     git(scenario.repo, "add", ".")
@@ -462,6 +656,9 @@ def test_rebase_conflicts_remain_visible_and_are_not_restarted_on_the_next_tick(
 def test_dirty_feature_worktree_keeps_staged_and_unstaged_edits_after_rebase(scenario, tmp_path):
     existing = tmp_path / "feature-worktree"
     git(scenario.repo, "worktree", "add", "-b", "feature", existing)
+    (existing / "committed-feature.txt").write_text("unique unmerged commit\n")
+    git(existing, "add", ".")
+    git(existing, "commit", "-m", "Unmerged feature change")
     (existing / "tracked.txt").write_text("staged\n")
     git(existing, "add", "tracked.txt")
     (existing / "tracked.txt").write_text("unstaged\n")
@@ -499,6 +696,9 @@ def test_excludes_main_master_and_actual_remote_default_from_branch_rebases(scen
 def test_rebase_edit_restore_conflicts_keep_original_changes_recoverable(scenario, tmp_path, staged):
     existing = tmp_path / "feature-worktree"
     git(scenario.repo, "worktree", "add", "-b", "feature", existing)
+    (existing / "committed-feature.txt").write_text("unique unmerged commit\n")
+    git(existing, "add", ".")
+    git(existing, "commit", "-m", "Unmerged feature change")
     (existing / "tracked.txt").write_text("unfinished local edit\n")
     if staged:
         git(existing, "add", ".")
