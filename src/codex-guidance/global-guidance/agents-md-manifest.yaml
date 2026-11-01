@@ -22,7 +22,8 @@ components:
     children:
       - path: agents-md-components/information-presentation/relevance.md
       - path: agents-md-components/information-presentation/anchoring.md
-      - path: agents-md-components/information-presentation/representation.md
+
       - path: agents-md-components/information-presentation/structural-semantic-coherence.md
       - path: agents-md-components/information-presentation/visual-semantics.md
       - path: agents-md-components/information-presentation/chat-response-presentation.md
+  - path: agents-md-components/information-representation-design/information-representation-design.md
