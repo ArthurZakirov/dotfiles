@@ -33,21 +33,28 @@ loaded() {
   launchctl print "$service" >/dev/null 2>&1
 }
 
-# Never interrupt an updater while it holds the cross-repository run lock.
-idle() {
-  if [ ! -e "$lock" ]; then
-    return 0
-  fi
-  python3 - "$lock" <<'PYTHON'
+# Hold the updater's global lock for the ENTIRE service transition. A
+# separate idle probe is unsafe: a refresh can start before launchctl bootout.
+transition_when_idle() {
+  python3 - "$lock" "$@" <<'PYTHON'
 import fcntl
 from pathlib import Path
+import subprocess
 import sys
 
-with Path(sys.argv[1]).open("a") as handle:
+lock, action, service, *details = sys.argv[1:]
+Path(lock).parent.mkdir(parents=True, exist_ok=True)
+with Path(lock).open("a") as handle:
     try:
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         sys.exit(1)
+
+    # No updater can acquire run.lock until this process exits.
+    subprocess.run(["launchctl", "bootout", service], check=True)
+    if action == "restart":
+        domain, plist = details
+        subprocess.run(["launchctl", "bootstrap", domain, plist], check=True)
 PYTHON
 }
 
@@ -55,11 +62,10 @@ if [ "$enabled" = false ]; then
   # Disable persistence immediately, even if a running refresh must finish.
   launchctl disable "$service"
   if loaded; then
-    if ! idle; then
-      echo "repo-refresh disabled; a refresh is running. Reapply after it finishes to unload the agent." >&2
+    if ! transition_when_idle stop "$service"; then
+      echo "repo-refresh disabled; a refresh is running or bootout failed. Reapply after it finishes." >&2
       exit 1
     fi
-    launchctl bootout "$service"
   fi
   rm -f "$marker"
   exit 0
@@ -71,12 +77,10 @@ desired_revision={{ includeTemplate "repo-refresh-agent" . | sha256sum | quote }
 if loaded; then
   active_revision="$(launchctl print "$service" | awk '$1 == "REPO_REFRESH_AGENT_REVISION" && $2 == "=>" { gsub(/"/, "", $3); print $3; exit }')"
   if [ "$active_revision" != "$desired_revision" ]; then
-    if ! idle; then
-      echo "repo-refresh definition changed during an active refresh. Reapply after it finishes." >&2
+    if ! transition_when_idle restart "$service" "$domain" "$plist"; then
+      echo "repo-refresh could not reload during a running refresh or due to launchctl failure. Reapply after resolving the issue." >&2
       exit 1
     fi
-    launchctl bootout "$service"
-    launchctl bootstrap "$domain" "$plist"
   fi
 else
   launchctl bootstrap "$domain" "$plist"

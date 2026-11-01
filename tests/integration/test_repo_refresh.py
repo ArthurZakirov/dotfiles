@@ -1013,6 +1013,20 @@ def test_install_hook_reconciles_enabled_state_and_loaded_revision(
         "launchctl": """#!/bin/sh
 set -eu
 dir="$TEST_AGENT_DIR"
+assert_refresh_locked() {
+  python3 - "$TEST_AGENT_LOCK" <<'PYLOCK'
+import fcntl
+import sys
+
+with open(sys.argv[1], "a") as lock:
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        pass
+    else:
+        raise SystemExit("launchctl transition ran without a held refresh lock")
+PYLOCK
+}
 case "$1" in
   print)
     test -e "$dir/loaded" || exit 3
@@ -1028,11 +1042,17 @@ case "$1" in
     ;;
   bootstrap)
     test ! -e "$dir/disabled" || exit 10
+    if test -e "$dir/restarting"; then
+      assert_refresh_locked
+      rm "$dir/restarting"
+    fi
     touch "$dir/loaded"
     printf '%s\n' "$TEST_DESIRED_REVISION" > "$dir/revision"
     printf 'bootstrap\n' >> "$dir/actions"
     ;;
   bootout)
+    assert_refresh_locked
+    touch "$dir/restarting"
     rm -f "$dir/loaded"
     printf 'bootout\n' >> "$dir/actions"
     ;;
@@ -1048,6 +1068,7 @@ esac
     monkeypatch.setenv("PATH", str(fake_bin) + os.pathsep + os.environ["PATH"])
     monkeypatch.setenv("TEST_AGENT_DIR", str(service))
     monkeypatch.setenv("TEST_DESIRED_REVISION", revision)
+    monkeypatch.setenv("TEST_AGENT_LOCK", str(home / ".local/state/repo-refresh/run.lock"))
     config = home / ".config/repo-refresh/config.json"
     config.parent.mkdir(parents=True)
     marker = home / "Library/Caches/chezmoi/com.arthur.repo-refresh.sha256"
@@ -1077,7 +1098,7 @@ esac
         fcntl.flock(handle, fcntl.LOCK_EX)
         blocked = apply(True)
         assert blocked.returncode == 1
-        assert "active refresh" in blocked.stderr
+        assert "running refresh" in blocked.stderr
         assert (service / "loaded").exists()
     assert apply(True).returncode == 0
 
