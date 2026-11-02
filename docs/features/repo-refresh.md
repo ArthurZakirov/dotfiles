@@ -13,8 +13,9 @@ Use the normal dotfiles installation flow:
 1. **Choose the versioned feature state** in
    [`home/.chezmoidata.toml`](../../home/.chezmoidata.toml). Set
    `repoRefresh.enabled = true` to enable or `false` to disable. The default
-   is **false** until recovery worktrees and unresolved rebase conflicts have
-   been checked.
+   is **true**; you can explicitly disable the scheduled updater when needed.
+   Existing conflicted worktrees remain preserved for later manual resolution;
+   they do not have to be resolved before enabling the service.
 2. **Run `chezmoi apply`** following the [setup guide](../setup.md).
    Chezmoi rewrites the [runtime configuration](../../home/dot_config/repo-refresh/private_config.json.tmpl)
    and regenerates the global `~/.codex/AGENTS.md` from the same value.

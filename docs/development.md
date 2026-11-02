@@ -27,20 +27,42 @@ git status --short --branch
 
 Check existing changes before switching branches.
 
-### Step 2 — Create a feature branch if you plan to share the change (no Git worktree)
+### Step 2 — Create a feature worktree if you plan to share the change
 
 Skip this step for local-only settings such as `~/.zshrc.local`.
 
-**Exception to the usual Git-worktree workflow:** Work directly in the checkout returned by `chezmoi source-path`. Do **not** create a separate Git worktree for this repository. Chezmoi uses its configured source directory, so `chezmoi cat`, `chezmoi diff`, and `chezmoi apply` would otherwise read the original checkout rather than changes made in a separate worktree.
+**Do not check out feature branches in the permanent Chezmoi source checkout.** Create a sibling worktree for each feature branch. Chezmoi's default source still points to the permanent checkout, so use `chezmoi --source "$PWD/home"` from a feature worktree only when deliberately previewing its templates; after merging, update the permanent checkout and run a normal `chezmoi apply`.
 
-From a clean working tree:
+From the permanent checkout, first fetch the latest default branch:
 
 ```sh
-git switch main
-git pull --ff-only
-git switch -c feat/describe-change
+git fetch origin main
+git worktree add -b feat/describe-change ../dotfiles.worktrees/feat-describe-change origin/main
+cd ../dotfiles.worktrees/feat-describe-change
 code .
 ```
+
+Do not move or discard uncommitted work to establish this layout. If a branch is already checked out in the permanent checkout, preserve its tracked, untracked, and ignored files before relocating it; use the repository refresh service or another explicitly verified migration procedure.
+
+#### Run Chezmoi from a feature worktree
+
+Chezmoi defaults to the source directory in `~/.config/chezmoi/chezmoi.toml`, **not** the directory where the shell is running. From the feature worktree's repository root, override the source for each command using the global `--source` / `-S` flag:
+
+```sh
+# Run these commands from the feature worktree's root (not its home/ directory).
+source_dir="$PWD/home"
+chezmoi --source "$source_dir" source-path
+chezmoi --source "$source_dir" cat ~/.config/repo-refresh/config.json
+chezmoi --source "$source_dir" status
+chezmoi --source "$source_dir" --use-builtin-diff diff
+chezmoi --source "$source_dir" apply --dry-run --verbose
+# Only when you explicitly want to change THIS Mac:
+chezmoi --source "$source_dir" apply
+```
+
+`--source` selects the worktree's `home/` directory for template rendering and file installation **without changing** your globally configured Chezmoi source. The default `chezmoi diff` invokes a custom VS Code diff adapter configured to target the permanent repository window. Use `--use-builtin-diff` for an accurate terminal diff, or set `CHEZMOI_CODE_DIFF_WORKSPACE="$PWD"` before `chezmoi --source "$PWD/home" diff` to direct the VS Code diff tabs to this worktree.
+
+**Applying is a live operation:** `apply` changes files in your real home directory and may run lifecycle scripts or restart services; `--source` does *not* sandbox those side effects. Prefer the dry run and integration tests while developing. After merging, update the permanent checkout and apply the merged version from there. Never run `chezmoi update` in a feature worktree as a shortcut for syncing the permanent checkout.
 
 ### Step 3 — Edit or add dotfiles
 
@@ -81,15 +103,15 @@ chezmoi add ~/.example
 Inspect the generated output without applying it:
 
 ```sh
-chezmoi cat ~/.zshrc
+chezmoi --source "$PWD/home" cat ~/.zshrc
 ```
 
 **Option B — Edit an existing, non-templated file already managed by chezmoi.** Replace `~/.example` with the actual managed path. Modify it directly, review the difference, then import the change into chezmoi's source:
 
 ```sh
 code ~/.example
-chezmoi diff ~/.example
-chezmoi re-add ~/.example
+chezmoi --source "$PWD/home" --use-builtin-diff diff ~/.example
+chezmoi --source "$PWD/home" re-add ~/.example
 ```
 
 `chezmoi re-add` does **not** overwrite templates. For a templated file such as `~/.zshrc`, use Option A and edit [`home/dot_zshrc.tmpl`](../home/dot_zshrc.tmpl) instead. Inspect the Git diff after either option.
@@ -142,12 +164,20 @@ same branch. Mark a review thread resolved **only after** its fix is committed
 and pushed; explain explicitly when a suggestion is not applicable.
 Wait for required checks to pass. Merge only when the user requests it.
 
-### Step 6 — Update your local checkout after merging
+### Step 6 — Update the permanent checkout after merging
+
+The feature worktree is not the permanent Chezmoi source. After merging the PR,
+update the permanent checkout (or let the enabled repository refresh service
+do this when it is safe). Never switch an active feature worktree to `main`.
 
 ```sh
-git switch main
-git pull --ff-only
+git -C "$(dirname "$(chezmoi source-path)")" switch main
+git -C "$(dirname "$(chezmoi source-path)")" pull --ff-only
 ```
+
+If the permanent checkout currently contains another agent's branch or edits, do
+not force the switch or pull. Wait for a verified repository refresh to preserve
+and relocate that work first.
 
 ### Step 7 — Preview and apply on this Mac
 

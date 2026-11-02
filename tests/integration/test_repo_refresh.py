@@ -938,25 +938,34 @@ def test_chezmoi_installs_executable_schedule_and_reconciles_configuration(
     executable = home / ".local/bin/repo-refresh"
     assert os.access(executable, os.X_OK)
     config = home / ".config/repo-refresh/config.json"
-    assert json.loads(config.read_text())["enabled"] is False
+    assert json.loads(config.read_text())["enabled"] is True
     plist = home / "Library/LaunchAgents/com.arthur.repo-refresh.plist"
     schedule = plistlib.loads(plist.read_bytes())
     assert schedule["StartInterval"] == 60
     # A locally changed config no longer overrides the versioned feature setting.
     config.write_text(scenario.config.read_text())
     subprocess.run(command, check=True, capture_output=True)
-    assert json.loads(config.read_text())["enabled"] is False
+    assert json.loads(config.read_text())["enabled"] is True
+    # Explicitly disabling the feature still overrides the enabled default.
+    disabled_command = [
+        "chezmoi", "--source", str(ROOT), "--config", str(rendered.config),
+        "--destination", str(home), "--override-data",
+        json.dumps({"repoRefresh": {"enabled": False}, "reposDir": str(scenario.repo.parent)}),
+        "apply", "--exclude", "scripts", "--force",
+        str(config),
+    ]
+    subprocess.run(disabled_command, check=True, capture_output=True)
+    assert json.loads(config.read_text()) == {
+        "enabled": False, "root": str(scenario.repo.parent), "remote": "origin",
+    }
     enabled_command = [
         "chezmoi", "--source", str(ROOT), "--config", str(rendered.config),
         "--destination", str(home), "--override-data",
         json.dumps({"repoRefresh": {"enabled": True}, "reposDir": str(scenario.repo.parent)}),
-        "apply", "--exclude", "scripts", "--force",
-        str(config),
+        "apply", "--exclude", "scripts", "--force", str(config),
     ]
     subprocess.run(enabled_command, check=True, capture_output=True)
-    assert json.loads(config.read_text()) == {
-        "enabled": True, "root": str(scenario.repo.parent), "remote": "origin",
-    }
+    assert json.loads(config.read_text())["enabled"] is True
     scenario.advance()
 
     result = subprocess.run([sys.executable, str(executable)], capture_output=True, text=True)
