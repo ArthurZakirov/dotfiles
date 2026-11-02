@@ -423,6 +423,20 @@ def test_offline_repo_is_untouched_and_does_not_block_other_repos(scenario):
     assert (scenario.repo / "upstream.txt").is_file()
 
 
+def test_unreadable_recovery_worktree_does_not_block_repository_refresh(scenario):
+    orphan = scenario.repo.parent / "orphaned-recovery"
+    git(scenario.repo, "worktree", "add", "--detach", str(orphan), "HEAD")
+    (orphan / ".git").unlink()
+    scenario.advance()
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (scenario.repo / "upstream.txt").is_file()
+    assert orphan.is_dir()
+    assert not (orphan / ".git").exists()
+
+
 def test_repeated_run_does_not_create_more_recovery_worktrees(scenario):
     git(scenario.repo, "switch", "-c", "feature")
     first = subprocess.run(scenario.command, capture_output=True, text=True)

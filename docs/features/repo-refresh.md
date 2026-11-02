@@ -4,7 +4,9 @@
 
 `repo-refresh` keeps permanent clones on the latest remote default branch and
 rebases local feature branches onto it. It preserves recovery copies before
-rewriting work and leaves conflicts visible for you to resolve.
+rewriting work and leaves conflicts visible for you to resolve. Unreadable
+historical recovery worktrees are retained without preventing maintenance of
+other branches in the same repository.
 
 ## ⚙️ Install and configure
 
