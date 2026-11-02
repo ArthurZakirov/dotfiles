@@ -41,3 +41,17 @@ def test_ci_validates_prs_and_main_without_duplicate_feature_pushes():
     assert "pull_request" in events
     assert events["push"]["branches"] == ["main"]
     assert "workflow_dispatch" in events
+
+
+def test_fresh_home_ci_uses_both_supported_macos_architectures():
+    workflow = yaml.load(
+        (ROOT / ".github/workflows/shell.yml").read_text(),
+        Loader=yaml.BaseLoader,
+    )
+    job = workflow["jobs"]["fresh-home"]
+
+    assert job["runs-on"] == "${{ matrix.runner }}"
+    assert job["strategy"]["matrix"]["include"] == [
+        {"profile": "personal", "runner": "macos-latest"},
+        {"profile": "professional", "runner": "macos-15-intel"},
+    ]

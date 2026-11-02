@@ -35,11 +35,16 @@ jobs:
         run: ./tests/run.sh
 
   fresh-home:
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        profile: [personal, professional]
+        include:
+          # Exercise both supported Homebrew prefixes while reducing ARM64 demand.
+          - profile: personal
+            runner: macos-latest
+          - profile: professional
+            runner: macos-15-intel
     steps:
       - uses: actions/checkout@v4
         with:
