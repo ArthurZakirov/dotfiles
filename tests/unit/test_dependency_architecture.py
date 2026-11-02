@@ -1,6 +1,8 @@
 """Protect profile-based dependency manifests from a second installation policy."""
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[2]
 COMMON = ROOT / "dependencies/brew/common/cli.Brewfile"
 
@@ -26,3 +28,16 @@ def test_ci_skips_hooks_not_arbitrary_package_categories():
     for path in [ROOT / "src/shell-setup.sh", *ROOT.glob("home/run_*"),
                  ROOT / ".github/workflows/shell.yml"]:
         assert "DOTFILES_SKIP_OPTIONAL_APPS" not in path.read_text(), path
+
+
+def test_ci_validates_prs_and_main_without_duplicate_feature_pushes():
+    # Treat "on" as a string, not YAML 1.1's boolean True.
+    workflow = yaml.load(
+        (ROOT / ".github/workflows/shell.yml").read_text(),
+        Loader=yaml.BaseLoader,
+    )
+    events = workflow["on"]
+
+    assert "pull_request" in events
+    assert events["push"]["branches"] == ["main"]
+    assert "workflow_dispatch" in events

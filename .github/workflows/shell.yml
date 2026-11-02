@@ -1,7 +1,11 @@
 name: Validate Mac shell profiles
+# Validate feature changes once per PR, not again for every push to that PR.
+# Direct updates to main still run CI; standalone branches can use the manual trigger.
 on:
-  push:
   pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
