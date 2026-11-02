@@ -123,3 +123,34 @@ excluded via [`home/.chezmoiignore`](../../home/.chezmoiignore) and
 [repository Git ignores](../../.gitignore). Existing unmanaged runtime
 directories are **not deleted automatically**; review them separately after
 the new guidance is applied successfully.
+
+## On-demand AGENTS.md freshness check
+
+Use the managed [`agents-freshness` custom prompt](../../home/dot_codex/prompts/agents-freshness.md)
+from a local Codex conversation:
+
+```text
+/prompts:agents-freshness
+```
+
+The prompt asks Codex to run the existing read-only freshness checker using
+`CODEX_THREAD_ID`, which identifies the conversation executing the shell
+tool. The reply is always **current**, **outdated**, or **unverifiable**,
+rather than interpreting no automatic hook notification as success.
+No Hammerspoon keyboard shortcut, window-focus detection, or session picker is
+required. The agent performs a read-only shell call only when you invoke the
+prompt; the normal automatic hooks remain independent.
+
+Custom prompts currently work in Codex CLI, the Codex IDE extension, and the
+ChatGPT desktop Codex composer, but are **deprecated** in favor of Agent
+Skills. Their invocation or discovery may change in future releases.
+Restart the relevant app or open a new chat after installing the prompt so it
+appears in the slash-command menu.
+
+The checker is distributed separately by the
+[AGENTS.md freshness hook feature](https://github.com/ArthurZakirov/dotfiles/pull/38);
+install that feature first if it has not yet been merged. When a chat cannot
+execute a local shell command or `CODEX_THREAD_ID` is unavailable, the status
+is **unverifiable**, never falsely green. Actual delivery of the expanded
+prompt and the model's use of the tool are surface-specific and should be
+confirmed in the interactive app.
