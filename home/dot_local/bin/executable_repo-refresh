@@ -322,9 +322,16 @@ def branch_worktrees(repo):
         if field.startswith(b"worktree "):
             current = Path(os.fsdecode(field[len(b"worktree "):]))
             if not current.is_dir():
+                current = None
                 continue
             for state in ("rebase-merge", "rebase-apply"):
-                head_name = git_path(current, f"{state}/head-name")
+                try:
+                    head_name = git_path(current, f"{state}/head-name")
+                except RefreshError:
+                    # Preserve unreadable or orphaned worktrees without aborting
+                    # maintenance of unrelated branches in this repository.
+                    current = None
+                    break
                 if head_name.is_file():
                     branch = head_name.read_text().strip().removeprefix("refs/heads/")
                     paths.setdefault(branch, set()).add(current)

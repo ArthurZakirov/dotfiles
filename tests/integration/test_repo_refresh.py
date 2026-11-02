@@ -423,6 +423,20 @@ def test_offline_repo_is_untouched_and_does_not_block_other_repos(scenario):
     assert (scenario.repo / "upstream.txt").is_file()
 
 
+def test_unreadable_recovery_worktree_does_not_block_repository_refresh(scenario):
+    orphan = scenario.repo.parent / "orphaned-recovery"
+    git(scenario.repo, "worktree", "add", "--detach", str(orphan), "HEAD")
+    (orphan / ".git").unlink()
+    scenario.advance()
+
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (scenario.repo / "upstream.txt").is_file()
+    assert orphan.is_dir()
+    assert not (orphan / ".git").exists()
+
+
 def test_repeated_run_does_not_create_more_recovery_worktrees(scenario):
     git(scenario.repo, "switch", "-c", "feature")
     first = subprocess.run(scenario.command, capture_output=True, text=True)
@@ -938,25 +952,34 @@ def test_chezmoi_installs_executable_schedule_and_reconciles_configuration(
     executable = home / ".local/bin/repo-refresh"
     assert os.access(executable, os.X_OK)
     config = home / ".config/repo-refresh/config.json"
-    assert json.loads(config.read_text())["enabled"] is False
+    assert json.loads(config.read_text())["enabled"] is True
     plist = home / "Library/LaunchAgents/com.arthur.repo-refresh.plist"
     schedule = plistlib.loads(plist.read_bytes())
     assert schedule["StartInterval"] == 60
     # A locally changed config no longer overrides the versioned feature setting.
     config.write_text(scenario.config.read_text())
     subprocess.run(command, check=True, capture_output=True)
-    assert json.loads(config.read_text())["enabled"] is False
+    assert json.loads(config.read_text())["enabled"] is True
+    # Explicitly disabling the feature still overrides the enabled default.
+    disabled_command = [
+        "chezmoi", "--source", str(ROOT), "--config", str(rendered.config),
+        "--destination", str(home), "--override-data",
+        json.dumps({"repoRefresh": {"enabled": False}, "reposDir": str(scenario.repo.parent)}),
+        "apply", "--exclude", "scripts", "--force",
+        str(config),
+    ]
+    subprocess.run(disabled_command, check=True, capture_output=True)
+    assert json.loads(config.read_text()) == {
+        "enabled": False, "root": str(scenario.repo.parent), "remote": "origin",
+    }
     enabled_command = [
         "chezmoi", "--source", str(ROOT), "--config", str(rendered.config),
         "--destination", str(home), "--override-data",
         json.dumps({"repoRefresh": {"enabled": True}, "reposDir": str(scenario.repo.parent)}),
-        "apply", "--exclude", "scripts", "--force",
-        str(config),
+        "apply", "--exclude", "scripts", "--force", str(config),
     ]
     subprocess.run(enabled_command, check=True, capture_output=True)
-    assert json.loads(config.read_text()) == {
-        "enabled": True, "root": str(scenario.repo.parent), "remote": "origin",
-    }
+    assert json.loads(config.read_text())["enabled"] is True
     scenario.advance()
 
     result = subprocess.run([sys.executable, str(executable)], capture_output=True, text=True)
@@ -1072,19 +1095,23 @@ esac
     config = home / ".config/repo-refresh/config.json"
     config.parent.mkdir(parents=True)
     marker = home / "Library/Caches/chezmoi/com.arthur.repo-refresh.sha256"
+    root = home / "fresh-repository-root"
 
     def apply(enabled):
-        config.write_text(json.dumps({"enabled": enabled}))
+        config.write_text(json.dumps({"enabled": enabled, "root": str(root)}))
         return subprocess.run(["sh", str(hook)], capture_output=True, text=True)
 
-    # Disabled applies persist and do not bootstrap an unloaded service.
+    # Disabled applies must not create the repository root or load the service.
+    assert not root.exists()
     assert apply(False).returncode == 0
+    assert not root.exists()
     assert (service / "disabled").is_file()
     assert not (service / "loaded").exists()
     assert not marker.exists()
 
-    # Enable an already-disabled service, then repeat idempotently.
+    # Fresh installs create the configured root before loading the service.
     assert apply(True).returncode == 0
+    assert root.is_dir()
     assert apply(True).returncode == 0
     assert not (service / "disabled").exists()
     assert (service / "loaded").is_file()
