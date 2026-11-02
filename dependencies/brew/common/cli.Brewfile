@@ -9,6 +9,7 @@ brew "zsh-syntax-highlighting"
 brew "python" # binary: python3; min-version: 3.11
 brew "zstd" # binary: zstd; decompress archived Codex session transcripts
 brew "uv" # binary: uv
+brew "zstd" # binary: zstd; decompress archived Codex rollouts
 
 # Additional shared command-line tools (both profiles).
 # The binary comment preserves the existing "command -v" installation check.

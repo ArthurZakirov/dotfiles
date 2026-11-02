@@ -177,3 +177,16 @@ def test_missing_transcript_does_not_modify_anything(tmp_path):
 
     assert result.stdout == ""
     assert not (tmp_path / ".cache").exists()
+
+def test_empty_valid_instruction_snapshot_is_not_unknown(tmp_path):
+    # GIVEN the session loaded valid but empty global instructions
+    home = tmp_path / ".codex"
+    home.mkdir()
+    (home / "AGENTS.md").write_text("# Newly populated\n")
+    transcript = make_rollout(home / "sessions", "")
+
+    # WHEN the public checker compares the recorded and current instructions
+    result = json.loads(run_check(tmp_path, transcript).stdout)
+
+    # THEN it reports confirmed outdated instructions rather than unknown
+    assert result["status"] == "outdated"

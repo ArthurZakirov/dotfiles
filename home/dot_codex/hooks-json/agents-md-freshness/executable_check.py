@@ -126,7 +126,7 @@ def recorded_global_text(path: Path, expected_session: str) -> str | None:
                 snapshot = entry["text"] if isinstance(entry["text"], str) else None
             # A directory-only patch preserves the previous instruction text.
 
-    if not session_matched or not known or not snapshot:
+    if not session_matched or not known or snapshot is None:
         return None
     return snapshot.split(PROJECT_SEPARATOR, 1)[0].rstrip("\n")
 

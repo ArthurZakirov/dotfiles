@@ -191,3 +191,44 @@ copied and avoids overwriting unrelated clipboard changes.
 This first version supports local Codex chats in the desktop application
 (bundle ID `com.openai.codex`), not terminal Codex sessions or unrelated
 ChatGPT conversations.
+
+## AGENTS.md freshness warnings
+
+The managed [freshness checker](../../home/dot_codex/hooks-json/agents-md-freshness/executable_check.py)
+compares the most recent **model-visible global instructions snapshot** in the
+**current Codex session** against the active global file (`~/.codex/AGENTS.md`,
+or `AGENTS.override.md` when present).
+
+- **Trigger:** `UserPromptSubmit` and `Stop` in the managed `hooks.json`.
+- **Mismatch:** Display a Codex UI `systemMessage` and a macOS notification.
+  Repeated warnings for the same session/file version are suppressed.
+- **Match or unavailable snapshot:** Stay silent. In particular, the checker
+  never interprets an unreadable or absent snapshot as proof that instructions
+  are current.
+- **Safety:** Both handlers are asynchronous and advisory. They never block,
+  interrupt, rewrite input, or add model-visible context. The previously
+  managed bedtime guard remains a separate synchronous hook.
+- **Formats:** Streams plain `.jsonl` and `.jsonl.zst` rollouts using the
+  common Homebrew `zstd` executable for compressed files. No decompressed
+  copy is written to disk.
+- **Scope:** Global instruction text only. Project-specific `AGENTS.md`,
+  other context sources, and the exact model payload are not verified.
+  The recorded snapshot is the **last persisted model-visible state**, which
+  may refresh on the next turn. A warning does not prove a restart is required.
+
+To inspect a particular session manually:
+
+```bash
+python3 ~/.codex/hooks-json/agents-md-freshness/check.py --check \
+  --session-id YOUR_SESSION_ID
+```
+
+The result is JSON with `current`, `outdated`, or `unknown`, plus hashes
+and (when available) the generated source digests. The check uses the
+session's specific rollout, not the newest unrelated chat.
+
+After `chezmoi apply`, restart Codex to discover the new hooks and review
+their changed definitions via `/hooks`; Codex skips untrusted user hooks.
+Mac notifications also depend on macOS notification permissions for the
+invoking application. Source snapshots are internal rollout records and may
+change format in future Codex releases.
