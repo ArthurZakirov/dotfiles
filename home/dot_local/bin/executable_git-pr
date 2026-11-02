@@ -1,0 +1,393 @@
+#!/usr/bin/env python3
+"""Navigate between GitHub/Bitbucket pull requests and branch worktrees.
+
+Write operations are explicitly authorized by the per-machine chezmoi profile.
+Bitbucket pull-request discovery uses the existing Chrome session integration.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+from urllib.parse import quote, unquote, urlsplit
+
+sys.path.insert(0, str(Path.home() / ".local/share/pr-navigation"))
+import bitbucket  # noqa: E402 - chezmoi deploys this companion module
+
+
+class NavigationError(Exception):
+    """A safe, user-facing navigation failure."""
+
+
+def command(argv: list[str], *, cwd: Path | None = None, timeout: int = 30,
+            optional: bool = False) -> str:
+    try:
+        result = subprocess.run(argv, cwd=cwd, text=True, capture_output=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise NavigationError(f"{argv[0]} could not run or timed out.") from exc
+    if result.returncode and not optional:
+        # Error output may contain tokens, private repository URLs or credentials.
+        raise NavigationError(f"{argv[0]} {argv[1] if len(argv) > 1 else ''} failed (exit {result.returncode}).")
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def git(repo: Path, *args: str, optional: bool = False, timeout: int = 45) -> str:
+    return command(["git", "--no-optional-locks", "-C", str(repo), *args],
+                   timeout=timeout, optional=optional)
+
+
+def settings() -> dict:
+    config = Path.home() / ".config/pr-navigation/config.json"
+    try:
+        data = json.loads(config.read_text())
+        if data["profile"] not in ("personal", "professional"):
+            raise ValueError
+        if not isinstance(data["reposRoot"], str) or not data["reposRoot"]:
+            raise ValueError
+        if not isinstance(data["githubUsername"], str):
+            raise ValueError
+        if not isinstance(data.get("bitbucketWritableWorkspaces", []), list):
+            raise ValueError
+        return data
+    except (OSError, ValueError, KeyError) as exc:
+        raise NavigationError("Missing or invalid ~/.config/pr-navigation/config.json; run chezmoi apply.") from exc
+
+
+def repos_root(config: dict, override: Path | None = None) -> Path:
+    # CLI overrides enable controlled tests and one-off routing.
+    raw = str(override) if override else os.getenv("REPOS_DIR") or config["reposRoot"]
+    return Path(raw).expanduser().resolve()
+
+
+def remote_identity(url: str) -> tuple[str, str, str] | None:
+    """Parse only GitHub.com and Bitbucket Cloud identities, never credentials."""
+    scp = re.fullmatch(r"(?:[^@/]+@)?(github\.com|bitbucket\.org):([^/]+)/([^/]+?)(?:\.git)?/?", url)
+    if scp:
+        host, owner, repo = scp.groups()
+    else:
+        try:
+            p = urlsplit(url)
+            if p.hostname not in ("github.com", "bitbucket.org") or p.scheme not in ("https", "ssh"):
+                return None
+            parts = p.path.strip("/").split("/")
+            if len(parts) != 2:
+                return None
+            host, (owner, repo) = p.hostname, (unquote(part) for part in parts)
+            repo = repo.removesuffix(".git")
+        except ValueError:
+            return None
+    return host.lower(), owner.lower(), repo.lower()
+
+
+def remote_url(host: str, owner: str, repo: str) -> str:
+    if host not in ("github.com", "bitbucket.org"):
+        raise NavigationError("Unsupported Git host.")
+    if not all(re.fullmatch(r"[A-Za-z0-9_.-]+", part) for part in (owner, repo)):
+        raise NavigationError("Unsupported repository owner or name.")
+    return f"git@{host}:{owner}/{repo}.git"
+
+
+def verify_branch(branch: str) -> str:
+    if not branch or branch == "HEAD":
+        raise NavigationError("The URL has no branch name.")
+    result = subprocess.run(["git", "check-ref-format", f"refs/heads/{branch}"],
+                            capture_output=True, timeout=10)
+    if result.returncode:
+        raise NavigationError("The URL contains an invalid Git branch name.")
+    return branch
+
+
+def parse_url(url: str) -> tuple[tuple[str, str, str], str]:
+    """Return the actual source repository and ref, not the PR destination."""
+    try:
+        p = urlsplit(url)
+        if p.scheme != "https" or p.username or p.password or p.port not in (None, 443):
+            raise ValueError
+        path = p.path.strip("/").split("/")
+        if len(path) < 4 or not path[0] or not path[1]:
+            raise ValueError
+        host, owner, repo = p.hostname, unquote(path[0]), unquote(path[1])
+        if not remote_identity(remote_url(host, owner, repo)):
+            raise ValueError
+        if host == "bitbucket.org":
+            if path[2] == "pull-requests" and path[3].isdigit():
+                branch_url = bitbucket.source_branch_url(url)
+                (source_owner, source_repo), branch = bitbucket.parse_branch_url(branch_url)
+                return ("bitbucket.org", source_owner, source_repo), verify_branch(branch)
+            if path[2] == "branch":
+                (source_owner, source_repo), branch = bitbucket.parse_branch_url(url)
+                return ("bitbucket.org", source_owner, source_repo), verify_branch(branch)
+        elif host == "github.com":
+            if path[2] == "pull" and path[3].isdigit():
+                response = command(["gh", "api", f"repos/{owner}/{repo}/pulls/{int(path[3])}"])
+                payload = json.loads(response)["head"]
+                source = payload["repo"]["full_name"].split("/")
+                if len(source) != 2:
+                    raise ValueError
+                return ("github.com", source[0].lower(), source[1].lower()), verify_branch(payload["ref"])
+            if path[2] == "tree":
+                # GitHub tree URLs may append file paths; resolve the longest existing branch.
+                tail = unquote("/".join(path[3:]))
+                refs = command(["git", "ls-remote", "--heads",
+                                remote_url(host, owner, repo)], timeout=45)
+                branches = [line.split("refs/heads/", 1)[1] for line in refs.splitlines()
+                            if "refs/heads/" in line]
+                candidates = [b for b in branches if tail == b or tail.startswith(b + "/")]
+                if candidates:
+                    return ("github.com", owner.lower(), repo.lower()), verify_branch(max(candidates, key=len))
+    except (ValueError, KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+        raise NavigationError("Use a GitHub/Bitbucket PR or branch URL.") from exc
+    except bitbucket.NavigationError as exc:
+        raise NavigationError(str(exc)) from exc
+    raise NavigationError("Use a GitHub/Bitbucket PR or branch URL.")
+
+
+def git_remotes(repo: Path) -> dict[str, tuple[str, str, str] | None]:
+    return {name: remote_identity(git(repo, "remote", "get-url", name))
+            for name in git(repo, "remote").splitlines()}
+
+
+def find_repo(root: Path, identity: tuple[str, str, str]) -> tuple[Path, str] | None:
+    """Find primary checkouts, not linked worktrees or unrelated same-name repos."""
+    if not root.is_dir():
+        return None
+    candidates = [p for p in root.iterdir() if p.is_dir() and not p.name.endswith(".worktrees")]
+    for child in list(candidates):
+        if not (child / ".git").is_dir():
+            candidates.extend(p for p in child.iterdir() if p.is_dir()
+                              and not p.name.endswith(".worktrees"))
+    matches: list[tuple[Path, str]] = []
+    for repo in candidates:
+        if not (repo / ".git").is_dir():
+            continue
+        for remote, remote_id in git_remotes(repo).items():
+            if remote_id == identity:
+                matches.append((repo, remote))
+    if len(matches) > 1:
+        # A second remote for the same repository is fine; multiple physical
+        # primary checkouts are ambiguous and must not be selected arbitrarily.
+        paths = {repo.resolve() for repo, _ in matches}
+        if len(paths) != 1:
+            raise NavigationError("Multiple primary checkouts match this repository; select one manually.")
+        matches.sort(key=lambda item: item[1] != "origin")
+    return matches[0] if matches else None
+
+
+def ensure_repo(root: Path, identity: tuple[str, str, str], config: dict) -> tuple[Path, str]:
+    found = find_repo(root, identity)
+    if found:
+        return found
+    host, owner, name = identity
+    if host == "bitbucket.org" and config["profile"] != "professional":
+        raise NavigationError("Bitbucket checkout is disabled on personal-profile Macs.")
+    dest = root / name
+    if dest.exists():
+        raise NavigationError(f"{dest} already exists but is not the requested repository.")
+    root.mkdir(parents=True, exist_ok=True)
+    command(["git", "clone", remote_url(host, owner, name), str(dest)], timeout=180)
+    found = find_repo(root, identity)
+    if not found:
+        raise NavigationError("Cloned repository could not be verified against its remote.")
+    return found
+
+
+def worktree_records(repo: Path) -> list[tuple[Path, str | None]]:
+    entries = []
+    for record in git(repo, "worktree", "list", "--porcelain", "-z").split("\0\0"):
+        lines = record.split("\0")
+        path = next((line[9:] for line in lines if line.startswith("worktree ")), None)
+        branch = next((line[len("branch refs/heads/"):] for line in lines
+                       if line.startswith("branch refs/heads/")), None)
+        if path:
+            entries.append((Path(path), branch))
+    return entries
+
+
+def branch_directory(repo: Path, branch: str) -> Path:
+    slug = "".join(char if char.isalnum() or char in "._-" else "-" for char in branch)
+    slug = slug.strip("._-")
+    if not slug:
+        slug = "branch-" + hashlib.sha256(branch.encode()).hexdigest()[:10]
+    if len(slug.encode()) > 120:
+        slug = slug[:96].rstrip("._-") + "-" + hashlib.sha256(branch.encode()).hexdigest()[:10]
+    return repo.parent / (repo.name + ".worktrees") / slug
+
+
+def ensure_worktree(repo: Path, remote: str, branch: str) -> Path:
+    verify_branch(branch)
+    matches = [path for path, current in worktree_records(repo) if current == branch and path.is_dir()]
+    if len(matches) > 1:
+        raise NavigationError("Multiple registered worktrees contain this branch.")
+    if matches:
+        return matches[0]
+    dest = branch_directory(repo, branch)
+    if dest.exists():
+        raise NavigationError(f"Worktree destination already exists: {dest}")
+    # Do not mutate the permanent checkout; only create a linked branch checkout.
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if git(repo, "show-ref", "--verify", f"refs/heads/{branch}", optional=True):
+        git(repo, "worktree", "add", str(dest), branch)
+    else:
+        git(repo, "fetch", "--no-tags", remote,
+            f"refs/heads/{branch}:refs/remotes/{remote}/{branch}", timeout=90)
+        git(repo, "worktree", "add", "--track", "-b", branch, str(dest),
+            f"{remote}/{branch}")
+    return dest
+
+
+def current_branch(repo: Path) -> tuple[str, tuple[str, str, str], str]:
+    branch = git(repo, "symbolic-ref", "--quiet", "--short", "HEAD", optional=True)
+    if not branch:
+        raise NavigationError("Open a named Git branch rather than detached HEAD.")
+    identities = git_remotes(repo)
+    selected = (
+        git(repo, "config", "--get", f"branch.{branch}.pushRemote", optional=True)
+        or git(repo, "config", "--get", "remote.pushDefault", optional=True)
+        or git(repo, "config", "--get", f"branch.{branch}.remote", optional=True)
+        or "origin"
+    )
+    if selected not in identities or identities[selected] is None:
+        raise NavigationError("No supported GitHub or Bitbucket remote is configured for this branch.")
+    return branch, identities[selected], selected
+
+
+def authorized_push(config: dict, identity: tuple[str, str, str]) -> bool:
+    host, owner, _ = identity
+    if host == "github.com":
+        return config["profile"] == "personal" and owner == config["githubUsername"].lower()
+    return (config["profile"] == "professional"
+            and owner in {str(value).lower() for value in config["bitbucketWritableWorkspaces"]})
+
+
+def upstream_present(repo: Path, remote: str, branch: str) -> bool:
+    return bool(git(repo, "ls-remote", "--heads", remote, f"refs/heads/{branch}"))
+
+
+def maybe_push(repo: Path, branch: str, identity: tuple[str, str, str],
+               remote: str, config: dict) -> None:
+    if upstream_present(repo, remote, branch):
+        return
+    if not authorized_push(config, identity):
+        raise NavigationError("Remote branch is missing, but pushes to this host/account are blocked by the machine profile.")
+    git(repo, "push", "--set-upstream", remote, f"refs/heads/{branch}", timeout=120)
+
+
+def github_pr(repo: Path, branch: str, identity: tuple[str, str, str],
+              remote: str, config: dict) -> str:
+    _, owner, name = identity
+    target = f"{owner}/{name}"
+    result = json.loads(command(["gh", "pr", "list", "--repo", target, "--head", branch,
+                                 "--state", "open", "--json", "url,headRepositoryOwner", "--limit", "100"]))
+    # Exclude open PRs originating from a different fork with the same ref name.
+    matches = [item["url"] for item in result
+               if item.get("headRepositoryOwner", {}).get("login", "").lower() == owner]
+    if len(matches) > 1:
+        raise NavigationError("Multiple matching open PRs exist; choose in GitHub.")
+    if matches:
+        return matches[0]
+    if not authorized_push(config, identity):
+        raise NavigationError("GitHub PR creation and pushes are disabled by this machine profile or repository owner.")
+    maybe_push(repo, branch, identity, remote, config)
+    return command(["gh", "pr", "create", "--repo", target, "--head", branch, "--fill"], cwd=repo, timeout=120)
+
+
+def branch_page(identity: tuple[str, str, str], branch: str) -> str:
+    host, owner, name = identity
+    if host == "github.com":
+        return f"https://github.com/{owner}/{name}/tree/{quote(branch, safe='')}"
+    return f"https://bitbucket.org/{owner}/{name}/branch/{quote(branch, safe='')}"
+
+
+def open_chrome(url: str) -> None:
+    command(["/usr/bin/open", "-a", "Google Chrome", url])
+
+
+def open_local(url: str, config: dict, root: Path, *, print_only: bool) -> Path:
+    identity, branch = parse_url(url)
+    repo, remote = ensure_repo(root, identity, config)
+    target = ensure_worktree(repo, remote, branch)
+    if not print_only:
+        code = shutil.which("code")
+        if not code:
+            raise NavigationError("VS Code command 'code' is not installed.")
+        command([code, "--new-window", str(target)])
+    return target
+
+
+def open_pr(repo: Path, config: dict, *, print_only: bool) -> str:
+    branch, identity, remote = current_branch(repo)
+    if identity[0] == "github.com":
+        url = github_pr(repo, branch, identity, remote, config)
+        if not print_only:
+            open_chrome(url)
+        return url
+
+    # Existing Bitbucket Chrome session supplies PR discovery without another CLI.
+    try:
+        candidates = bitbucket.open_pull_requests(branch_page(identity, branch))
+    except bitbucket.NavigationError as exc:
+        raise NavigationError(str(exc)) from exc
+    if candidates:
+        if len(candidates) == 1:
+            url = candidates[0]["url"]
+            if not print_only:
+                open_chrome(url)
+            return url
+        if print_only:
+            return "\n".join(item["url"] for item in candidates)
+        data = bitbucket.lua_string(json.dumps(candidates))
+        result = bitbucket.hammerspoon(
+            "return hs.json.encode({ok=HammerspoonConfig.chooseBitbucketPullRequest("
+            "hs.json.decode(" + data + "))})"
+        )
+        if not result.get("ok"):
+            raise NavigationError("Hammerspoon PR chooser is unavailable.")
+        return "\n".join(item["url"] for item in candidates)
+    maybe_push(repo, branch, identity, remote, config)
+    # Bitbucket PR creation is intentionally out of scope.
+    url = branch_page(identity, branch)
+    if not print_only:
+        open_chrome(url)
+    return url
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="action", required=True)
+    local = sub.add_parser("open-local", help="Open or create a linked VS Code worktree from a browser URL")
+    local.add_argument("url")
+    local.add_argument("--repos-root", type=Path)
+    local.add_argument("--print", dest="print_only", action="store_true")
+    for action in ("open-pr", "open-remote"):
+        cmd = sub.add_parser(action)
+        cmd.add_argument("--path", type=Path, default=Path.cwd())
+        cmd.add_argument("--print", dest="print_only", action="store_true")
+    args = parser.parse_args()
+    try:
+        config = settings()
+        if args.action == "open-local":
+            result = str(open_local(args.url, config, repos_root(config, args.repos_root),
+                                    print_only=args.print_only))
+        elif args.action == "open-pr":
+            result = open_pr(args.path.expanduser(), config, print_only=args.print_only)
+        else:
+            branch, identity, _ = current_branch(args.path.expanduser())
+            result = branch_page(identity, branch)
+            if not args.print_only:
+                open_chrome(result)
+        print(result)
+        return 0
+    except (NavigationError, bitbucket.NavigationError, OSError, ValueError) as exc:
+        print(f"git-pr: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,89 @@
+# 🔀 GitHub and Bitbucket PR navigation
+
+[← Features](README.md) · [Git review](git-review.md)
+
+This workflow uses the same shortcuts on both macOS profiles. The Git remote
+determines which host is used; no separate GitHub/Bitbucket hotkeys are needed.
+
+## ⌨️ Shortcuts
+
+| Context | Shortcut | Result |
+| --- | --- | --- |
+| VS Code, inside a Git worktree | `Ctrl+P`, `Ctrl+R` | Find its open PR and open it in Chrome |
+| Chrome, on a GitHub/Bitbucket PR or branch page | `Ctrl+Option+Cmd+V` | Open/create the source branch's linked worktree in VS Code |
+
+The VS Code global task **Git: Open Current Pull Request in Chrome** calls
+`~/.local/bin/git-pr open-pr --path ${workspaceFolder}`. The companion task
+**Git: Open Current Branch in Chrome** calls `git-pr open-remote`. The
+Hammerspoon binding calls `git-pr open-local <browser-url>`.
+
+## 🔄 Exact upsert behavior
+
+**VS Code → PR:**
+
+1. Determine the active branch and its Git remote (`github.com` or `bitbucket.org`).
+2. For GitHub, open an existing source-branch PR, without pushing anything.
+3. If no GitHub PR exists, only when the machine authorizes writes to this
+   account, push a missing branch with upstream tracking and run
+   `gh pr create --fill`. If the branch already exists remotely, do not push
+   it again.
+4. For Bitbucket, reuse the existing Chrome-backed PR lookup. If there is no
+   PR, push a missing branch only when its workspace is explicitly allowed;
+   open the branch page instead of creating a Bitbucket PR.
+
+**Browser → VS Code:**
+
+1. Resolve the PR's **source repository** and branch, including fork-based PRs.
+2. Locate the matching primary checkout under `REPOS_DIR` (or the Chezmoi
+   `reposRoot` setting). Search immediate root and one child directory.
+3. Clone a missing repository into `<reposRoot>/<repo>` without modifying
+   other repositories. Refuse existing conflicting directory names.
+4. Reuse a registered worktree on the branch. Otherwise fetch it and create
+   `<primary-checkout>.worktrees/<branch-slug>`.
+5. Open that directory in a new VS Code window. Never switch the primary
+   checkout away from its default branch.
+
+The command is idempotent: repeated requests reuse the same registered
+worktree. GitHub branch-tree URLs with a file-path suffix resolve the longest
+matching remote branch. A missing/deleted PR source repository fails rather
+than guessing a substitute.
+
+## 🔐 Write permissions by machine profile
+
+Chezmoi renders `~/.config/pr-navigation/config.json` from
+[`config.json.tmpl`](../../home/dot_config/pr-navigation/config.json.tmpl).
+
+| Operation | `personal` profile | `professional` profile |
+| --- | --- | --- |
+| GitHub read/open/clone | Allowed | Allowed |
+| GitHub branch push + PR creation | Only repositories whose owner is the configured `githubUsername` | **Never allowed** |
+| Bitbucket read/open/clone | No company-repository checkout | Allowed |
+| Bitbucket branch push | Disabled | Only workspaces explicitly listed in `bitbucketWritableWorkspaces` |
+| Bitbucket PR creation | Not implemented | Not implemented |
+
+The Bitbucket push allowlist defaults to empty, including on professional
+Macs. To enable it, set `bitbucketWritableWorkspaces` in that Mac's
+`~/.config/chezmoi/chezmoi.toml` under `[data]` (for example,
+`bitbucketWritableWorkspaces = ["your-company-workspace"]`), then run
+`chezmoi apply`. Use only workspaces where pushing company code is authorized.
+Do not infer company ownership from the current computer or its Git credentials.
+
+## 🛠️ Install and verify
+
+`chezmoi apply` deploys `git-pr`, the existing Bitbucket Chrome helper,
+and the Hammerspoon module, and merges the two global VS Code tasks/binding
+without overwriting unrelated entries or comments. It uses the existing
+Hammerspoon reload lifecycle.
+
+Check the installed config and task behavior:
+
+```bash
+cat ~/.config/pr-navigation/config.json
+git-pr open-remote --path "$PWD" --print
+git-pr open-pr --path "$PWD" --print
+```
+
+**Important:** `--print` suppresses opening Chrome/VS Code but does **not**
+disable clone, push, worktree creation or PR creation. Do not use it as a
+dry-run for upsert actions. Testing uses isolated Git repositories and
+subprocess stubs instead.
