@@ -2,6 +2,7 @@
 
 import os
 import shlex
+from pathlib import Path
 
 import pytest
 
@@ -16,6 +17,27 @@ def test_complete_render_matches_reviewed_snapshots(
     # WHEN chezmoi renders the same files on this machine
     # THEN every byte matches the reviewed, path-normalized snapshots
     assert_snapshots_match(rendered_profile, profile_factory.repository)
+
+
+@pytest.mark.parametrize("profile", ["personal", "professional"])
+def test_zshrc_renders_with_legacy_config_missing_repos_dir(
+    profile: str, profile_factory: ChezmoiProfileFixture,
+) -> None:
+    # GIVEN a config generated before reposDir was added
+    rendered = profile_factory.render(profile)
+    settings = [
+        line for line in rendered.config.read_text().splitlines()
+        if not line.strip().startswith("reposDir =")
+    ]
+    rendered.config.write_text("\n".join(settings) + "\n")
+
+    # WHEN chezmoi renders a shell file during first apply
+    shell = profile_factory.chezmoi(
+        rendered.config, "cat", str(Path.home() / ".zshrc")
+    )
+
+    # THEN missing optional data does not abort template evaluation
+    assert f'export REPOS_DIR="{Path.home()}/Repos"' in shell
 
 
 def test_chezmoi_uses_vscode_for_editing_and_diffs(rendered_profile: RenderedProfile) -> None:
