@@ -18,6 +18,8 @@ pytestmark = pytest.mark.skipif(LUAJIT is None, reason="LuaJIT required")
     [
         "current",
         "outdated",
+        "local_stale",
+        "deployed_stale",
         "no_snapshot",
         "no_link",
         "wrong_link",
@@ -41,3 +43,4 @@ def test_hammerspoon_module_is_chezmoi_managed(profile, profile_factory):
     rendered = profile_factory.render(profile)
     files = profile_factory.chezmoi(rendered.config, "managed", "--include", "files")
     assert ".hammerspoon/modules/agents_freshness.lua" in files.splitlines()
+    assert ".hammerspoon/bin/agents_md_pipeline" in files.splitlines()
