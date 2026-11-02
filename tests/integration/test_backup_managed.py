@@ -1,5 +1,6 @@
 """Pre-apply snapshots protect existing dotfiles independent of checkout layout."""
 from pathlib import Path
+import json
 import shutil
 import os
 import subprocess
@@ -103,6 +104,71 @@ def test_real_chezmoi_dry_run_and_apply_preserve_existing_state(tmp_path):
     assert again.returncode == 0, again.stderr
     assert target.read_text() == "new managed state\n"
     assert len(list((home / "Library/Application Support/dotfiles/backups").glob("apply.*"))) == 1
+
+
+@pytest.mark.parametrize("root_source", ["default", "environment", "configured"])
+def test_preapply_backup_accepts_legacy_config_without_repos_dir(tmp_path, root_source):
+    # Arrange: an existing chezmoi config with no reposDir, plus a managed
+    # target that must be backed up before being replaced.
+    checkout = tmp_path / "dotfiles checkout"
+    source = checkout / "home"
+    template = source / "dot_config/repo-refresh/private_config.json.tmpl"
+    template.parent.mkdir(parents=True)
+    (checkout / "src").mkdir()
+    shutil.copy2(ROOT / "src/backup-managed.sh", checkout / "src/backup-managed.sh")
+    shutil.copy2(
+        ROOT / "home/run_before_01-snapshot-existing-managed.sh.tmpl",
+        source / "run_before_01-snapshot-existing-managed.sh.tmpl",
+    )
+    shutil.copy2(
+        ROOT / "home/dot_config/repo-refresh/private_config.json.tmpl", template,
+    )
+    (source / ".chezmoidata.toml").write_text("[repoRefresh]\nenabled = true\n")
+
+    home = tmp_path / "destination home"
+    home.mkdir()
+    target = home / ".config/repo-refresh/config.json"
+    target.parent.mkdir(parents=True)
+    target.write_text('{"previous": "preserve this"}\n')
+
+    custom_root = tmp_path / "custom repository root"
+    environment_root = tmp_path / "environment repository root"
+    config = tmp_path / "legacy-config.toml"
+    config.write_text(
+        f'sourceDir = "{source}"\n'
+        "[data]\nprofile = \"personal\"\n"
+        + (f'reposDir = "{custom_root}"\n' if root_source == "configured" else "")
+    )
+    expected_root = {
+        "default": home / "Repos",
+        "environment": environment_root,
+        "configured": custom_root,
+    }[root_source]
+    command = [
+        "chezmoi", "--config", str(config), "--source", str(source),
+        "--working-tree", str(checkout), "--destination", str(home),
+    ]
+    env = {**os.environ, "HOME": str(home)}
+    env.pop("REPOS_DIR", None)
+    if root_source != "default":
+        env["REPOS_DIR"] = str(environment_root)
+
+    # Act: execute the real chezmoi apply, including the pre-apply backup hook.
+    result = subprocess.run(
+        command + ["apply"], env=env, text=True, capture_output=True, timeout=30,
+    )
+
+    # Assert: rendering succeeds, the original file is saved, and the expected
+    # configured or default repository path reaches the installed target.
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(target.read_text()) == {
+        "enabled": True, "root": str(expected_root), "remote": "origin",
+    }
+    backups = list((home / "Library/Application Support/dotfiles/backups").glob("apply.*"))
+    assert len(backups) == 1
+    assert (backups[0] / "files/.config/repo-refresh/config.json").read_text() == (
+        '{"previous": "preserve this"}\n'
+    )
 
 
 def test_backup_rejects_managed_path_through_external_parent_symlink(tmp_path):
