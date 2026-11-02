@@ -147,9 +147,9 @@ Skills. Their invocation or discovery may change in future releases.
 Restart the relevant app or open a new chat after installing the prompt so it
 appears in the slash-command menu.
 
-The checker is distributed separately by the
-[AGENTS.md freshness hook feature](https://github.com/ArthurZakirov/dotfiles/pull/38);
-install that feature first if it has not yet been merged. When a chat cannot
+The [AGENTS.md checker](../../home/dot_codex/hooks-json/agents-md-freshness/executable_check.py)
+is installed directly by chezmoi. Automatic hook integration is maintained
+separately in [PR #38](https://github.com/ArthurZakirov/dotfiles/pull/38). When a chat cannot
 execute a local shell command or `CODEX_THREAD_ID` is unavailable, the status
 is **unverifiable**, never falsely green. Actual delivery of the expanded
 prompt and the model's use of the tool are surface-specific and should be
@@ -173,7 +173,7 @@ The results are displayed as five independent green / red / unknown stages:
 | **Lokales main** | The local `main` commit matches GitHub and the actual checked-out managed guidance file equals `main`'s committed version. |
 | **Guidance erzeugt** | The versioned `AGENTS.md.tmpl` and references match the canonical guidance manifest/components, using `render.py --check` in the Dotfiles Python environment. |
 | **Chezmoi apply** | The actual `~/.codex/AGENTS.md` bytes match `chezmoi --source <checkout>/home cat ~/.codex/AGENTS.md`, including profile-specific template rendering. |
-| **Codex-Kontext** | The current session's most recently recorded model-visible global instructions match `~/.codex/AGENTS.md`, using the existing [session checker](https://github.com/ArthurZakirov/dotfiles/pull/38). |
+| **Codex-Kontext** | The current session's most recently recorded model-visible global instructions match `~/.codex/AGENTS.md`, using the [chezmoi-managed session checker](../../home/dot_codex/hooks-json/agents-md-freshness/executable_check.py). |
 
 Each stage reports what is *actually* known; inability to contact GitHub,
 find a usable project Python environment, or identify the session is

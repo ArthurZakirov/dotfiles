@@ -1,4 +1,5 @@
 """The desktop keyboard action never invokes a model or guesses a Codex session."""
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -28,6 +29,8 @@ pytestmark = pytest.mark.skipif(LUAJIT is None, reason="LuaJIT required")
         "checker_missing",
         "corrupt_json",
         "checker_error",
+        "intel_homebrew",
+        "python_missing",
     ],
 )
 def test_desktop_freshness_hotkey(scenario):
@@ -44,3 +47,37 @@ def test_hammerspoon_module_is_chezmoi_managed(profile, profile_factory):
     files = profile_factory.chezmoi(rendered.config, "managed", "--include", "files")
     assert ".hammerspoon/modules/agents_freshness.lua" in files.splitlines()
     assert ".hammerspoon/bin/agents_md_pipeline" in files.splitlines()
+    assert ".codex/hooks-json/agents-md-freshness/check.py" in files.splitlines()
+
+
+
+def test_new_chezmoi_install_includes_runnable_session_checker(tmp_path):
+    # Reproduce a Mac with no previously installed AGENTS.md checker.
+    target = tmp_path / ".codex/hooks-json/agents-md-freshness/check.py"
+    target.parent.mkdir(parents=True)
+    assert not target.exists()
+
+    deployed = subprocess.run(
+        [
+            "chezmoi", "--source", str(ROOT / "home"),
+            "--destination", str(tmp_path), "apply", str(target),
+        ],
+        capture_output=True, text=True, timeout=15,
+    )
+
+    assert deployed.returncode == 0, deployed.stderr
+    assert target.is_file()
+    assert target.stat().st_mode & 0o111
+
+    invoked = subprocess.run(
+        [
+            str(target), "--check",
+            "--session-id", "01a1935b-e50c-7d52-a754-3f81fdffcaee",
+            "--codex-home", str(tmp_path / ".codex"),
+        ],
+        capture_output=True, text=True, timeout=5,
+    )
+
+    assert invoked.returncode == 0, invoked.stderr
+    assert json.loads(invoked.stdout)["status"] == "unknown"
+    assert "transcript" in json.loads(invoked.stdout)["reason"].lower()

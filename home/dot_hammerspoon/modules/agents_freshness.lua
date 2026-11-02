@@ -3,7 +3,17 @@
 local M = {}
 
 local PIPELINE = hs.configdir .. "/bin/agents_md_pipeline"
-local PYTHON = "/opt/homebrew/bin/python3"
+-- Homebrew uses different prefixes on Apple Silicon and Intel Macs.
+local PYTHON_CANDIDATES = { "/opt/homebrew/bin/python3", "/usr/local/bin/python3" }
+
+local function homebrewPython()
+  for _, candidate in ipairs(PYTHON_CANDIDATES) do
+    if hs.fs.attributes(candidate, "mode") == "file" then
+      return candidate
+    end
+  end
+  return nil
+end
 local APP_IDS = { ["com.openai.codex"] = true, ["com.openai.chatgpt"] = true }
 local HOTKEY = "f" -- ctrl + alt + cmd + f, separate from audio-test shortcut.
 
@@ -113,8 +123,9 @@ local function check(sessionId, run)
     show(unknownResult("Pipeline-Checker fehlt"))
     return
   end
-  if not hs.fs.attributes(PYTHON, "mode") then
-    show(unknownResult("Python nicht verfügbar"))
+  local python = homebrewPython()
+  if not python then
+    show(unknownResult("Homebrew Python fehlt"))
     return
   end
   local args = { PIPELINE }
@@ -122,7 +133,7 @@ local function check(sessionId, run)
     args[#args + 1] = "--session-id"
     args[#args + 1] = sessionId
   end
-  local task = hs.task.new(PYTHON, function(code, stdout, stderr)
+  local task = hs.task.new(python, function(code, stdout, stderr)
     if run ~= runNumber then return end
     checkerTask = nil
     if code ~= 0 then

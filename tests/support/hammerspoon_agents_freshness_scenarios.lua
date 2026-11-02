@@ -38,6 +38,11 @@ _G.hs = {
   hotkey = { bind = function(_, key, fn) assert(key == "f"); _G.trigger = fn end },
   fs = { attributes = function(path)
     if scenario == "checker_missing" and path:match("agents_md_pipeline$") then return nil end
+    if scenario == "intel_homebrew" and path == "/opt/homebrew/bin/python3" then return nil end
+    if scenario == "python_missing" and
+        (path == "/opt/homebrew/bin/python3" or path == "/usr/local/bin/python3") then
+      return nil
+    end
     return "file"
   end },
   eventtap = { keyStroke = function(mods, key, delay, target)
@@ -66,7 +71,8 @@ _G.hs = {
     return x
   end },
   task = {new = function(python, callback, args)
-    assert(python == "/opt/homebrew/bin/python3")
+    assert(python == (scenario == "intel_homebrew" and "/usr/local/bin/python3"
+      or "/opt/homebrew/bin/python3"))
     taskArguments = args
     task = {
       start = function() return true end,
@@ -123,7 +129,11 @@ assert(HammerspoonConfig.agentsFreshness.run == trigger)
 
 trigger()
 assert(#statuses == (scenario == "wrong_app" and 1 or 0), "no intermediate overlay")
-if scenario == "wrong_app" then
+if scenario == "python_missing" then
+  runNext()
+  assert(statuses[1].label == "AGENTS.md · 0/5 aktuell")
+  assert(not task)
+elseif scenario == "wrong_app" then
   assert(statuses[1].label == "AGENTS.md · 0/5 aktuell")
   assert(not task)
 elseif scenario == "checker_missing" then
@@ -156,7 +166,10 @@ else
   assert(clipboardWrites == 1)
   assert(taskArguments[1]:match("agents_md_pipeline$"))
   assert(taskArguments[2] == "--session-id" and taskArguments[3] == sid)
-  if scenario == "current" then
+  if scenario == "intel_homebrew" then
+    task.callback(0, "current", "")
+    assert(statuses[1].label == "AGENTS.md · 5/5 aktuell")
+  elseif scenario == "current" then
     task.callback(0, "current", "")
     assert(statuses[1].label == "AGENTS.md · 5/5 aktuell")
     assert(table.concat(statuses[1].icons) == "✓✓✓✓✓")
