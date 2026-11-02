@@ -86,8 +86,9 @@ The managed [`home/dot_zshrc.tmpl`](../home/dot_zshrc.tmpl) already sources `~/.
 **New file only:** Create it in `$HOME`, then register it with chezmoi (use `--template` if the new file needs profile conditions):
 
 ```sh
-chezmoi add ~/.example
-# Alternatively: chezmoi add --template ~/.example
+chezmoi --source "$PWD/home" add ~/.example
+# Alternatively, for a template:
+chezmoi --source "$PWD/home" add --template ~/.example
 ```
 
 **Option A — Edit chezmoi's source directly.** Open the appropriate tracked file:
