@@ -7,6 +7,7 @@ brew "fzf" # binary: fzf
 brew "zsh-autosuggestions"
 brew "zsh-syntax-highlighting"
 brew "python" # binary: python3; min-version: 3.11
+brew "zstd" # binary: zstd; decompress archived Codex session transcripts
 brew "uv" # binary: uv
 
 # Additional shared command-line tools (both profiles).

@@ -1,7 +1,11 @@
 name: Validate Mac shell profiles
+# Validate feature changes once per PR, not again for every push to that PR.
+# Direct updates to main still run CI; standalone branches can use the manual trigger.
 on:
-  push:
   pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -31,11 +35,16 @@ jobs:
         run: ./tests/run.sh
 
   fresh-home:
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        profile: [personal, professional]
+        include:
+          # Exercise both supported Homebrew prefixes while reducing ARM64 demand.
+          - profile: personal
+            runner: macos-latest
+          - profile: professional
+            runner: macos-15-intel
     steps:
       - uses: actions/checkout@v4
         with:

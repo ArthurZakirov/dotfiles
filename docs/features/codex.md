@@ -147,10 +147,47 @@ Skills. Their invocation or discovery may change in future releases.
 Restart the relevant app or open a new chat after installing the prompt so it
 appears in the slash-command menu.
 
-The checker is distributed separately by the
-[AGENTS.md freshness hook feature](https://github.com/ArthurZakirov/dotfiles/pull/38);
-install that feature first if it has not yet been merged. When a chat cannot
+The [AGENTS.md checker](../../home/dot_codex/hooks-json/agents-md-freshness/executable_check.py)
+is installed directly by chezmoi. Automatic hook integration is maintained
+separately in [PR #38](https://github.com/ArthurZakirov/dotfiles/pull/38). When a chat cannot
 execute a local shell command or `CODEX_THREAD_ID` is unavailable, the status
 is **unverifiable**, never falsely green. Actual delivery of the expanded
 prompt and the model's use of the tool are surface-specific and should be
 confirmed in the interactive app.
+
+## AGENTS.md sync pipeline — desktop shortcut
+
+With a local Codex chat open in **ChatGPT / Codex desktop**, press
+**Control–Option–Command–F**. The managed
+[Hammerspoon module](../../home/dot_hammerspoon/modules/agents_freshness.lua)
+uses the native **Copy chat deep link** action (Command–Option–L) to obtain
+the *visible* Codex thread ID. It launches the read-only
+[pipeline checker](../../home/dot_hammerspoon/bin/executable_agents_md_pipeline)
+in a separate local Python process; **no agent turn or task interruption**.
+
+The results are displayed as five independent green / red / unknown stages:
+
+| Stage | Verified contract |
+| --- | --- |
+| **GitHub main** | `git ls-remote origin refs/heads/main` obtains the real GitHub commit (not merely a stale local remote-tracking ref). |
+| **Lokales main** | The local `main` commit matches GitHub and the actual checked-out managed guidance file equals `main`'s committed version. |
+| **Guidance erzeugt** | The versioned `AGENTS.md.tmpl` and references match the canonical guidance manifest/components, using `render.py --check` in the Dotfiles Python environment. |
+| **Chezmoi apply** | The actual `~/.codex/AGENTS.md` bytes match `chezmoi --source <checkout>/home cat ~/.codex/AGENTS.md`, including profile-specific template rendering. |
+| **Codex-Kontext** | The current session's most recently recorded model-visible global instructions match `~/.codex/AGENTS.md`, using the [chezmoi-managed session checker](../../home/dot_codex/hooks-json/agents-md-freshness/executable_check.py). |
+
+Each stage reports what is *actually* known; inability to contact GitHub,
+find a usable project Python environment, or identify the session is
+**unknown**, not green. Later local stages remain visible even if GitHub
+is unavailable. The pipeline never runs `git fetch`, `chezmoi apply`,
+regenerates guidance, or changes Codex state. It does **not** guarantee
+the private inference context or project-level `AGENTS.md` freshness.
+
+The final card appears only once all checks complete (no intermediate blue
+flashing). It closes after about three seconds if all stages match, or
+four seconds when outdated/unverifiable. The app stays focused; the
+shortcut preserves supported clipboard formats when the native deep link is
+copied and avoids overwriting unrelated clipboard changes.
+
+This first version supports local Codex chats in the desktop application
+(bundle ID `com.openai.codex`), not terminal Codex sessions or unrelated
+ChatGPT conversations.
