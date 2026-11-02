@@ -10,5 +10,18 @@ Chat-specific visual conventions belong here. Apply [🧩 Information representa
 | A user turn requires multiple substantive steps, tool calls, or meaningful work before the result is ready. | Report meaningful milestones, findings, blockers, or next steps rather than one sentence for every command or internal step. Keep the updates concise, but preserve the **titled** format of each update so the conversation remains navigable as it accumulates. |
 | Implementation and applicable local validation are complete, and the commit and push have succeeded. | Before starting any CI/CD query, polling, or blocking wait, send a concise `🟡` progress update saying the change is implemented and available for review, linking the PR, pushed commit, or branch diff. State that remote checks are pending or not yet checked and that you are checking them automatically. Continue monitoring under the Git workflow without ending the turn or asking the user to prompt again. Review readiness does not mean CI has passed or the task is complete. |
 | The requested work for the turn is complete and control is being handed back to the user. | Send one final response that begins with `🟢`. Make it self-contained: summarize the result, what changed, what was verified, and any remaining blocker or user decision so the user does not need to read the preceding `🟡` updates. |
-| Sending the final response after creating, editing, moving, renaming, or deleting any file in a Git repository or linked worktree, regardless of staging, commits, or pushes. | For **each checkout where edits occurred**, report the **absolute path to that checkout's root** on its own line inside a fenced `bash` code block (never inline code), followed by the **branch on which the edits were made**. Obtain the checkout root using `git rev-parse --show-toplevel` from the affected checkout, not the shared Git directory or a different worktree. Record the branch at edit time using `git branch --show-current`; if HEAD is detached, state `detached HEAD` and the commit instead of inventing a branch. If the checkout later switches branches, report the branch on which the edits occurred. Do not replace the code block with a relative path or repository URL; include a separate path-and-branch report for each affected checkout. |
+| Sending the final response after creating, editing, moving, renaming, or deleting any file in a Git repository or linked worktree, regardless of staging, commits, or pushes. | Follow the **Checkout review output format** below for every affected checkout. The `bash` fence must contain **exactly one line: the raw absolute checkout directory path**, and nothing else: no branch, variable assignment, `cd`, `code` command, quotes, comments, labels, or other text. Put the branch on a **separate line outside the code fence**, so copying the code block yields only the path for VS Code's Go to Folder dialog. Get the path from `git rev-parse --show-toplevel` in that checkout (not the shared Git directory); record the branch at edit time with `git branch --show-current`. If HEAD is detached, report `detached HEAD` and the commit separately instead of inventing a branch. Report the branch used for the edits even if the checkout later switches branches. Repeat the format independently for each edited checkout, whether or not edits were committed or pushed. |
 | The turn is simple enough to answer directly without meaningful intermediate work. | Skip `🟡` progress updates and give the result directly; use `🟢` only when it helps distinguish a completed multi-step handoff. |
+
+### 📁 Checkout review output format
+
+After file edits, use this format for each edited checkout, substituting verified values. Keep the **path-only** `bash` fence separate from the branch:
+
+**Checkout path (copy for VS Code):**
+
+```bash
+/Users/example/Repos/project.worktrees/feat-example
+```
+
+**Branch:** `feat/example`
+
