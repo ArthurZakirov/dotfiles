@@ -1081,19 +1081,23 @@ esac
     config = home / ".config/repo-refresh/config.json"
     config.parent.mkdir(parents=True)
     marker = home / "Library/Caches/chezmoi/com.arthur.repo-refresh.sha256"
+    root = home / "fresh-repository-root"
 
     def apply(enabled):
-        config.write_text(json.dumps({"enabled": enabled}))
+        config.write_text(json.dumps({"enabled": enabled, "root": str(root)}))
         return subprocess.run(["sh", str(hook)], capture_output=True, text=True)
 
-    # Disabled applies persist and do not bootstrap an unloaded service.
+    # Disabled applies must not create the repository root or load the service.
+    assert not root.exists()
     assert apply(False).returncode == 0
+    assert not root.exists()
     assert (service / "disabled").is_file()
     assert not (service / "loaded").exists()
     assert not marker.exists()
 
-    # Enable an already-disabled service, then repeat idempotently.
+    # Fresh installs create the configured root before loading the service.
     assert apply(True).returncode == 0
+    assert root.is_dir()
     assert apply(True).returncode == 0
     assert not (service / "disabled").exists()
     assert (service / "loaded").is_file()

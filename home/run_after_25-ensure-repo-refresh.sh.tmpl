@@ -22,9 +22,18 @@ import json
 from pathlib import Path
 import sys
 
-setting = json.loads(Path(sys.argv[1]).read_text())["enabled"]
+config_data = json.loads(Path(sys.argv[1]).read_text())
+setting = config_data["enabled"]
 if type(setting) is not bool:
     raise ValueError("repo-refresh enabled must be a JSON boolean")
+if setting:
+    root = config_data.get("root")
+    if not isinstance(root, str) or not root.strip() or (
+        not Path(root).is_absolute() and not root.startswith("~/")
+    ):
+        raise ValueError("repo-refresh root must be an absolute path or start with ~/")
+    # On fresh installs the repository root may not exist yet.
+    Path(root).expanduser().mkdir(parents=True, exist_ok=True)
 print("true" if setting else "false")
 PYTHON
 )"

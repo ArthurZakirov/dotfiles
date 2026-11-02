@@ -15,7 +15,9 @@ Use the normal dotfiles installation flow:
    `repoRefresh.enabled = true` to enable or `false` to disable. The default
    is **true**; you can explicitly disable the scheduled updater when needed.
    Existing conflicted worktrees remain preserved for later manual resolution;
-   they do not have to be resolved before enabling the service.
+   they do not have to be resolved before enabling the service. On fresh Macs,
+   the installation hook creates the configured repository root if necessary
+   before it starts the LaunchAgent.
 2. **Run `chezmoi apply`** following the [setup guide](../setup.md).
    Chezmoi rewrites the [runtime configuration](../../home/dot_config/repo-refresh/private_config.json.tmpl)
    and regenerates the global `~/.codex/AGENTS.md` from the same value.
