@@ -1,5 +1,6 @@
 """The desktop keyboard action never invokes a model or guesses a Codex session."""
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -51,8 +52,12 @@ def test_hammerspoon_module_is_chezmoi_managed(profile, profile_factory):
 
 
 
-def test_new_chezmoi_install_includes_runnable_session_checker(tmp_path):
-    # Reproduce a Mac with no previously installed AGENTS.md checker.
+@pytest.mark.parametrize("profile", ("personal", "professional"))
+def test_new_chezmoi_install_includes_runnable_session_checker(
+    tmp_path, profile_factory, profile,
+):
+    # The destination has no installed checker and no inherited chezmoi config.
+    rendered = profile_factory.render(profile)
     target = tmp_path / ".codex/hooks-json/agents-md-freshness/check.py"
     target.parent.mkdir(parents=True)
     assert not target.exists()
@@ -60,8 +65,10 @@ def test_new_chezmoi_install_includes_runnable_session_checker(tmp_path):
     deployed = subprocess.run(
         [
             "chezmoi", "--source", str(ROOT / "home"),
+            "--config", str(rendered.config),
             "--destination", str(tmp_path), "apply", str(target),
         ],
+        env={**os.environ, "HOME": str(tmp_path)},
         capture_output=True, text=True, timeout=15,
     )
 
