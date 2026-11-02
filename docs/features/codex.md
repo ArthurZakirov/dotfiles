@@ -154,3 +154,32 @@ execute a local shell command or `CODEX_THREAD_ID` is unavailable, the status
 is **unverifiable**, never falsely green. Actual delivery of the expanded
 prompt and the model's use of the tool are surface-specific and should be
 confirmed in the interactive app.
+
+## Desktop AGENTS.md check without an agent turn
+
+With a local Codex chat open in **ChatGPT desktop / Codex desktop**, press
+**Control–Option–Command–F**. The chezmoi-managed
+[Hammerspoon module](../../home/dot_hammerspoon/modules/agents_freshness.lua)
+triggers the native **Copy chat deep link** action (Command–Option–L),
+extracts that conversation's technical thread ID, and calls the local
+read-only [freshness checker](https://github.com/ArthurZakirov/dotfiles/pull/38)
+with `--check --session-id`. This works while the agent is busy:
+no Codex prompt, model invocation, message, or thread interruption.
+
+The temporary status card appears **only after the check completes** and
+reports **current**, **outdated**, or **not verified**. It stays visible for
+about 1.4 seconds when current, or 2 seconds for the other results. The last status is used for a missing link, unsupported
+app, absent checker, or missing model-visible snapshot. The action handles
+only local Codex threads; an ordinary ChatGPT conversation is not a local
+Codex transcript and cannot be verified by this checker.
+
+The shortcut leaves the app in focus. It backs up and restores the first
+clipboard item, including supported rich formats, and refuses to overwrite
+multi-item clipboard contents. If the clipboard changes to something other
+than a Codex link, the action leaves the new content untouched. No new
+daemon or always-on polling is installed.
+
+The target Mac has `/Applications/ChatGPT.app` with the
+`com.openai.codex` bundle ID; the Codex interface is part of that desktop
+app. Actual keyboard behavior depends on the app's shortcut assignment
+remaining **Copy chat deep link → Command–Option–L**.
