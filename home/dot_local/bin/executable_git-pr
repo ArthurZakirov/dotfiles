@@ -53,8 +53,6 @@ def settings() -> dict:
             raise ValueError
         if not isinstance(data["githubUsername"], str):
             raise ValueError
-        if not isinstance(data.get("bitbucketWritableWorkspaces", []), list):
-            raise ValueError
         return data
     except (OSError, ValueError, KeyError) as exc:
         raise NavigationError("Missing or invalid ~/.config/pr-navigation/config.json; run chezmoi apply.") from exc
@@ -262,8 +260,9 @@ def authorized_push(config: dict, identity: tuple[str, str, str]) -> bool:
     host, owner, _ = identity
     if host == "github.com":
         return config["profile"] == "personal" and owner == config["githubUsername"].lower()
-    return (config["profile"] == "professional"
-            and owner in {str(value).lower() for value in config["bitbucketWritableWorkspaces"]})
+    # On a work Mac, Git credentials/host permissions govern Bitbucket pushes.
+    # Do not require an additional list of approved workspaces.
+    return host == "bitbucket.org" and config["profile"] == "professional"
 
 
 def upstream_present(repo: Path, remote: str, branch: str) -> bool:

@@ -1,6 +1,5 @@
 {
   "profile": {{ .profile | quote }},
   "reposRoot": {{ (get . "reposDir" | default (env "REPOS_DIR") | default (printf "%s/Repos" .chezmoi.homeDir)) | quote }},
-  "githubUsername": {{ .githubUsername | quote }},
-  "bitbucketWritableWorkspaces": {{ (get . "bitbucketWritableWorkspaces" | default (list)) | toJson }}
+  "githubUsername": {{ .githubUsername | quote }}
 }

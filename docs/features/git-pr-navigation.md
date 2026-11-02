@@ -58,15 +58,14 @@ Chezmoi renders `~/.config/pr-navigation/config.json` from
 | GitHub read/open/clone | Allowed | Allowed |
 | GitHub branch push + PR creation | Only repositories whose owner is the configured `githubUsername` | **Never allowed** |
 | Bitbucket read/open/clone | No company-repository checkout | Allowed |
-| Bitbucket branch push | Disabled | Only workspaces explicitly listed in `bitbucketWritableWorkspaces` |
+| Bitbucket branch push | Disabled | Allowed without a workspace allowlist; Git remote permissions still apply |
 | Bitbucket PR creation | Not implemented | Not implemented |
 
-The Bitbucket push allowlist defaults to empty, including on professional
-Macs. To enable it, set `bitbucketWritableWorkspaces` in that Mac's
-`~/.config/chezmoi/chezmoi.toml` under `[data]` (for example,
-`bitbucketWritableWorkspaces = ["your-company-workspace"]`), then run
-`chezmoi apply`. Use only workspaces where pushing company code is authorized.
-Do not infer company ownership from the current computer or its Git credentials.
+Bitbucket branch pushes on professional Macs do not use a separate
+workspace allowlist. Git authentication and repository permissions determine
+whether a push is accepted. Personal-profile Macs remain unable to push
+Bitbucket branches, preserving the personal/work-machine separation.
+Bitbucket PR creation is not implemented.
 
 ## 🛠️ Install and verify
 

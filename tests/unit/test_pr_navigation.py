@@ -38,9 +38,8 @@ def installer():
     return module
 
 
-def config(profile="personal", owner="ArthurZakirov", workspace=()):
-    return dict(profile=profile, githubUsername=owner, reposRoot="/unused",
-                bitbucketWritableWorkspaces=list(workspace))
+def config(profile="personal", owner="ArthurZakirov"):
+    return dict(profile=profile, githubUsername=owner, reposRoot="/unused")
 
 
 def execute(*command, cwd=None):
@@ -58,8 +57,8 @@ def test_remote_host_detection_and_profile_authorization(nav):
     assert nav.authorized_push(config(), github)
     assert not nav.authorized_push(config("professional"), github)
     assert not nav.authorized_push(config(), bitbucket)
-    assert not nav.authorized_push(config("professional"), bitbucket)
-    assert nav.authorized_push(config("professional", workspace=["company"]), bitbucket)
+    assert nav.authorized_push(config("professional"), bitbucket)
+    assert nav.authorized_push(config("professional"), ("bitbucket.org", "another-team", "other-repo"))
 
 
 def test_github_pr_uses_source_repository_and_branch(nav, monkeypatch):
@@ -112,14 +111,74 @@ def test_no_github_pr_creation_on_professional_machine(nav, monkeypatch):
     assert len(calls) == 1
 
 
-def test_missing_remote_branch_cannot_push_without_matching_workspace(nav, monkeypatch):
+def test_missing_remote_bitbucket_branch_is_pushed_on_professional_mac(nav, monkeypatch):
+    calls = []
+
+    def fake_git(repo, *args, **kwargs):
+        calls.append(args)
+        return ""
+
+    monkeypatch.setattr(nav, "git", fake_git)
+    nav.maybe_push(Path("/unused"), "feat/one",
+                   ("bitbucket.org", "any-company-team", "internal"), "origin",
+                   config("professional"))
+    assert calls == [
+        ("ls-remote", "--heads", "origin", "refs/heads/feat/one"),
+        ("push", "--set-upstream", "origin", "refs/heads/feat/one"),
+    ]
+
+
+def test_personal_machine_still_cannot_push_bitbucket_branch(nav, monkeypatch):
     calls = []
     monkeypatch.setattr(nav, "git", lambda *args, **kwargs: calls.append(args) or "")
     with pytest.raises(nav.NavigationError, match="blocked"):
         nav.maybe_push(Path("/unused"), "feat/one",
-                       ("bitbucket.org", "other", "internal"), "origin",
-                       config("professional", workspace=["company"]))
+                       ("bitbucket.org", "company", "internal"), "origin",
+                       config("personal"))
     assert not any("push" in entry for entry in calls)
+
+
+def test_existing_remote_bitbucket_branch_is_never_pushed_again(nav, monkeypatch):
+    calls = []
+
+    def fake_git(repo, *args, **kwargs):
+        calls.append(args)
+        return "abc123\trefs/heads/feat/one"
+
+    monkeypatch.setattr(nav, "git", fake_git)
+    nav.maybe_push(Path("/unused"), "feat/one",
+                   ("bitbucket.org", "company", "internal"), "origin",
+                   config("professional"))
+    assert len(calls) == 1
+    assert calls[0][0] == "ls-remote"
+
+
+def test_bitbucket_shortcut_pushes_missing_branch_but_never_creates_pr(nav, monkeypatch):
+    repo = Path("/unused")
+    identity = ("bitbucket.org", "any-company-team", "internal")
+    pushes = []
+
+    monkeypatch.setattr(nav, "current_branch", lambda _: ("feat/new", identity, "origin"))
+    monkeypatch.setattr(nav.bitbucket, "open_pull_requests", lambda url: [])
+    monkeypatch.setattr(nav, "maybe_push",
+                        lambda *args: pushes.append(args))
+    monkeypatch.setattr(nav, "open_chrome",
+                        lambda _: pytest.fail("print-only should not open Chrome"))
+    url = nav.open_pr(repo, config("professional"), print_only=True)
+    assert url == "https://bitbucket.org/any-company-team/internal/branch/feat%2Fnew"
+    assert pushes == [(repo, "feat/new", identity, "origin", config("professional"))]
+
+
+def test_bitbucket_shortcut_reuses_existing_pr_without_push(nav, monkeypatch):
+    identity = ("bitbucket.org", "team", "repo")
+    monkeypatch.setattr(nav, "current_branch",
+                        lambda _: ("feat/existing", identity, "origin"))
+    monkeypatch.setattr(nav.bitbucket, "open_pull_requests",
+                        lambda url: [{"url": "https://bitbucket.org/team/repo/pull-requests/12"}])
+    monkeypatch.setattr(nav, "maybe_push",
+                        lambda *args: pytest.fail("Existing PR must never trigger push"))
+    assert nav.open_pr(Path("/unused"), config("professional"), print_only=True) == (
+        "https://bitbucket.org/team/repo/pull-requests/12")
 
 
 def test_real_linked_worktree_upsert_never_switches_primary(nav, tmp_path):
