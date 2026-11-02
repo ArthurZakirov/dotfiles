@@ -412,6 +412,9 @@ def test_voice_frontend_reads_backend_visible_output():
     assert "user-visible inline Markdown item" in custom
     assert "sole source for your spoken reply" in custom
     assert "Read each newly displayed backend inline item exactly once" in custom
+    assert "request a normal Markdown answer containing the code block" in custom
+    assert "not** to add a `Read aloud:` section" in custom
+    assert "pronounce each command and its arguments in the displayed order" in custom
     assert "do not mention \"backend\"" not in custom.lower()
 
 
