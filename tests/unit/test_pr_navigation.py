@@ -159,7 +159,8 @@ def test_bitbucket_shortcut_pushes_missing_branch_but_never_creates_pr(nav, monk
     pushes = []
 
     monkeypatch.setattr(nav, "current_branch", lambda _: ("feat/new", identity, "origin"))
-    monkeypatch.setattr(nav.bitbucket, "open_pull_requests", lambda url: [])
+    monkeypatch.setattr(nav, "pr_destination", lambda repo, branch, source: source)
+    monkeypatch.setattr(nav.bitbucket, "open_pull_requests", lambda url, **kwargs: [])
     monkeypatch.setattr(nav, "maybe_push",
                         lambda *args: pushes.append(args))
     monkeypatch.setattr(nav, "open_chrome",
@@ -173,12 +174,142 @@ def test_bitbucket_shortcut_reuses_existing_pr_without_push(nav, monkeypatch):
     identity = ("bitbucket.org", "team", "repo")
     monkeypatch.setattr(nav, "current_branch",
                         lambda _: ("feat/existing", identity, "origin"))
+    monkeypatch.setattr(nav, "pr_destination", lambda repo, branch, source: source)
     monkeypatch.setattr(nav.bitbucket, "open_pull_requests",
-                        lambda url: [{"url": "https://bitbucket.org/team/repo/pull-requests/12"}])
+                        lambda url, **kwargs: [{"url": "https://bitbucket.org/team/repo/pull-requests/12"}])
     monkeypatch.setattr(nav, "maybe_push",
                         lambda *args: pytest.fail("Existing PR must never trigger push"))
     assert nav.open_pr(Path("/unused"), config("professional"), print_only=True) == (
         "https://bitbucket.org/team/repo/pull-requests/12")
+
+
+def test_github_fork_pr_round_trip_uses_destination_repo(nav, monkeypatch, tmp_path):
+    repo = tmp_path / "forkrepo"
+    execute("git", "init", "-b", "feat/roundtrip", str(repo))
+    execute("git", "remote", "add", "origin", "git@github.com:forkuser/forkrepo.git", cwd=repo)
+    pr_url = "https://github.com/team/app/pull/42"
+    calls = []
+    actual_command = nav.command
+
+    def fake_command(argv, **kwargs):
+        if argv[:2] == ["gh", "api"]:
+            return json.dumps({"head": {
+                "repo": {"full_name": "forkuser/forkrepo"}, "ref": "feat/roundtrip"
+            }})
+        if argv[:3] == ["gh", "pr", "list"]:
+            calls.append(argv)
+            return json.dumps([{
+                "url": pr_url, "headRepositoryOwner": {"login": "forkuser"}
+            }])
+        return actual_command(argv, **kwargs)
+
+    monkeypatch.setattr(nav, "command", fake_command)
+    monkeypatch.setattr(nav, "ensure_repo", lambda *args: (repo, "origin"))
+    monkeypatch.setattr(nav, "ensure_worktree", lambda *args: repo)
+    monkeypatch.setattr(nav, "maybe_push",
+                        lambda *args: pytest.fail("Existing PR must not be pushed"))
+
+    # Browser PR -> source-fork worktree -> same destination PR.
+    assert nav.open_local(pr_url, config("professional"), tmp_path,
+                          print_only=True) == repo
+    assert execute("git", "config", "--get", "branch.feat/roundtrip.prDestination",
+                   cwd=repo) == "git@github.com:team/app.git"
+    assert nav.open_pr(repo, config("professional"), print_only=True) == pr_url
+    assert len(calls) == 1
+    assert calls[0][calls[0].index("--repo") + 1] == "team/app"
+
+
+def test_github_fork_pr_creation_targets_destination(nav, monkeypatch, tmp_path):
+    repo = tmp_path / "forkrepo"
+    execute("git", "init", "-b", "feat/new", str(repo))
+    execute("git", "remote", "add", "origin", "git@github.com:forkuser/forkrepo.git", cwd=repo)
+    execute("git", "config", "branch.feat/new.prDestination",
+            "git@github.com:team/app.git", cwd=repo)
+    actual_command = nav.command
+    outbound = []
+
+    def fake_command(argv, **kwargs):
+        if argv[:3] == ["gh", "pr", "list"]:
+            outbound.append(argv)
+            return "[]"
+        if argv[:3] == ["gh", "pr", "create"]:
+            outbound.append(argv)
+            return "https://github.com/team/app/pull/51"
+        return actual_command(argv, **kwargs)
+
+    monkeypatch.setattr(nav, "command", fake_command)
+    monkeypatch.setattr(nav, "maybe_push", lambda *args: None)
+
+    assert nav.open_pr(repo, config("personal", owner="forkuser"),
+                       print_only=True) == "https://github.com/team/app/pull/51"
+    assert outbound[0][outbound[0].index("--repo") + 1] == "team/app"
+    assert outbound[1][outbound[1].index("--repo") + 1] == "team/app"
+    assert outbound[1][outbound[1].index("--head") + 1] == "forkuser:feat/new"
+
+
+def test_bitbucket_fork_pr_round_trip_queries_destination(nav, monkeypatch, tmp_path):
+    repo = tmp_path / "forkrepo"
+    execute("git", "init", "-b", "feat/roundtrip", str(repo))
+    execute("git", "remote", "add", "origin", "git@bitbucket.org:forkuser/forkrepo.git",
+            cwd=repo)
+    pr_url = "https://bitbucket.org/team/app/pull-requests/42"
+    monkeypatch.setattr(nav.bitbucket, "source_branch_url",
+                        lambda _: "https://bitbucket.org/forkuser/forkrepo/branch/feat%2Froundtrip")
+    monkeypatch.setattr(nav, "ensure_repo", lambda *args: (repo, "origin"))
+    monkeypatch.setattr(nav, "ensure_worktree", lambda *args: repo)
+    monkeypatch.setattr(nav.bitbucket, "bitbucket_tab", lambda _: (1, 2))
+    monkeypatch.setattr(nav, "maybe_push",
+                        lambda *args: pytest.fail("Existing PR must not be pushed"))
+    api_paths = []
+
+    def fake_browser_api(tab, endpoint):
+        api_paths.append(endpoint)
+        return {"values": [{
+            "id": 42,
+            "title": "Feature",
+            "source": {"branch": {"name": "feat/roundtrip"},
+                       "repository": {"full_name": "forkuser/forkrepo"}},
+            "destination": {"branch": {"name": "main"}},
+        }]}
+
+    monkeypatch.setattr(nav.bitbucket, "browser_api", fake_browser_api)
+
+    assert nav.open_local(pr_url, config("professional"), tmp_path,
+                          print_only=True) == repo
+    assert nav.open_pr(repo, config("professional"), print_only=True) == pr_url
+    assert len(api_paths) == 1
+    assert api_paths[0].startswith("/!api/2.0/repositories/team/app/pullrequests?")
+    assert "forkuser%2Fforkrepo" in api_paths[0]
+
+
+def test_installer_handles_jsonc_trailing_commas_and_repeated_apply(installer, tmp_path):
+    user = tmp_path / "Code/User"
+    user.mkdir(parents=True)
+    tasks_file = user / "tasks.json"
+    keys_file = user / "keybindings.json"
+    tasks_file.write_text(
+        '{\n "version": "2.0.0",\n "tasks": [\n'
+        '  {"label": "Unrelated Task", "command": "echo"}, // keep task\n'
+        ' ]\n}\n'
+    )
+    keys_file.write_text(
+        '[\n {"key": "ctrl+x", "command": "unrelated"}, // keep binding\n]\n'
+    )
+
+    installer.install(user)
+
+    tasks_source, keys_source = tasks_file.read_text(), keys_file.read_text()
+    tasks = json.loads(installer.strip_jsonc(tasks_source))["tasks"]
+    keys = json.loads(installer.strip_jsonc(keys_source))
+    assert "// keep task" in tasks_source
+    assert "// keep binding" in keys_source
+    assert {item["label"] for item in tasks} == {
+        "Unrelated Task", installer.TASK_LABEL, installer.BRANCH_LABEL
+    }
+    assert {item["key"] for item in keys} == {"ctrl+x", "ctrl+p ctrl+r"}
+
+    installer.install(user)
+    assert (tasks_file.read_text(), keys_file.read_text()) == (tasks_source, keys_source)
 
 
 def test_real_linked_worktree_upsert_never_switches_primary(nav, tmp_path):

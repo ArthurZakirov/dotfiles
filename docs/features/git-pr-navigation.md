@@ -28,12 +28,16 @@ Hammerspoon binding calls `git-pr open-local <browser-url>`.
    `gh pr create --fill`. If the branch already exists remotely, do not push
    it again.
 4. For Bitbucket, reuse the existing Chrome-backed PR lookup. If there is no
-   PR, push a missing branch only when its workspace is explicitly allowed;
-   open the branch page instead of creating a Bitbucket PR.
+   PR, push a missing branch only on a professional-profile Mac; normal Git
+   remote permissions apply. Open the branch page without creating a Bitbucket PR.
 
 **Browser → VS Code:**
 
 1. Resolve the PR's **source repository** and branch, including fork-based PRs.
+   Preserve the PR's **destination repository** in the local branch configuration
+   (`branch.<name>.prDestination`) so VS Code → PR searches the destination
+   rather than the source fork. For manually configured forks, an `upstream`
+   Git remote may supply the destination.
 2. Locate the matching primary checkout under `REPOS_DIR` (or the Chezmoi
    `reposRoot` setting). Search immediate root and one child directory.
 3. Clone a missing repository into `<reposRoot>/<repo>` without modifying

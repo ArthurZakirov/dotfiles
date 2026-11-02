@@ -261,10 +261,14 @@ def source_branch_url(url):
         raise NavigationError("The PR has no usable source repository and branch.") from None
 
 
-def open_pull_requests(url):
+def open_pull_requests(url, *, destination_repository=None):
     identity, branch = parse_branch_url(url)
-    repository = "/".join(identity)
-    query = "source.branch.name = " + json.dumps(branch) + " AND source.repository.full_name = " + json.dumps(repository)
+    source_repository = "/".join(identity)
+    repository = destination_repository or source_repository
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise NavigationError("Invalid Bitbucket PR destination repository.")
+    query = ("source.branch.name = " + json.dumps(branch)
+             + " AND source.repository.full_name = " + json.dumps(source_repository))
     endpoint = f"/!api/2.0/repositories/{repository}/pullrequests?" + urlencode({
         "q": query, "state": "OPEN", "pagelen": 50,
         "fields": "next,values.id,values.title,values.source.branch.name,values.source.repository.full_name,values.destination.branch.name",
@@ -279,14 +283,14 @@ def open_pull_requests(url):
         data = browser_api(tab, endpoint)
         for item in data["values"]:
             source = item["source"]
-            if source["branch"]["name"] != branch or source["repository"]["full_name"].lower() != repository:
+            if source["branch"]["name"] != branch or source["repository"]["full_name"].lower() != source_repository:
                 continue
             number = int(item["id"])
             if number <= 0:
                 raise NavigationError("Bitbucket returned an invalid PR number.")
             candidates[number] = {
                 "text": f"#{number} {item['title']}",
-                "subText": f"{repository}: {branch} → {item['destination']['branch']['name']}",
+                "subText": f"{source_repository}: {branch} → {item['destination']['branch']['name']}",
                 "url": f"https://bitbucket.org/{repository}/pull-requests/{number}",
             }
         next_url = data.get("next")

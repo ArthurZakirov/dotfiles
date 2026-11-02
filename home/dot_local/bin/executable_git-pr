@@ -18,7 +18,7 @@ import subprocess
 import sys
 from urllib.parse import quote, unquote, urlsplit
 
-sys.path.insert(0, str(Path.home() / ".local/share/pr-navigation"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "share/pr-navigation"))
 import bitbucket  # noqa: E402 - chezmoi deploys this companion module
 
 
@@ -278,10 +278,29 @@ def maybe_push(repo: Path, branch: str, identity: tuple[str, str, str],
     git(repo, "push", "--set-upstream", remote, f"refs/heads/{branch}", timeout=120)
 
 
+def pr_destination(repo: Path, branch: str,
+                   source: tuple[str, str, str]) -> tuple[str, str, str]:
+    """Prefer the PR destination saved when navigating from its browser URL."""
+    recorded = git(repo, "config", "--get", f"branch.{branch}.prDestination",
+                   optional=True)
+    if recorded:
+        destination = remote_identity(recorded)
+        if not destination or destination[0] != source[0]:
+            raise NavigationError("Saved PR destination does not match the Git host.")
+        return destination
+    # A manually cloned fork can still advertise its PR target as upstream.
+    upstream = git_remotes(repo).get("upstream")
+    if upstream and upstream[0] == source[0]:
+        return upstream
+    return source
+
+
 def github_pr(repo: Path, branch: str, identity: tuple[str, str, str],
-              remote: str, config: dict) -> str:
-    _, owner, name = identity
-    target = f"{owner}/{name}"
+              remote: str, config: dict,
+              destination: tuple[str, str, str] | None = None) -> str:
+    _, owner, _ = identity
+    _, dest_owner, dest_name = destination or identity
+    target = f"{dest_owner}/{dest_name}"
     result = json.loads(command(["gh", "pr", "list", "--repo", target, "--head", branch,
                                  "--state", "open", "--json", "url,headRepositoryOwner", "--limit", "100"]))
     # Exclude open PRs originating from a different fork with the same ref name.
@@ -294,7 +313,8 @@ def github_pr(repo: Path, branch: str, identity: tuple[str, str, str],
     if not authorized_push(config, identity):
         raise NavigationError("GitHub PR creation and pushes are disabled by this machine profile or repository owner.")
     maybe_push(repo, branch, identity, remote, config)
-    return command(["gh", "pr", "create", "--repo", target, "--head", branch, "--fill"], cwd=repo, timeout=120)
+    head = branch if destination is None or destination == identity else f"{owner}:{branch}"
+    return command(["gh", "pr", "create", "--repo", target, "--head", head, "--fill"], cwd=repo, timeout=120)
 
 
 def branch_page(identity: tuple[str, str, str], branch: str) -> str:
@@ -312,6 +332,16 @@ def open_local(url: str, config: dict, root: Path, *, print_only: bool) -> Path:
     identity, branch = parse_url(url)
     repo, remote = ensure_repo(root, identity, config)
     target = ensure_worktree(repo, remote, branch)
+    parsed = urlsplit(url)
+    parts = parsed.path.strip("/").split("/")
+    if (len(parts) >= 4
+            and ((identity[0] == "github.com" and parts[2] == "pull")
+                 or (identity[0] == "bitbucket.org" and parts[2] == "pull-requests"))
+            and parts[3].isdigit()):
+        # Linked worktrees use the source fork for Git operations, while PR
+        # discovery must continue to query the destination from the PR URL.
+        destination = remote_url(identity[0], unquote(parts[0]), unquote(parts[1]))
+        git(target, "config", "--local", f"branch.{branch}.prDestination", destination)
     if not print_only:
         code = shutil.which("code")
         if not code:
@@ -322,15 +352,19 @@ def open_local(url: str, config: dict, root: Path, *, print_only: bool) -> Path:
 
 def open_pr(repo: Path, config: dict, *, print_only: bool) -> str:
     branch, identity, remote = current_branch(repo)
+    destination = pr_destination(repo, branch, identity)
     if identity[0] == "github.com":
-        url = github_pr(repo, branch, identity, remote, config)
+        url = github_pr(repo, branch, identity, remote, config, destination)
         if not print_only:
             open_chrome(url)
         return url
 
     # Existing Bitbucket Chrome session supplies PR discovery without another CLI.
     try:
-        candidates = bitbucket.open_pull_requests(branch_page(identity, branch))
+        _, dest_owner, dest_name = destination
+        candidates = bitbucket.open_pull_requests(
+            branch_page(identity, branch), destination_repository=f"{dest_owner}/{dest_name}"
+        )
     except bitbucket.NavigationError as exc:
         raise NavigationError(str(exc)) from exc
     if candidates:

@@ -164,8 +164,12 @@ def merge_source(source: str, updated, is_tasks: bool) -> str:
             formatted = "\n".join(indent + line for line in lines)
             if entries:
                 last = entries[-1][1]
-                comma = "" if source[last:closing].lstrip().startswith(",") else ","
-                source = source[:last] + comma + "\n" + formatted + source[last:]
+                if strip_jsonc(source[last:closing]).lstrip().startswith(","):
+                    # Keep the existing trailing comma as the separator from
+                    # the old entry; append the new one before the closing ].
+                    source = source[:closing] + "\n" + formatted + source[closing:]
+                else:
+                    source = source[:last] + ",\n" + formatted + source[last:]
             else:
                 source = source[:opening + 1] + "\n" + formatted + "\n" + source[closing:]
     if json.loads(strip_jsonc(source)) != updated:
