@@ -5,6 +5,13 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 \"{{ .chezmoi.homeDir }}/.codex/hooks-json/scope-checkpoint/checkpoint.py\" hook",
+            "commandWindows": "py -3 \"{{ .chezmoi.homeDir }}/.codex/hooks-json/scope-checkpoint/checkpoint.py\" hook",
+            "timeoutSec": 5,
+            "async": false
+          },
+          {
+            "type": "command",
             "command": "python3 \"{{ .chezmoi.homeDir }}/.codex/hooks-json/bedtime-device-guard/bedtime_guard.py\" --config \"{{ .chezmoi.homeDir }}/.codex/hooks-json/bedtime-device-guard/config.json\" --managed-by codex-bedtime-device-guard",
             "commandWindows": "py -3 \"{{ .chezmoi.homeDir }}/.codex/hooks-json/bedtime-device-guard/bedtime_guard.py\" --config \"{{ .chezmoi.homeDir }}/.codex/hooks-json/bedtime-device-guard/config.json\" --managed-by codex-bedtime-device-guard",
             "timeoutSec": 2,
@@ -15,6 +22,19 @@
             "command": "python3 \"{{ .chezmoi.homeDir }}/.codex/hooks-json/agents-md-freshness/check.py\"",
             "timeoutSec": 20,
             "async": true
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"{{ .chezmoi.homeDir }}/.codex/hooks-json/scope-checkpoint/checkpoint.py\" hook",
+            "commandWindows": "py -3 \"{{ .chezmoi.homeDir }}/.codex/hooks-json/scope-checkpoint/checkpoint.py\" hook",
+            "timeoutSec": 5,
+            "async": false
           }
         ]
       }
