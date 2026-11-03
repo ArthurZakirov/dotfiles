@@ -38,6 +38,7 @@ left-to-right screen order (then top-to-bottom).
 | Context | Shortcut | Action |
 | --- | --- | --- |
 | Chrome | `Hyper+B` / `Hyper+T` / `Hyper+G` | Search bookmarks / tabs / history |
+| Chrome (GitHub/Bitbucket branch or PR) | `Hyper+V` | [Open the matching Git worktree in VS Code](git-pr-navigation.md) |
 | ChatGPT (German keyboard) | `Cmd+Shift+7` | Open native Keyboard Shortcuts menu |
 | Claude | `Ctrl+Alt+R` | Close / restore right pane |
 | Claude | `Ctrl+Alt+M` | Expand / collapse pane |

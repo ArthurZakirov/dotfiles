@@ -12,7 +12,9 @@ permissions:
 
 jobs:
   profiles:
-    runs-on: macos-latest
+    # ARM64 hosted runners can fail to be acquired under capacity constraints.
+    # Other jobs still cover macOS ARM64; keep this broad shell suite on Intel.
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
         with:
@@ -82,7 +84,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        # macOS Intel has proven available while ARM64 runner acquisition failed.
+        # ARM64 coverage is retained in fresh-home and computer-use-e2e.
+        os: [macos-15-intel, ubuntu-latest]
     steps:
       - uses: actions/checkout@v4
         with:
