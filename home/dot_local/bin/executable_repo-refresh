@@ -261,29 +261,41 @@ def refresh(repo, remote):
         message = str(error) if isinstance(error, RefreshError) else type(error).__name__
         raise RefreshError(f"{message}; recovery: {destination}") from None
     return {"state": "updated", "branch": default, "commit": target,
-            "recovery": str(destination), "released_worktrees": released}
+            "recovery": str(destination), "removed_main_worktrees": released}
+
+
+def remove_displaced_default_worktrees(repo, default):
+    """Remove only linked worktrees that currently own the default branch."""
+    common = Path(value(repo, "rev-parse", "--path-format=absolute", "--git-common-dir")).resolve()
+    worktree_data = git(repo, "worktree", "list", "--porcelain", "-z").stdout
+    other = None
+    removed = []
+    for field in worktree_data.split(b"\0"):
+        if field.startswith(b"worktree "):
+            other = Path(os.fsdecode(field[len(b"worktree "):]))
+        elif field == os.fsencode(f"branch refs/heads/{default}") and other != repo:
+            if (other is None or other.is_symlink() or not other.is_dir()
+                    or Path(value(other, "rev-parse", "--show-toplevel")).resolve() != other.resolve()
+                    or Path(value(other, "rev-parse", "--path-format=absolute",
+                                  "--git-common-dir")).resolve() != common
+                    or value(other, "symbolic-ref", "--short", "HEAD") != default):
+                raise RefreshError("Default branch worktree cannot be verified; left untouched")
+            # Two --force flags also permit removing a locked worktree. This
+            # intentionally discards files only in the misplaced main checkout.
+            git(repo, "worktree", "remove", "--force", "--force", other)
+            removed.append(str(other))
+    return removed
 
 
 def restore_default(repo, destination, branch, head, default, target, remote):
     # All destructive steps occur only after the verified recovery record is durable.
+    removed = remove_displaced_default_worktrees(repo, default)
     # Detach without checkout: dirty/conflicted indexes must not prevent preservation.
     git(repo, "update-ref", "--no-deref", "HEAD", head)
     if branch and branch != default:
         if git(repo, "show-ref", "--verify", f"refs/heads/{branch}", check=False).returncode:
             git(repo, "update-ref", f"refs/heads/{branch}", head)
         git(destination, "symbolic-ref", "HEAD", f"refs/heads/{branch}")
-    # A default branch already checked out elsewhere is released without altering
-    # that worktree's files, index, or commit. It remains usable as a detached checkout.
-    worktree_data = git(repo, "worktree", "list", "--porcelain", "-z").stdout
-    other = None
-    released = []
-    for field in worktree_data.split(b"\0"):
-        if field.startswith(b"worktree "):
-            other = Path(os.fsdecode(field[len(b"worktree "):]))
-        elif field == os.fsencode(f"branch refs/heads/{default}") and other != repo:
-            other_head = value(other, "rev-parse", "HEAD")
-            git(other, "update-ref", "--no-deref", "HEAD", other_head)
-            released.append(str(other))
     for name in OPERATION_STATE:
         path = git_path(repo, name)
         if path.is_dir():
@@ -311,7 +323,7 @@ def restore_default(repo, destination, branch, head, default, target, remote):
             or value(repo, "rev-parse", "HEAD") != target
             or git(repo, "status", "--porcelain=v1").stdout):
         raise RefreshError(f"Checkout verification failed; recovery: {destination}")
-    return released
+    return removed
 
 
 def branch_worktrees(repo):
@@ -481,6 +493,10 @@ def safe_merged_worktree(repo, worktree):
 
 
 def clean_merged_branch(repo, branch, candidates, remote, default, target):
+    # A freshly created branch at the default tip has no branch work to merge.
+    # Do not delete it before the first feature commit is made.
+    if value(repo, "rev-parse", f"refs/heads/{branch}") == target:
+        return None
     proof = merged_evidence(repo, branch, target)
     if not proof:
         return None
@@ -540,15 +556,30 @@ def rebase_branches(repo, default, target, remote):
     return outcomes
 
 
+def repair_permanent_checkout_path(repo):
+    """Make a direct clone independent of a stale absolute core.worktree path."""
+    if Path(value(repo, "rev-parse", "--show-toplevel")).resolve() == repo.resolve():
+        return False
+    git_dir = repo / ".git"
+    if (git_dir.is_symlink() or not git_dir.is_dir()
+            or Path(value(repo, "rev-parse", "--absolute-git-dir")).resolve() != git_dir.resolve()):
+        raise RefreshError("Repository Git directory does not belong to selected checkout; left untouched")
+    # Relative to .git/config, .. is the permanent checkout, on either Mac.
+    git(repo, "config", "--local", "--replace-all", "core.worktree", "..")
+    if Path(value(repo, "rev-parse", "--show-toplevel")).resolve() != repo.resolve():
+        raise RefreshError("Repository working-tree redirect could not be repaired; left untouched")
+    return True
+
+
 def refresh_one(repo, remote):
     outcome = {"repository": str(repo)}
     try:
-        if Path(value(repo, "rev-parse", "--show-toplevel")).resolve() != repo.resolve():
-            raise RefreshError("Repository redirects its working tree outside the selected path; left untouched")
         # The common directory is the lock boundary shared by linked worktrees.
         common = Path(value(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"))
         with (common / "repo-refresh.lock").open("a") as repo_lock:
             fcntl.flock(repo_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if repair_permanent_checkout_path(repo):
+                outcome["repaired_checkout_path"] = True
             outcome.update(refresh(repo, remote))
             outcome["branches"] = rebase_branches(repo, outcome["branch"], outcome["commit"], remote)
             for branch in outcome["branches"]:

@@ -390,21 +390,39 @@ def test_preserves_conflicted_index_and_quits_interrupted_operation(scenario, op
     assert "rebase in progress" not in git(scenario.repo, "status")
 
 
-def test_releases_default_branch_in_another_worktree_without_changing_its_files(scenario, tmp_path):
+@pytest.mark.parametrize("dirty", [False, True])
+@pytest.mark.parametrize("locked", [False, True])
+def test_removes_misplaced_default_worktree_and_keeps_other_ticket_worktrees(scenario, tmp_path, dirty, locked):
+    # Arrange: an unrelated ticket worktree and a misplaced default checkout.
     git(scenario.repo, "switch", "-c", "feature")
-    other = tmp_path / "existing-main"
+    ticket = tmp_path / "Tickets" / "DCP123" / "Worktrees"
+    ticket.mkdir(parents=True)
+    other = ticket / "backend-main"
     git(scenario.repo, "worktree", "add", other, "main")
-    old = git(other, "rev-parse", "HEAD")
-    (other / "tracked.txt").write_text("other worktree changes\n")
+    if dirty:
+        (other / "tracked.txt").write_text("discarded from misplaced main\n")
+    if locked:
+        git(scenario.repo, "worktree", "lock", other, "--reason", "test")
+    feature = ticket / "backend-feature"
+    git(scenario.repo, "branch", "ticket-feature", "main")
+    git(scenario.repo, "worktree", "add", feature, "ticket-feature")
+    (feature / "ticket.txt").write_text("keep ticket work\n")
+    git(feature, "add", ".")
+    git(feature, "commit", "-m", "Ticket work")
     scenario.advance()
 
+    # Act: refresh the permanent checkout via the real CLI.
     result = subprocess.run(scenario.command, capture_output=True, text=True)
 
+    # Assert: main moves home, while the non-main ticket worktree survives.
     assert result.returncode == 0, result.stdout + result.stderr
     assert git(scenario.repo, "branch", "--show-current") == "main"
-    assert git(other, "branch", "--show-current") == ""
-    assert git(other, "rev-parse", "HEAD") == old
-    assert (other / "tracked.txt").read_text() == "other worktree changes\n"
+    assert git(scenario.repo, "rev-parse", "HEAD") == git(scenario.remote, "rev-parse", "main")
+    assert scenario.outcome()["removed_main_worktrees"] == [str(other)]
+    assert not other.exists()
+    assert feature.is_dir()
+    assert (feature / "ticket.txt").read_text() == "keep ticket work\n"
+    assert git(feature, "branch", "--show-current") == "ticket-feature"
 
 
 def test_offline_repo_is_untouched_and_does_not_block_other_repos(scenario):
@@ -435,6 +453,25 @@ def test_unreadable_recovery_worktree_does_not_block_repository_refresh(scenario
     assert (scenario.repo / "upstream.txt").is_file()
     assert orphan.is_dir()
     assert not (orphan / ".git").exists()
+
+
+def test_new_feature_worktree_at_main_tip_is_not_deleted_before_first_commit(scenario):
+    # Arrange: a newly created branch still points to the default commit.
+    scenario.worktrees.mkdir()
+    new_worktree = scenario.worktrees / "feat-new-ticket"
+    git(scenario.repo, "branch", "feat/new-ticket", "main")
+    git(scenario.repo, "worktree", "add", new_worktree, "feat/new-ticket")
+
+    # Act: run two scheduled-refresh equivalents.
+    first = subprocess.run(scenario.command, capture_output=True, text=True)
+    second = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    # Assert: neither run deletes the new worktree before its first commit.
+    assert first.returncode == 0, first.stdout + first.stderr
+    assert second.returncode == 0, second.stdout + second.stderr
+    assert new_worktree.is_dir()
+    assert git(new_worktree, "branch", "--show-current") == "feat/new-ticket"
+    assert scenario.outcome()["branches"][0]["state"] == "current"
 
 
 def test_repeated_run_does_not_create_more_recovery_worktrees(scenario):
@@ -746,17 +783,25 @@ def test_preservation_failure_leaves_original_checkout_untouched(scenario):
     assert (scenario.repo / "tracked.txt").read_text() == "important\n"
 
 
-def test_redirected_working_tree_is_not_reset_without_its_files_being_preserved(scenario, tmp_path):
+def test_repairs_stale_core_worktree_without_touching_external_files(scenario, tmp_path):
+    # Arrange: a direct clone has a non-portable core.worktree redirect.
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "tracked.txt").write_text("must not be reset\n")
     git(scenario.repo, "config", "core.worktree", outside)
+    scenario.advance()
 
+    # Act: refresh the permanent checkout via the real CLI.
     result = subprocess.run(scenario.command, capture_output=True, text=True)
 
-    assert result.returncode == 1
+    # Assert: only the selected clone is repaired and updated.
+    assert result.returncode == 0, result.stdout + result.stderr
     assert (outside / "tracked.txt").read_text() == "must not be reset\n"
-    assert scenario.outcome()["state"] == "failed"
+    assert git(scenario.repo, "rev-parse", "--show-toplevel") == str(scenario.repo)
+    assert git(scenario.repo, "config", "--local", "--get", "core.worktree") == ".."
+    assert git(scenario.repo, "branch", "--show-current") == "main"
+    assert git(scenario.repo, "rev-parse", "HEAD") == git(scenario.remote, "rev-parse", "main")
+    assert scenario.outcome()["repaired_checkout_path"] is True
 
 
 def test_recovery_directory_symlink_cannot_redirect_copy_into_source(scenario):
