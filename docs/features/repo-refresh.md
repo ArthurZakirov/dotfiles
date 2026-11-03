@@ -82,8 +82,9 @@ Each run follows this sequence:
    checked out in a separate development worktree.
 3. **Remove verified merged branches.** Before rebasing, verify integration
    using local Git history only, independently of GitHub or Bitbucket. A branch
-   qualifies when its tip is an ancestor of the fetched remote default, or when
-   its complete cumulative file changes exactly match a single commit in that
+   qualifies when its tip is an ancestor of the fetched remote default (but
+   is not identical to the current default tip), or when its complete cumulative
+   file changes exactly match a single commit in that
    default's first-parent history (a conservative squash-merge check). Commit
    messages never establish merge status. Delete an eligible local worktree and
    branch only when no tracked, untracked, or valuable ignored data would be
@@ -100,8 +101,14 @@ Each run follows this sequence:
 Linked worktrees are excluded from permanent-clone discovery, but their branches
 still participate in cleanup and rebasing. Detached recovery copies are
 retained separately, since they can contain unique uncommitted historical data.
-If another worktree holds the default branch, it is detached at its existing
-commit without changing its files or index.
+If another linked worktree incorrectly holds the default branch, the updater
+verifies that it belongs to the same repository and removes that specific
+worktree with `git worktree remove --force --force`, including any uncommitted
+changes even if it was locked. Other linked worktrees, including those under
+`~/Tickets`, remain registered. A direct clone with a stale `core.worktree`
+setting is repaired to use its own directory without resetting files at the old
+path. A newly created feature branch without its own commits is not treated
+as merged, even if the default branch advances before its first commit.
 
 ### Branch outcomes
 
