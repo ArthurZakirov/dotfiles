@@ -116,7 +116,7 @@ def copy_entry(source, destination):
 
 
 def preserve(repo, destination, branch, head, original_head, default, target):
-    if Path(value(repo, "rev-parse", "--show-toplevel")).resolve() != repo.resolve():
+    if not os.path.samefile(value(repo, "rev-parse", "--show-toplevel"), repo):
         raise RefreshError("Working tree redirects outside its selected path; left untouched")
     destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     # Recovery may include ignored local credentials. Keep the entire hierarchy private.
@@ -140,7 +140,7 @@ def preserve(repo, destination, branch, head, original_head, default, target):
     recovery_ref = f"refs/repo-refresh/{destination.name}"
     git(repo, "update-ref", recovery_ref, head)
     git(repo, "worktree", "add", "--detach", "--no-checkout", destination, head)
-    if Path(value(destination, "rev-parse", "--show-toplevel")).resolve() != destination.resolve():
+    if not os.path.samefile(value(destination, "rev-parse", "--show-toplevel"), destination):
         raise RefreshError("Recovery Git directory resolves outside its worktree; original left untouched")
     os.chmod(destination, 0o700)
     record_dir = git_path(destination, "repo-refresh")
@@ -207,7 +207,7 @@ def worktree_path(repo, branch, recovery=False):
             slug = slug[:-1]
         slug = f"{slug.rstrip('.-_')}-{hashlib.sha256(branch.encode()).hexdigest()[:10]}"
     parent = repo.with_name(f"{repo.name}.worktrees")
-    if parent.is_symlink() or parent.resolve().parent != repo.parent.resolve():
+    if parent.is_symlink() or not os.path.samefile(parent.resolve().parent, repo.parent):
         raise RefreshError("Worktree directory redirects outside the repository's parent; checkout left untouched")
     parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(parent, 0o700)
@@ -273,11 +273,14 @@ def remove_displaced_default_worktrees(repo, default):
     for field in worktree_data.split(b"\0"):
         if field.startswith(b"worktree "):
             other = Path(os.fsdecode(field[len(b"worktree "):]))
-        elif field == os.fsencode(f"branch refs/heads/{default}") and other != repo:
-            if (other is None or other.is_symlink() or not other.is_dir()
-                    or Path(value(other, "rev-parse", "--show-toplevel")).resolve() != other.resolve()
-                    or Path(value(other, "rev-parse", "--path-format=absolute",
-                                  "--git-common-dir")).resolve() != common
+        elif field == os.fsencode(f"branch refs/heads/{default}"):
+            if other is None or other.is_symlink() or not other.is_dir():
+                raise RefreshError("Default branch worktree path cannot be verified; left untouched")
+            if os.path.samefile(other, repo):
+                continue
+            if (not os.path.samefile(value(other, "rev-parse", "--show-toplevel"), other)
+                    or not os.path.samefile(value(other, "rev-parse", "--path-format=absolute",
+                                             "--git-common-dir"), common)
                     or value(other, "symbolic-ref", "--short", "HEAD") != default):
                 raise RefreshError("Default branch worktree cannot be verified; left untouched")
             # Two --force flags also permit removing a locked worktree. This
@@ -465,10 +468,11 @@ def merged_evidence(repo, branch, target):
 def safe_merged_worktree(repo, worktree):
     """Protect every local change except confirmed ignored build caches."""
     parent = repo.with_name(repo.name + ".worktrees")
-    if (worktree.parent != parent or parent.is_symlink()
+    if (not parent.is_dir() or parent.is_symlink() or not worktree.parent.is_dir()
+            or not os.path.samefile(worktree.parent, parent)
             or worktree.is_symlink() or not worktree.is_dir()):
         return False
-    if Path(value(worktree, "rev-parse", "--show-toplevel")) != worktree:
+    if not os.path.samefile(value(worktree, "rev-parse", "--show-toplevel"), worktree):
         return False
     if any(git_path(worktree, name).exists() for name in ACTIVE_OPERATION_STATE):
         return False
@@ -560,15 +564,16 @@ def rebase_branches(repo, default, target, remote):
 
 def repair_permanent_checkout_path(repo):
     """Make a direct clone independent of a stale absolute core.worktree path."""
-    if Path(value(repo, "rev-parse", "--show-toplevel")).resolve() == repo.resolve():
+    selected_tree = Path(value(repo, "rev-parse", "--show-toplevel"))
+    if selected_tree.exists() and os.path.samefile(selected_tree, repo):
         return False
     git_dir = repo / ".git"
     if (git_dir.is_symlink() or not git_dir.is_dir()
-            or Path(value(repo, "rev-parse", "--absolute-git-dir")).resolve() != git_dir.resolve()):
+            or not os.path.samefile(value(repo, "rev-parse", "--absolute-git-dir"), git_dir)):
         raise RefreshError("Repository Git directory does not belong to selected checkout; left untouched")
     # Relative to .git/config, .. is the permanent checkout, on either Mac.
     git(repo, "config", "--local", "--replace-all", "core.worktree", "..")
-    if Path(value(repo, "rev-parse", "--show-toplevel")).resolve() != repo.resolve():
+    if not os.path.samefile(value(repo, "rev-parse", "--show-toplevel"), repo):
         raise RefreshError("Repository working-tree redirect could not be repaired; left untouched")
     return True
 
