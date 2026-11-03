@@ -107,8 +107,8 @@ worktree with `git worktree remove --force --force`, including any uncommitted
 changes even if it was locked. Other linked worktrees, including those under
 `~/Tickets`, remain registered. A direct clone with a stale `core.worktree`
 setting is repaired to use its own directory without resetting files at the old
-path. A newly created feature branch pointing at the current default commit
-is not considered merged or deleted before its first commit.
+path. A newly created feature branch without its own commits is not treated
+as merged, even if the default branch advances before its first commit.
 
 ### Branch outcomes
 

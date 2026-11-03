@@ -493,9 +493,11 @@ def safe_merged_worktree(repo, worktree):
 
 
 def clean_merged_branch(repo, branch, candidates, remote, default, target):
-    # A freshly created branch at the default tip has no branch work to merge.
-    # Do not delete it before the first feature commit is made.
-    if value(repo, "rev-parse", f"refs/heads/{branch}") == target:
+    # An untouched branch is not merged work merely because main contains its
+    # initial commit. Rebasing an empty branch also must not make it deletable.
+    log = git(repo, "reflog", "show", "--format=%gs", f"refs/heads/{branch}", check=False)
+    if (log.returncode or not any(entry.startswith((b"commit:", b"commit (", b"merge "))
+                                  for entry in log.stdout.splitlines())):
         return None
     proof = merged_evidence(repo, branch, target)
     if not proof:

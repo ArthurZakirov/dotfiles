@@ -455,12 +455,15 @@ def test_unreadable_recovery_worktree_does_not_block_repository_refresh(scenario
     assert not (orphan / ".git").exists()
 
 
-def test_new_feature_worktree_at_main_tip_is_not_deleted_before_first_commit(scenario):
-    # Arrange: a newly created branch still points to the default commit.
+@pytest.mark.parametrize("advance_main", [False, True])
+def test_new_feature_worktree_at_main_tip_is_not_deleted_before_first_commit(scenario, advance_main):
+    # Arrange: a newly created branch has never had a feature commit.
     scenario.worktrees.mkdir()
     new_worktree = scenario.worktrees / "feat-new-ticket"
     git(scenario.repo, "branch", "feat/new-ticket", "main")
     git(scenario.repo, "worktree", "add", new_worktree, "feat/new-ticket")
+    if advance_main:
+        scenario.advance()
 
     # Act: run two scheduled-refresh equivalents.
     first = subprocess.run(scenario.command, capture_output=True, text=True)
@@ -471,6 +474,7 @@ def test_new_feature_worktree_at_main_tip_is_not_deleted_before_first_commit(sce
     assert second.returncode == 0, second.stdout + second.stderr
     assert new_worktree.is_dir()
     assert git(new_worktree, "branch", "--show-current") == "feat/new-ticket"
+    assert git(new_worktree, "rev-parse", "HEAD") == git(scenario.remote, "rev-parse", "main")
     assert scenario.outcome()["branches"][0]["state"] == "current"
 
 
