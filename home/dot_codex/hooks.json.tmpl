@@ -9,6 +9,24 @@
             "commandWindows": "py -3 \"{{ .chezmoi.homeDir }}/.codex/hooks-json/bedtime-device-guard/bedtime_guard.py\" --config \"{{ .chezmoi.homeDir }}/.codex/hooks-json/bedtime-device-guard/config.json\" --managed-by codex-bedtime-device-guard",
             "timeoutSec": 2,
             "async": false
+          },
+          {
+            "type": "command",
+            "command": "python3 \"{{ .chezmoi.homeDir }}/.codex/hooks-json/agents-md-freshness/check.py\"",
+            "timeoutSec": 20,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"{{ .chezmoi.homeDir }}/.codex/hooks-json/agents-md-freshness/check.py\"",
+            "timeoutSec": 20,
+            "async": true
           }
         ]
       }

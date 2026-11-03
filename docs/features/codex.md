@@ -191,3 +191,46 @@ copied and avoids overwriting unrelated clipboard changes.
 This first version supports local Codex chats in the desktop application
 (bundle ID `com.openai.codex`), not terminal Codex sessions or unrelated
 ChatGPT conversations.
+
+## AGENTS.md freshness warnings
+
+The desktop shortcut and Codex hooks call the
+[same five-stage pipeline](../../home/dot_codex/hooks-json/agents-md-freshness/pipeline.py):
+
+| Stage | What is verified |
+| --- | --- |
+| **GitHub main** | The remote default-branch commit is obtainable via Git. |
+| **Lokales main** | Local main and the managed guidance checkout agree with GitHub. |
+| **Guidance erzeugt** | Generated guidance matches the canonical source components. |
+| **Chezmoi apply** | Installed `~/.codex/AGENTS.md` matches the rendered chezmoi template. |
+| **Codex-Kontext** | This session's last recorded model-visible instructions match the installed file. |
+
+- **Desktop shortcut:** Always displays all five statuses, including `unknown`.
+- **Automatic hooks:** `UserPromptSubmit` and `Stop` call that same read-only pipeline; confirmed `outdated` stages produce a Codex UI `systemMessage` and macOS notification. Repeated notifications for the same session and mismatch are suppressed.
+- **Missing evidence:** Stays `unknown` and never silently becomes `current`. A disconnected remote or missing session snapshot does not itself trigger a warning.
+- **Safety:** All checks are read-only, asynchronous, and advisory. No `git pull`, `chezmoi apply`, or model-visible instructions are injected. The bedtime guard remains a separate synchronous hook.
+- **Scope:** Global instructions only. Project-level `AGENTS.md` files and the model's private inference context are not verified.
+
+To inspect a particular session manually:
+
+```bash
+python3 ~/.codex/hooks-json/agents-md-freshness/check.py --check \
+  --session-id YOUR_SESSION_ID
+```
+
+The result is JSON with `current`, `outdated`, or `unknown`, plus hashes
+and (when available) the generated source digests. The check uses the
+session's specific rollout, not the newest unrelated chat.
+
+To inspect all five stages outside the desktop shortcut:
+
+```bash
+python3 ~/.codex/hooks-json/agents-md-freshness/pipeline.py \
+  --session-id YOUR_SESSION_ID
+```
+
+After `chezmoi apply`, restart Codex to discover the new hooks and review
+their changed definitions via `/hooks`; Codex skips untrusted user hooks.
+Mac notifications also depend on macOS notification permissions for the
+invoking application. Source snapshots are internal rollout records and may
+change format in future Codex releases.

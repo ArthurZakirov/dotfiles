@@ -18,6 +18,13 @@ import subprocess
 import sys
 from typing import Iterator
 
+# A partial chezmoi apply may install check.py before its shared pipeline.
+# Legacy --check remains usable; automatic hooks must never interrupt Codex.
+try:
+    import pipeline
+except ImportError:
+    pipeline = None
+
 PROJECT_SEPARATOR = "\n--- project-doc ---\n"
 DIGEST_RE = re.compile(r"(?m)^<!-- Source digest: ([a-f0-9]+) -->$")
 SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{8,128}$")
@@ -126,7 +133,7 @@ def recorded_global_text(path: Path, expected_session: str) -> str | None:
                 snapshot = entry["text"] if isinstance(entry["text"], str) else None
             # A directory-only patch preserves the previous instruction text.
 
-    if not session_matched or not known or not snapshot:
+    if not session_matched or not known or snapshot is None:
         return None
     return snapshot.split(PROJECT_SEPARATOR, 1)[0].rstrip("\n")
 
@@ -170,15 +177,20 @@ def evaluate(event: dict, codex_home: Path) -> dict:
     }
 
 
-def warning(result: dict) -> str:
-    sid = result["session_id"][:8]
-    before = result.get("seen_source_digest") or result["seen_sha256"][:12]
-    after = result.get("current_source_digest") or result["current_sha256"][:12]
-    return (
-        f"⚠️ Codex AGENTS.md out of sync (session {sid}): "
-        f"loaded {before}, disk {after}. "
-        "This chat last recorded older instructions; start a new chat if it does not refresh."
+def warning(result: dict, stages: list[dict[str, str]]) -> str:
+    """Describe the same five boundaries shown by the desktop shortcut."""
+    symbol = {"current": "✓", "outdated": "✕", "unknown": "?"}
+    lines = [
+        f"⚠️ Codex AGENTS.md out of sync (session {result['session_id'][:8]}):",
+    ]
+    for stage in stages:
+        lines.append(f"{symbol[stage['status']]} {stage['label']}: {stage['detail']}")
+    lines.append(
+        "Update the earliest outdated stage first (local main → render.py → "
+        "chezmoi apply → new Codex session). These checks never change files."
     )
+    return "\n".join(lines)
+
 
 
 def notify_macos(message: str) -> None:
@@ -200,22 +212,29 @@ def notify_macos(message: str) -> None:
     )
 
 
-def report_if_changed(result: dict, cache: Path) -> bool:
-    """Show each mismatch once per session/version; reset after recovery."""
+def report_if_changed(
+    session_id: str, stages: list[dict[str, str]], cache: Path,
+) -> bool:
+    """Warn once per session and confirmed mismatch; clear after recovery."""
     import fcntl
 
+    outdated = [
+        {"key": stage["key"], "detail": stage["detail"]}
+        for stage in stages if stage["status"] == "outdated"
+    ]
+    target = cache / f"{session_id}.json"
+    if not outdated and not target.exists():
+        return False
     cache.mkdir(parents=True, exist_ok=True, mode=0o700)
-    sid = result["session_id"]
-    target = cache / f"{sid}.json"
-    lock = cache / f"{sid}.lock"
-    fingerprint = result["seen_sha256"] + ":" + result["current_sha256"]
+    lock = cache / f"{session_id}.lock"
+    fingerprint = hashlib.sha256(json.dumps(outdated, sort_keys=True).encode()).hexdigest()
     with lock.open("a+") as guard:
         fcntl.flock(guard, fcntl.LOCK_EX)
         try:
             previous = json.loads(target.read_text())
         except (OSError, ValueError):
             previous = {}
-        if result["status"] == "current":
+        if not outdated:
             if target.exists():
                 target.unlink()
             return False
@@ -226,6 +245,7 @@ def report_if_changed(result: dict, cache: Path) -> bool:
         return True
 
 
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="Print status instead of acting as a hook")
@@ -233,6 +253,7 @@ def main() -> int:
     parser.add_argument("--transcript-path", help="Rollout file for a manual check")
     parser.add_argument("--codex-home", type=Path, default=Path(os.environ.get("CODEX_HOME", "~/.codex")).expanduser())
     parser.add_argument("--no-notify", action="store_true", help="Suppress macOS notifications (testing)")
+    parser.add_argument("--repo", type=Path, help="Explicit managed Dotfiles checkout")
     args = parser.parse_args()
 
     if args.check:
@@ -250,11 +271,24 @@ def main() -> int:
         print(json.dumps(result, indent=2))
         return 0
 
-    if result["status"] == "unknown":
+    session_id = event.get("session_id")
+    if pipeline is None or not isinstance(session_id, str) or not SESSION_ID_RE.fullmatch(session_id):
         return 0
-    if not report_if_changed(result, Path.home() / ".cache/codex-agents-md-freshness"):
+
+    # Both frontends call this same pipeline.check function. The hook already
+    # evaluated its Codex snapshot, so pass it in to avoid a recursive check.py
+    # invocation. Unknown stages never become green by inference.
+    repo = args.repo if args.repo is not None else pipeline.find_source()
+    stages = pipeline.check(
+        repo, args.codex_home, session_id,
+        args.codex_home / "hooks-json/agents-md-freshness/check.py",
+        session_result=result,
+    )
+    if not report_if_changed(
+        session_id, stages, Path.home() / ".cache/codex-agents-md-freshness"
+    ):
         return 0
-    message = warning(result)
+    message = warning(result, stages)
     print(json.dumps({"systemMessage": message}, ensure_ascii=False))
     if not args.no_notify:
         try:

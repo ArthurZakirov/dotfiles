@@ -52,6 +52,8 @@ def test_apply_owns_only_deployed_codex_artifacts(profile_factory, profile):
     assert ".codex/hooks.json" in paths
     assert ".codex/hooks-json/bedtime-device-guard/bedtime_guard.py" in paths
     assert ".codex/hooks-json/bedtime-device-guard/config.json" in paths
+    assert ".codex/hooks-json/agents-md-freshness/check.py" in paths
+    assert ".codex/hooks-json/agents-md-freshness/pipeline.py" in paths
 
 
 
@@ -61,8 +63,10 @@ def test_hook_outputs_keep_executable_and_private_modes(profile_factory, profile
     paths = (
         tmp_path / ".codex/hooks-json/bedtime-device-guard/bedtime_guard.py",
         tmp_path / ".codex/hooks-json/bedtime-device-guard/config.json",
+        tmp_path / ".codex/hooks-json/agents-md-freshness/check.py",
     )
-    paths[0].parent.mkdir(parents=True)
+    for path in paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
     result = subprocess.run(
         [
             "chezmoi", "--source", str(ROOT / "home"),
@@ -75,6 +79,7 @@ def test_hook_outputs_keep_executable_and_private_modes(profile_factory, profile
     assert result.returncode == 0, result.stderr
     assert stat.S_IMODE(paths[0].stat().st_mode) == 0o755
     assert stat.S_IMODE(paths[1].stat().st_mode) == 0o600
+    assert stat.S_IMODE(paths[2].stat().st_mode) == 0o755
 
 
 
@@ -543,11 +548,16 @@ def test_voice_frontend_speaks_only_visible_backend_items_and_paces_walkthroughs
 def test_hooks_template_preserves_expected_events():
     source = (SOURCE / "hooks.json.tmpl").read_text(encoding="utf-8")
     data = json.loads(source.replace("{{ .chezmoi.homeDir }}", "/tmp/codex-fixture"))
-    assert set(data["hooks"]) == {"UserPromptSubmit"}
-    commands = [
-        hook["command"]
-        for entry in data["hooks"]["UserPromptSubmit"]
-        for hook in entry["hooks"]
+    assert set(data["hooks"]) == {"UserPromptSubmit", "Stop"}
+    prompt_hooks = [
+        hook for entry in data["hooks"]["UserPromptSubmit"] for hook in entry["hooks"]
     ]
-    assert len(commands) == 1
-    assert "bedtime-device-guard/bedtime_guard.py" in commands[0]
+    stop_hooks = [hook for entry in data["hooks"]["Stop"] for hook in entry["hooks"]]
+    assert len(prompt_hooks) == 2
+    assert len(stop_hooks) == 1
+    assert "bedtime-device-guard/bedtime_guard.py" in prompt_hooks[0]["command"]
+    assert prompt_hooks[0]["async"] is False
+    for hook in (*prompt_hooks[1:], *stop_hooks):
+        assert "agents-md-freshness/check.py" in hook["command"]
+        assert hook["async"] is True
+        assert "block" not in hook["command"]

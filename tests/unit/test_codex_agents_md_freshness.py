@@ -177,3 +177,50 @@ def test_missing_transcript_does_not_modify_anything(tmp_path):
 
     assert result.stdout == ""
     assert not (tmp_path / ".cache").exists()
+
+def test_empty_valid_instruction_snapshot_is_not_unknown(tmp_path):
+    # GIVEN the session loaded valid but empty global instructions
+    home = tmp_path / ".codex"
+    home.mkdir()
+    (home / "AGENTS.md").write_text("# Newly populated\n")
+    transcript = make_rollout(home / "sessions", "")
+
+    # WHEN the public checker compares the recorded and current instructions
+    result = json.loads(run_check(tmp_path, transcript).stdout)
+
+    # THEN it reports confirmed outdated instructions rather than unknown
+    assert result["status"] == "outdated"
+
+
+def test_partial_install_without_shared_pipeline_never_breaks_codex(tmp_path):
+    # GIVEN check.py installed before the new shared pipeline.py
+    home = tmp_path / ".codex"
+    installed = home / "hooks-json/agents-md-freshness"
+    installed.mkdir(parents=True)
+    script = installed / "check.py"
+    shutil.copyfile(SCRIPT, script)
+    (home / "AGENTS.md").write_text("new\n")
+    transcript = make_rollout(home / "sessions", "old\n")
+    event = {"session_id": SID, "transcript_path": str(transcript)}
+    command = [sys.executable, str(script), "--codex-home", str(home)]
+
+    # WHEN an automatic hook is fired during the installation
+    hook = subprocess.run(
+        command + ["--no-notify"], input=json.dumps(event),
+        env={**os.environ, "HOME": str(tmp_path)}, text=True,
+        capture_output=True, check=True,
+    )
+
+    # THEN the hook remains advisory and does not raise an import error
+    assert hook.stdout == ""
+    assert hook.stderr == ""
+    assert not (tmp_path / ".cache").exists()
+
+    # The session-only diagnostic remains usable during partial installation.
+    diagnostic = subprocess.run(
+        command + ["--check", "--session-id", SID,
+                   "--transcript-path", str(transcript)],
+        env={**os.environ, "HOME": str(tmp_path)}, text=True,
+        capture_output=True, check=True,
+    )
+    assert json.loads(diagnostic.stdout)["status"] == "outdated"
