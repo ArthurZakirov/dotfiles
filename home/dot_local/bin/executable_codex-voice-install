@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""Install a pinned public Codex Voice release without requiring a Rust toolchain."""
+
+import argparse
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import platform
+import re
+import shutil
+import subprocess
+import tarfile
+import tempfile
+from urllib.request import urlopen
+
+REPOSITORY = "ArthurZakirov/codex"
+ARCHIVE_LIMIT = 1024 * 1024 * 1024
+UNPACK_LIMIT = 2 * 1024 * 1024 * 1024
+
+
+def host_target() -> str:
+    if platform.system() != "Darwin":
+        raise ValueError("Codex Voice releases require macOS")
+    arch = {"arm64": "aarch64", "x86_64": "x86_64"}.get(platform.machine())
+    if arch is None:
+        raise ValueError("Unsupported Mac CPU architecture")
+    return f"{arch}-apple-darwin"
+
+
+def read_url(url: str, limit: int) -> bytes:
+    with urlopen(url, timeout=60) as response:
+        data = response.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError("Release metadata exceeds the size limit")
+    return data
+
+
+def release_checksum(base_url: str, archive_name: str) -> str:
+    lines = read_url(f"{base_url}/SHA256SUMS", 65536).decode("ascii").splitlines()
+    matches = []
+    for line in lines:
+        match = re.fullmatch(r"([0-9a-f]{64})  (codex-voice-[A-Za-z0-9_-]+\.tar\.gz)", line)
+        if match and match.group(2) == archive_name:
+            matches.append(match.group(1))
+    if len(matches) != 1:
+        raise ValueError("Release checksum is missing or ambiguous")
+    return matches[0]
+
+
+def download_archive(url: str, destination: Path, checksum: str) -> None:
+    digest = hashlib.sha256()
+    count = 0
+    with urlopen(url, timeout=120) as response, destination.open("wb") as output:
+        while chunk := response.read(1024 * 1024):
+            count += len(chunk)
+            if count > ARCHIVE_LIMIT:
+                raise ValueError("Release archive exceeds the size limit")
+            output.write(chunk)
+            digest.update(chunk)
+    if digest.hexdigest() != checksum:
+        raise ValueError("Release archive SHA-256 mismatch")
+
+
+def extract_package(archive: Path, destination: Path) -> None:
+    total = 0
+    with tarfile.open(archive, "r:gz") as package:
+        for member in package:
+            relative = PurePosixPath(member.name)
+            if not relative.parts and member.isdir():
+                continue  # tar archives created with -C package . include a root entry.
+            if (relative.is_absolute() or not relative.parts or
+                    any(part in ("", "..") for part in relative.parts)):
+                raise ValueError("Unsafe release archive path")
+            target = destination.joinpath(*relative.parts)
+            if not target.resolve().is_relative_to(destination.resolve()):
+                raise ValueError("Archive entry escapes installation directory")
+            if member.isdir():
+                target.mkdir(parents=True, exist_ok=True)
+            elif member.isfile():
+                total += member.size
+                if total > UNPACK_LIMIT:
+                    raise ValueError("Expanded release exceeds size limit")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with package.extractfile(member) as source, target.open("wb") as output:
+                    shutil.copyfileobj(source, output)
+                target.chmod(member.mode & 0o777)
+            else:
+                raise ValueError("Release archive contains unsupported links or device files")
+
+
+def verify_package(path: Path, target: str, tag: str) -> dict:
+    metadata = json.loads((path / "codex-package.json").read_text())
+    if (metadata.get("layoutVersion") != 1 or metadata.get("target") != target
+            or metadata.get("entrypoint") != "bin/codex"):
+        raise ValueError("Unexpected Codex release package layout")
+    version = re.fullmatch(r"voice-v([0-9]+\.[0-9]+\.[0-9]+)-r[0-9]+", tag)
+    if version is None or metadata.get("version") != version.group(1):
+        raise ValueError("Release tag does not match the Codex version")
+    voice = path / "codex-resources" / "voice"
+    manifest = json.loads((voice / "manifest.json").read_text())
+    if (manifest.get("appTarget") != target or manifest.get("voiceTarget") != target
+            or manifest.get("appVersion") != version.group(1)
+            or not re.fullmatch(r"[a-f0-9]{40}", manifest.get("buildCommit", ""))):
+        raise ValueError("Native voice runtime does not match the Codex package")
+    for relative in (
+        "bin/codex",
+        "codex-resources/voice/bin/codex-voice-host",
+        "codex-resources/voice/lib/libgstreamer-1.0.0.dylib",
+    ):
+        if not (path / relative).is_file():
+            raise ValueError(f"Required release file missing: {relative}")
+    for relative, expected in manifest["sha256"].items():
+        components = PurePosixPath(relative)
+        if (components.is_absolute() or not components.parts
+                or ".." in components.parts):
+            raise ValueError("Unsafe voice manifest path")
+        file = path.joinpath(*components.parts)
+        if not file.is_file():
+            raise ValueError(f"Voice package file missing: {relative}")
+        with file.open("rb") as source:
+            actual = hashlib.file_digest(source, "sha256").hexdigest()
+        if actual != expected:
+            raise ValueError(f"Voice package digest mismatch: {relative}")
+    subprocess.run(
+        [str(path / "bin/codex"), "--version"], check=True, timeout=30,
+        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+    )
+    return manifest
+
+
+def install(tag: str, destination: Path, *, base_url: str | None = None,
+            target: str | None = None, repository: str = REPOSITORY) -> bool:
+    if not re.fullmatch(r"voice-v[0-9]+\.[0-9]+\.[0-9]+-r[0-9]+", tag):
+        raise ValueError("Invalid release tag")
+    if not re.fullmatch(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("Invalid release repository")
+    target = target or host_target()
+    if target not in ("aarch64-apple-darwin", "x86_64-apple-darwin"):
+        raise ValueError("Unsupported macOS release target")
+    destination = destination.expanduser().absolute()
+    if destination.is_symlink():
+        raise ValueError("Refusing to replace a symlink installation")
+    receipt = destination / "codex-voice-install.json"
+    if receipt.is_file():
+        current = json.loads(receipt.read_text())
+        if (current.get("tag") == tag and current.get("target") == target
+                and current.get("repository") == repository):
+            try:
+                verify_package(destination, target, tag)
+            except (ValueError, OSError, KeyError, json.JSONDecodeError,
+                    subprocess.SubprocessError):
+                print("Existing Codex Voice package failed verification; reinstalling")
+            else:
+                print(f"Codex Voice already installed: {tag} ({target})")
+                return False
+
+    archive_name = f"codex-voice-{target}.tar.gz"
+    base_url = base_url or f"https://github.com/{repository}/releases/download/{tag}"
+    sha256 = release_checksum(base_url, archive_name)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".codex-voice-", dir=destination.parent) as temporary:
+        temp = Path(temporary)
+        archive = temp / archive_name
+        download_archive(f"{base_url}/{archive_name}", archive, sha256)
+        staging = temp / "package"
+        staging.mkdir()
+        extract_package(archive, staging)
+        manifest = verify_package(staging, target, tag)
+        (staging / "codex-voice-install.json").write_text(json.dumps({
+            "repository": repository,
+            "tag": tag,
+            "target": target,
+            "archive_sha256": sha256,
+            "build_commit": manifest["buildCommit"],
+        }, indent=2) + "\n")
+        backup = None
+        if destination.exists():
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            backup = destination.with_name(f"{destination.name}.backup-{timestamp}")
+            if backup.exists():
+                raise FileExistsError(f"Existing backup: {backup}")
+            destination.rename(backup)
+        try:
+            staging.rename(destination)
+        except BaseException:
+            if backup is not None:
+                backup.rename(destination)
+            raise
+    print(f"Installed Codex Voice {tag} ({target}) to {destination}")
+    return True
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--release-tag", required=True)
+    parser.add_argument("--destination", type=Path,
+                        default=Path.home() / ".local/share/codex-voice-experiment")
+    args = parser.parse_args()
+    install(args.release_tag, args.destination)
+
+
+if __name__ == "__main__":
+    main()

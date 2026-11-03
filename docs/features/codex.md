@@ -234,3 +234,74 @@ their changed definitions via `/hooks`; Codex skips untrusted user hooks.
 Mac notifications also depend on macOS notification permissions for the
 invoking application. Source snapshots are internal rollout records and may
 change format in future Codex releases.
+
+## Portable custom Codex Voice CLI
+
+The normal Homebrew-installed `codex` remains untouched. The separate
+`codex-voice` launcher runs a version-pinned, voice-enabled build of the
+[personal Codex fork](https://github.com/ArthurZakirov/codex), with
+`CODEX_REALTIME_VERBATIM_SPEECH=1`. Codex account authentication stays local.
+
+### Release production
+
+The fork's
+[portable Codex Voice workflow](https://github.com/ArthurZakirov/codex/blob/feat/portable-codex-voice-release/.github/workflows/portable-codex-voice.yml)
+builds the app from the workspace's pinned Rust toolchain and the voice helper
+and native runtime from the repository's existing Bazel/voice packaging
+pipeline. It validates native library receipts, build commits, package hashes
+and target architecture before publishing a **prerelease** for Apple Silicon
+and Intel Macs. The packaging process runs in GitHub Actions; fresh Macs do
+not need Rust, Cargo, Bazel or GStreamer installed separately.
+
+Preview artifacts are **not Apple Developer ID signed or notarized**. They
+are unsuitable for managed/public distribution without a signing and Gatekeeper
+validation step. An interactive macOS Gatekeeper decision may be required on
+first launch; never disable Gatekeeper system-wide.
+
+### Version pin and installation
+
+The checked-in [codexVoice settings](../../home/.chezmoidata.toml) own the
+release version and the installation toggle. To check them:
+
+```sh
+grep -A4 '^\[codexVoice\]' home/.chezmoidata.toml
+```
+
+After the release exists and the package has passed CI and a real voice
+session smoke test, set `codexVoice.enabled = true` and update
+`codexVoice.tag` to the **published** tag. The initial setting is disabled
+until that release is verified. Commit this update before relying on fresh
+Mac onboarding.
+
+Chezmoi installs the
+[launcher](../../home/dot_local/bin/executable_codex-voice), the
+[stdlib-only installer](../../home/dot_local/bin/executable_codex-voice-install)
+and the [after-hook](../../home/run_after_45-install-codex-voice.sh.tmpl).
+The hook installs the macOS-architecture-specific release into
+`~/.local/share/codex-voice-experiment/` and preserves the normal `codex`.
+The release tarball is SHA-256 checked against the release's
+`SHA256SUMS`, inspected for unsafe paths, validated against the embedded
+voice package manifest, and installed with a rollback of the preceding
+package. Reapplying the same tag skips the download.
+
+After applying the pinned release:
+
+```sh
+codex-voice --no-daemon
+```
+
+Use `/model` to verify the model list. Then test microphone permissions,
+live speech capture, audio playback and voice controls. Use
+`codex --version` to check the unaffected Homebrew Codex installation.
+
+The exact release can be checked with:
+
+```sh
+gh release view "$(sed -n 's/^    tag = "\([^"]*\)"/\1/p' home/.chezmoidata.toml)" \
+  --repo ArthurZakirov/codex
+```
+
+This installer tracks the pinned release tag. It does not automatically
+rebase the source fork onto newer upstream Codex versions or establish
+compatibility for future model catalogs; upgrades require their own verified
+release.
