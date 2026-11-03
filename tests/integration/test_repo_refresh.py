@@ -828,11 +828,13 @@ def test_case_insensitive_repository_paths_are_not_mistaken_for_redirects(
     assert git(scenario.repo, "rev-parse", "HEAD") == git(scenario.remote, "rev-parse", "main")
 
 
-def test_repairs_stale_core_worktree_without_touching_external_files(scenario, tmp_path):
+@pytest.mark.parametrize("outside_exists", [False, True])
+def test_repairs_stale_core_worktree_without_touching_external_files(scenario, tmp_path, outside_exists):
     # Arrange: a direct clone has a non-portable core.worktree redirect.
     outside = tmp_path / "outside"
-    outside.mkdir()
-    (outside / "tracked.txt").write_text("must not be reset\n")
+    if outside_exists:
+        outside.mkdir()
+        (outside / "tracked.txt").write_text("must not be reset\n")
     git(scenario.repo, "config", "core.worktree", outside)
     scenario.advance()
 
@@ -841,7 +843,10 @@ def test_repairs_stale_core_worktree_without_touching_external_files(scenario, t
 
     # Assert: only the selected clone is repaired and updated.
     assert result.returncode == 0, result.stdout + result.stderr
-    assert (outside / "tracked.txt").read_text() == "must not be reset\n"
+    if outside_exists:
+        assert (outside / "tracked.txt").read_text() == "must not be reset\n"
+    else:
+        assert not outside.exists()
     assert git(scenario.repo, "rev-parse", "--show-toplevel") == str(scenario.repo)
     assert git(scenario.repo, "config", "--local", "--get", "core.worktree") == ".."
     assert git(scenario.repo, "branch", "--show-current") == "main"

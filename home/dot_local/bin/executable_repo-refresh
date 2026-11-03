@@ -564,7 +564,8 @@ def rebase_branches(repo, default, target, remote):
 
 def repair_permanent_checkout_path(repo):
     """Make a direct clone independent of a stale absolute core.worktree path."""
-    if os.path.samefile(value(repo, "rev-parse", "--show-toplevel"), repo):
+    selected_tree = Path(value(repo, "rev-parse", "--show-toplevel"))
+    if selected_tree.exists() and os.path.samefile(selected_tree, repo):
         return False
     git_dir = repo / ".git"
     if (git_dir.is_symlink() or not git_dir.is_dir()
