@@ -9,7 +9,7 @@ import subprocess
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "home/dot_hammerspoon/bin/executable_agents_md_pipeline"
+SCRIPT = ROOT / "home/dot_codex/hooks-json/agents-md-freshness/pipeline.py"
 loader = importlib.machinery.SourceFileLoader("agents_md_pipeline", str(SCRIPT))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 assert spec is not None

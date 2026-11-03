@@ -49,6 +49,7 @@ def test_hammerspoon_module_is_chezmoi_managed(profile, profile_factory):
     assert ".hammerspoon/modules/agents_freshness.lua" in files.splitlines()
     assert ".hammerspoon/bin/agents_md_pipeline" in files.splitlines()
     assert ".codex/hooks-json/agents-md-freshness/check.py" in files.splitlines()
+    assert ".codex/hooks-json/agents-md-freshness/pipeline.py" in files.splitlines()
 
 
 
@@ -59,14 +60,19 @@ def test_new_chezmoi_install_includes_runnable_session_checker(
     # The destination has no installed checker and no inherited chezmoi config.
     rendered = profile_factory.render(profile)
     target = tmp_path / ".codex/hooks-json/agents-md-freshness/check.py"
+    shared = target.with_name("pipeline.py")
+    desktop = tmp_path / ".hammerspoon/bin/agents_md_pipeline"
     target.parent.mkdir(parents=True)
+    desktop.parent.mkdir(parents=True)
     assert not target.exists()
+    assert not shared.exists()
 
     deployed = subprocess.run(
         [
             "chezmoi", "--source", str(ROOT / "home"),
             "--config", str(rendered.config),
-            "--destination", str(tmp_path), "apply", str(target),
+            "--destination", str(tmp_path), "apply",
+            str(target), str(shared), str(desktop),
         ],
         env={**os.environ, "HOME": str(tmp_path)},
         capture_output=True, text=True, timeout=15,
@@ -75,6 +81,18 @@ def test_new_chezmoi_install_includes_runnable_session_checker(
     assert deployed.returncode == 0, deployed.stderr
     assert target.is_file()
     assert target.stat().st_mode & 0o111
+    assert shared.is_file()
+    assert desktop.is_file()
+
+    # Hammerspoon and the installed Codex hook use one five-stage checker.
+    desktop_result = subprocess.run(
+        [str(desktop), "--repo", str(tmp_path), "--codex-home", str(tmp_path / ".codex")],
+        capture_output=True, text=True, timeout=10,
+    )
+    assert desktop_result.returncode == 0, desktop_result.stderr
+    assert [stage["key"] for stage in json.loads(desktop_result.stdout)["stages"]] == [
+        "github", "local", "generated", "deployed", "session"
+    ]
 
     invoked = subprocess.run(
         [

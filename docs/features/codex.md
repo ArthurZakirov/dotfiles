@@ -194,27 +194,22 @@ ChatGPT conversations.
 
 ## AGENTS.md freshness warnings
 
-The managed [freshness checker](../../home/dot_codex/hooks-json/agents-md-freshness/executable_check.py)
-compares the most recent **model-visible global instructions snapshot** in the
-**current Codex session** against the active global file (`~/.codex/AGENTS.md`,
-or `AGENTS.override.md` when present).
+The desktop shortcut and Codex hooks call the
+[same five-stage pipeline](../../home/dot_codex/hooks-json/agents-md-freshness/pipeline.py):
 
-- **Trigger:** `UserPromptSubmit` and `Stop` in the managed `hooks.json`.
-- **Mismatch:** Display a Codex UI `systemMessage` and a macOS notification.
-  Repeated warnings for the same session/file version are suppressed.
-- **Match or unavailable snapshot:** Stay silent. In particular, the checker
-  never interprets an unreadable or absent snapshot as proof that instructions
-  are current.
-- **Safety:** Both handlers are asynchronous and advisory. They never block,
-  interrupt, rewrite input, or add model-visible context. The previously
-  managed bedtime guard remains a separate synchronous hook.
-- **Formats:** Streams plain `.jsonl` and `.jsonl.zst` rollouts using the
-  common Homebrew `zstd` executable for compressed files. No decompressed
-  copy is written to disk.
-- **Scope:** Global instruction text only. Project-specific `AGENTS.md`,
-  other context sources, and the exact model payload are not verified.
-  The recorded snapshot is the **last persisted model-visible state**, which
-  may refresh on the next turn. A warning does not prove a restart is required.
+| Stage | What is verified |
+| --- | --- |
+| **GitHub main** | The remote default-branch commit is obtainable via Git. |
+| **Lokales main** | Local main and the managed guidance checkout agree with GitHub. |
+| **Guidance erzeugt** | Generated guidance matches the canonical source components. |
+| **Chezmoi apply** | Installed `~/.codex/AGENTS.md` matches the rendered chezmoi template. |
+| **Codex-Kontext** | This session's last recorded model-visible instructions match the installed file. |
+
+- **Desktop shortcut:** Always displays all five statuses, including `unknown`.
+- **Automatic hooks:** `UserPromptSubmit` and `Stop` call that same read-only pipeline; confirmed `outdated` stages produce a Codex UI `systemMessage` and macOS notification. Repeated notifications for the same session and mismatch are suppressed.
+- **Missing evidence:** Stays `unknown` and never silently becomes `current`. A disconnected remote or missing session snapshot does not itself trigger a warning.
+- **Safety:** All checks are read-only, asynchronous, and advisory. No `git pull`, `chezmoi apply`, or model-visible instructions are injected. The bedtime guard remains a separate synchronous hook.
+- **Scope:** Global instructions only. Project-level `AGENTS.md` files and the model's private inference context are not verified.
 
 To inspect a particular session manually:
 
@@ -226,6 +221,13 @@ python3 ~/.codex/hooks-json/agents-md-freshness/check.py --check \
 The result is JSON with `current`, `outdated`, or `unknown`, plus hashes
 and (when available) the generated source digests. The check uses the
 session's specific rollout, not the newest unrelated chat.
+
+To inspect all five stages outside the desktop shortcut:
+
+```bash
+python3 ~/.codex/hooks-json/agents-md-freshness/pipeline.py \
+  --session-id YOUR_SESSION_ID
+```
 
 After `chezmoi apply`, restart Codex to discover the new hooks and review
 their changed definitions via `/hooks`; Codex skips untrusted user hooks.

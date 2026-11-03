@@ -53,6 +53,7 @@ def test_apply_owns_only_deployed_codex_artifacts(profile_factory, profile):
     assert ".codex/hooks-json/bedtime-device-guard/bedtime_guard.py" in paths
     assert ".codex/hooks-json/bedtime-device-guard/config.json" in paths
     assert ".codex/hooks-json/agents-md-freshness/check.py" in paths
+    assert ".codex/hooks-json/agents-md-freshness/pipeline.py" in paths
 
 
 
