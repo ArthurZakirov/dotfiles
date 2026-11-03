@@ -787,6 +787,47 @@ def test_preservation_failure_leaves_original_checkout_untouched(scenario):
     assert (scenario.repo / "tracked.txt").read_text() == "important\n"
 
 
+@pytest.mark.parametrize(
+    ("root_name", "alias_name"),
+    [("Repos", "repos"), ("Tickets", "tickets"),
+     ("Repos/third-party", "repos/THIRD-PARTY")],
+)
+@pytest.mark.parametrize("current_branch", ["main", "feature"])
+def test_case_insensitive_repository_paths_are_not_mistaken_for_redirects(
+    scenario, tmp_path, root_name, alias_name, current_branch,
+):
+    # Arrange: Git reports a differently capitalized path to the same clone.
+    original_root = scenario.repo.parent
+    selected_root = tmp_path / root_name
+    if selected_root != original_root:
+        selected_root.mkdir(parents=True, exist_ok=True)
+        scenario.repo.rename(selected_root / scenario.repo.name)
+        scenario.repo = selected_root / scenario.repo.name
+        scenario.worktrees = selected_root / scenario.worktrees.name
+        scenario.config.write_text(json.dumps({"root": str(selected_root)}))
+    alias_root = tmp_path / alias_name
+    if not alias_root.exists() or not os.path.samefile(selected_root, alias_root):
+        pytest.skip("Case-sensitive filesystem: capitalization aliases are separate paths")
+    if current_branch == "feature":
+        git(scenario.repo, "switch", "-c", "feature")
+    aliased_checkout = alias_root / scenario.repo.name
+    git(scenario.repo, "config", "--local", "core.worktree", aliased_checkout)
+    assert os.path.samefile(aliased_checkout, scenario.repo)
+    assert Path(git(scenario.repo, "rev-parse", "--show-toplevel")) != scenario.repo
+    scenario.advance()
+
+    # Act: refresh through the installed script's real CLI entry point.
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    # Assert: the permanent checkout updates without rewriting valid Git config.
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert scenario.outcome()["state"] == "updated"
+    assert "repaired_checkout_path" not in scenario.outcome()
+    assert git(scenario.repo, "config", "--local", "--get", "core.worktree") == str(aliased_checkout)
+    assert git(scenario.repo, "branch", "--show-current") == "main"
+    assert git(scenario.repo, "rev-parse", "HEAD") == git(scenario.remote, "rev-parse", "main")
+
+
 def test_repairs_stale_core_worktree_without_touching_external_files(scenario, tmp_path):
     # Arrange: a direct clone has a non-portable core.worktree redirect.
     outside = tmp_path / "outside"

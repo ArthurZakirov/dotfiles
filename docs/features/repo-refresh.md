@@ -107,8 +107,12 @@ worktree with `git worktree remove --force --force`, including any uncommitted
 changes even if it was locked. Other linked worktrees, including those under
 `~/Tickets`, remain registered. A direct clone with a stale `core.worktree`
 setting is repaired to use its own directory without resetting files at the old
-path. A newly created feature branch without its own commits is not treated
-as merged, even if the default branch advances before its first commit.
+path. Checkout identity checks use filesystem identity, not case-sensitive path
+spelling, so `Repos`/`repos`, `Tickets`/`tickets`, and `third-party` path aliases
+on case-insensitive Macs do not trigger unnecessary repairs. Different actual
+working directories still fail the safety check. A newly created feature
+branch without its own commits is not treated as merged, even if the default
+branch advances before its first commit.
 
 ### Branch outcomes
 
