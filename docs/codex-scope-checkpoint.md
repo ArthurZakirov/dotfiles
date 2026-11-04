@@ -4,30 +4,25 @@ An optional Codex hook records a scope/effort decision **per turn and workspace*
 before a potentially mutating tool call. It replaces the blanket guidance-audit
 footer. It does not determine whether the agent's scope judgment is correct.
 
-## Enable on the target machine
+## Configure using Codex hooks
 
-After the branch has been reviewed, merged, installed with chezmoi, and Codex
-has loaded the new hooks, run:
+After the branch is reviewed, merged, and installed with `chezmoi apply`,
+start a **new Codex session** so Codex loads the updated hook registration.
+Use Codex's native hook settings to enable or disable the scope-checkpoint
+handlers under **`UserPromptSubmit`** and **`PreToolUse`**. Both need to be
+enabled to get the initial reminder and the pre-write gate.
 
-```bash
-python3 "$HOME/.codex/hooks-json/scope-checkpoint/checkpoint.py" enable
-python3 "$HOME/.codex/hooks-json/scope-checkpoint/checkpoint.py" status
-```
+The managed hook has **no independent activation flag, enable/disable
+command, or Python-script toggle**. When Codex calls the hook, the checkpoint
+runs. Disabling the registered handlers in Codex stops those invocations.
+There is no need to create or remove an `enabled` file. Existing legacy
+`~/.codex/scope-checkpoint/enabled` files are ignored.
 
-Start a **new Codex chat** to verify hook registration and global guidance.
-The script is installed for all profiles but **disabled by default** on each
-machine. Enabling it changes only the local Codex home; no assessment is
-committed to Git.
-
-To stop blocking tool calls:
-
-```bash
-python3 "$HOME/.codex/hooks-json/scope-checkpoint/checkpoint.py" disable
-```
+Assessment data remains local and is never committed to Git.
 
 ## Expected behavior
 
-When enabled, `UserPromptSubmit` supplies session/turn identifiers
+When invoked, `UserPromptSubmit` supplies session/turn identifiers
 and an instruction to evaluate shared-work changes. Before editing, Codex
 should give the user a compact **Scope & Effort** outcome, including justified
 **in-scope** verdicts.
@@ -72,9 +67,10 @@ Use a fresh chat and a representative ticket with acceptance criteria.
 2. Request an unrelated E2E framework. Expect a reasoned **pause** before edits.
 3. Request significant effort without ticket scope or a reliable budget.
    Expect an explicit evidence gap and pause on the affected work.
-4. Check that `UserPromptSubmit` and `PreToolUse` actually ran; verify
-   denial without a record, acceptance with an eligible record, and a
-   new requirement after the next user turn.
+4. Toggle the native Codex hook settings for the two event handlers; verify
+   that they invoke the checkpoint when enabled and do not invoke it when
+   disabled. Check denial without a record, acceptance with an eligible
+   record, and a new requirement after the next user turn.
 5. Test Codex CLI and Codex Desktop separately; their hook coverage cannot
    be assumed identical.
 
