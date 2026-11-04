@@ -2,8 +2,10 @@
 local runningTask
 
 local function openLocalBranch()
-  local front = hs.application.frontmostApplication()
-  if not front or front:bundleID() ~= "com.google.Chrome" then
+  -- The modifier-release callback can run after focus has changed.
+  -- The Chrome tab URL, not the currently focused application, determines
+  -- whether this is a supported PR/branch navigation request.
+  if not hs.application.get("com.google.Chrome") then
     hs.alert.show("Open a GitHub or Bitbucket PR/branch in Chrome first")
     return
   end
