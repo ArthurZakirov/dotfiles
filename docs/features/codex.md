@@ -278,8 +278,9 @@ Chezmoi installs the
 [launcher](../../home/dot_local/bin/executable_codex-voice), the
 [stdlib-only installer](../../home/dot_local/bin/executable_codex-voice-install)
 and the [after-hook](../../home/run_after_45-install-codex-voice.sh.tmpl).
-The hook installs the macOS-architecture-specific release into
-`~/.local/share/codex-voice/` and preserves both the normal `codex`
+The hook uses Python 3.11+ from `PATH` (including pyenv/asdf), falling
+back to Homebrew Python when necessary. It installs the architecture-specific
+macOS release into `~/.local/share/codex-voice/` and preserves both the normal `codex`
 and the separate development builds in `~/.local/share/codex-voice-experiment/`.
 The release tarball is SHA-256 checked against the release's
 `SHA256SUMS`, inspected for unsafe paths, validated against the embedded

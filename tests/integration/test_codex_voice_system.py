@@ -9,8 +9,10 @@ import json
 import os
 from pathlib import Path
 import platform
+import shlex
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -118,6 +120,18 @@ def test_one_apply_installs_missing_voice_and_reuses_existing_voice(
     (home.parent / "chezmoi.toml").write_text(
         f'[data]\nprofile = "{profile}"\n'
     )
+    # Simulate pyenv/asdf Python on PATH. It must be chosen over Homebrew Python.
+    shims = home.parent / "pyenv-shims"
+    shims.mkdir()
+    python_log = home.parent / "python-invocations.log"
+    shim = shims / "python3"
+    shim.write_text(
+        "#!/bin/sh\n"
+        f"printf '%s\\n' \"$1\" >> {shlex.quote(str(python_log))}\n"
+        f"exec {shlex.quote(sys.executable)} \"$@\"\n"
+    )
+    shim.chmod(0o755)
+    env = {**env, "PATH": f"{shims}:{env['PATH']}"}
     # Stub only the network/package boundary. Real chezmoi applies the source,
     # installs the launcher and executes the actual run_after template.
     installer = home.parent / "source/dot_local/bin/executable_codex-voice-install"
@@ -160,6 +174,7 @@ if not executable.is_file():
     assert (home / ".local/share/codex-voice-install-calls").read_text() == (
         "installed\nreused\n"
     )
+    assert python_log.read_text().splitlines().count(str(home / INSTALLER)) == 2
     assert (home / ".local/share/codex-voice-experiment/keep-me.txt").read_text() == (
         "previous-build"
     )
