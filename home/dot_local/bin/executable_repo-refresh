@@ -221,6 +221,16 @@ def worktree_path(repo, branch, recovery=False):
     return destination
 
 
+def ensure_default_tracking(repo, remote, default):
+    tracking = git(repo, "branch", "--set-upstream-to", f"{remote}/{default}",
+                   default, check=False)
+    if tracking.returncode:
+        # Narrow-clone refspecs may not permit upstream tracking yet.
+        git(repo, "config", "--add", f"remote.{remote}.fetch",
+            f"+refs/heads/{default}:refs/remotes/{remote}/{default}")
+        git(repo, "branch", "--set-upstream-to", f"{remote}/{default}", default)
+
+
 def clean_fast_forward(repo, branch, default, head, target, dirty, operation, remote):
     """Update a clean default checkout without creating an unnecessary recovery."""
     if (branch != default or dirty or operation or head == target
@@ -243,7 +253,7 @@ def clean_fast_forward(repo, branch, default, head, target, dirty, operation, re
             if existing.exists() or existing.is_symlink():
                 return False
     git(repo, "merge", "--ff-only", target)
-    git(repo, "branch", "--set-upstream-to", f"{remote}/{default}", default)
+    ensure_default_tracking(repo, remote, default)
     if (value(repo, "symbolic-ref", "--short", "HEAD") != default
             or value(repo, "rev-parse", "HEAD") != target
             or git(repo, "status", "--porcelain=v1").stdout):
@@ -347,12 +357,7 @@ def restore_default(repo, destination, branch, head, default, target, remote):
     # remain in place where possible and have also been copied to recovery.
     git(repo, "clean", "-ffd")
     git(repo, "checkout", "--force", "-B", default, target)
-    tracking = git(repo, "branch", "--set-upstream-to", f"{remote}/{default}", default, check=False)
-    if tracking.returncode:
-        # Single-branch clones may not yet map this branch in their fetch refspec.
-        git(repo, "config", "--add", f"remote.{remote}.fetch",
-            f"+refs/heads/{default}:refs/remotes/{remote}/{default}")
-        git(repo, "branch", "--set-upstream-to", f"{remote}/{default}", default)
+    ensure_default_tracking(repo, remote, default)
     if (repo / ".gitmodules").is_file():
         git(repo, "submodule", "sync", "--recursive")
         git(repo, "submodule", "update", "--init", "--recursive", "--force")
