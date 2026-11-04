@@ -136,7 +136,11 @@ def may_write(tool_name: str, tool_input: object) -> bool:
     if tool_name in ("apply_patch", "Edit", "Write"):
         return True
     if tool_name in ("Bash", "exec_command"):
-        command = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
+        if not isinstance(tool_input, dict):
+            return True
+        command = tool_input.get("cmd") if tool_name == "exec_command" else tool_input.get("command")
+        if command is None:
+            command = tool_input.get("command") if tool_name == "exec_command" else tool_input.get("cmd")
         if not isinstance(command, str):
             return True
         return not (allowed_record_command(command) or is_read_only_bash(command))

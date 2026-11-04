@@ -127,6 +127,43 @@ def test_shell_recorder_is_exempt_but_compound_command_is_not(tmp_path):
     assert mixed["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
+@pytest.mark.parametrize(
+    ("tool", "input_key"),
+    [
+        pytest.param("Bash", "command", id="bash-command"),
+        pytest.param("exec_command", "cmd", id="native-exec-cmd"),
+        pytest.param("exec_command", "command", id="exec-command-fallback"),
+    ],
+)
+def test_shell_gate_allows_recording_and_read_only_commands_before_checkpoint(
+    tmp_path, tool, input_key,
+):
+    # Arrange: enforcement is enabled, but no assessment has been recorded.
+    run_script(tmp_path, "enable")
+    recorder = f"{sys.executable} {SCRIPT} record --session-id {SESSION} --turn-id {TURN}"
+
+    # Act: send real hook-shaped shell inputs through the public hook entrypoint.
+    def invoke(command):
+        request = event("PreToolUse", tool=tool)
+        request["tool_input"] = {input_key: command}
+        return result(tmp_path, request)
+
+    # Assert: recording remains possible while actual writes are still denied.
+    assert invoke(recorder) == {}
+    assert invoke("git status") == {}
+    assert invoke("touch demo.txt")["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert invoke(recorder + "; touch demo.txt")["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_native_exec_command_with_missing_or_invalid_cmd_is_not_exempt(tmp_path):
+    run_script(tmp_path, "enable")
+    request = event("PreToolUse", tool="exec_command")
+    for tool_input in ({}, {"cmd": 123}, {"cmd": None}):
+        request["tool_input"] = tool_input
+        blocked = result(tmp_path, request)
+        assert blocked["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
 def test_unrecognized_commands_are_checked_conservatively(tmp_path):
     run_script(tmp_path, "enable")
     assert result(tmp_path, event("PreToolUse", tool="Bash", command="python3 -c 'print(1)'"))["hookSpecificOutput"]["permissionDecision"] == "deny"
