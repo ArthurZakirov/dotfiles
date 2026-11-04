@@ -163,6 +163,7 @@ def test_preapply_backup_accepts_legacy_config_without_repos_dir(tmp_path, root_
     assert result.returncode == 0, result.stdout + result.stderr
     assert json.loads(target.read_text()) == {
         "enabled": True, "root": str(expected_root), "remote": "origin",
+        "archiveRecoveries": True,
     }
     backups = list((home / "Library/Application Support/dotfiles/backups").glob("apply.*"))
     assert len(backups) == 1
