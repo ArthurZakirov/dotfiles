@@ -168,9 +168,6 @@ def create_review(cwd: Path, base: str, target: str, mode: str) -> Path:
             "base": material_base,
             "target": target_sha,
             "mode": mode,
-            "initial_branches": git(
-                "for-each-ref", "--format=%(refname)", "refs/heads", cwd=source,
-            ).splitlines(),
         }
         review_git_dir = Path(git("rev-parse", "--path-format=absolute", "--git-dir", cwd=review))
         (review_git_dir / "GIT_REVIEW.json").write_text(json.dumps(metadata, indent=2) + "\n")
@@ -280,14 +277,16 @@ def unreview_all(cwd: Path) -> None:
     if not primary.is_dir():
         raise SystemExit(f"Permanent Git checkout is missing: {primary}")
 
+    sibling = primary.with_name(f"{primary.name}.worktrees")
     removed = 0
     errors = 0
     for review, branch in records[1:]:
         # An ordinary feature worktree must NEVER be deleted on name alone.
         if not (
-            cache.is_dir()
-            and review.parent.parent.is_dir()
-            and os.path.samefile(review.parent.parent, cache)
+            ((cache.is_dir() and review.parent.parent.is_dir()
+              and os.path.samefile(review.parent.parent, cache))
+             or (sibling.is_dir() and review.parent.is_dir()
+                 and os.path.samefile(review.parent, sibling)))
             and review.is_dir()
             and not review.is_symlink()
             and review.name.startswith("review-")
@@ -322,13 +321,10 @@ def unreview_all(cwd: Path) -> None:
             )
             removed += 1
             print(f"Removed review: {review}")
-            initial = data.get("initial_branches")
+            # Reviews are created detached; the tool creates no branch to own.
+            # A later attached branch may contain work from another checkout.
             if branch and branch.startswith("refs/heads/"):
-                if isinstance(initial, list) and branch not in initial:
-                    git("branch", "-D", "--", branch[len("refs/heads/"):],
-                        cwd=primary, capture=False)
-                else:
-                    print(f"Kept branch (not proven review-created): {branch}")
+                print(f"Kept branch (not proven review-created): {branch}")
             for directory in (workspace.parent, review.parent):
                 try:
                     directory.rmdir()

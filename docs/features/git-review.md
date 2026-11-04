@@ -36,17 +36,15 @@ reviews is harmless.
 
 Review worktrees are verified using the `GIT_REVIEW.json` marker in their Git
 metadata **and** their registered worktree location under
-`~/.local/share/git-review/`. Naming an ordinary worktree `review-...`
-alone does not make it eligible for removal. A failed deletion is reported;
+`~/.local/share/git-review/` or the permanent checkout's sibling
+`<checkout-name>.worktrees/` directory (for migrated reviews). Naming an ordinary
+worktree `review-...` alone does not make it eligible for removal. A failed deletion is reported;
 the command continues with other reviews and exits nonzero.
 
-New reviews record the branches already present when the review began. If a
-**new branch is still checked out in a review** when cleaned up, the command
-deletes that local branch after removing the worktree. Pre-existing branches
-are preserved. For older reviews without this history, an attached branch is
-conservatively retained; branches created in a review but later switched away
-cannot be unambiguously attributed, so they are not automatically deleted.
-Remote branches are never removed.
+Git review creates detached worktrees and no branches. Branches manually
+checked out in a review are retained: being absent when a review opened does
+not prove that a branch was created there, and deleting it could discard work
+from another checkout. Remote branches are never removed.
 
 VS Code exposes the global **Git: Unreview All** task via
 `Tasks: Run Task`, alongside **Git: Unreview**. It runs the cleanup against

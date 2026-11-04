@@ -458,7 +458,7 @@ def test_failed_workspace_cleanup_keeps_registered_review_recoverable(sandbox):
     assert git("status", "--porcelain").stdout == ""
 
 
-def test_unreview_all_discards_dirty_reviews_and_their_new_active_branches(sandbox):
+def test_unreview_all_discards_dirty_reviews_and_preserves_user_created_branches(sandbox):
     source, home, env, git = sandbox
     (source / "file.txt").write_text("first\n")
     base = commit(git, "base")
@@ -488,7 +488,7 @@ def test_unreview_all_discards_dirty_reviews_and_their_new_active_branches(sandb
         assert not review.exists()
         assert not (review.parent / "workspaces" / review.name).exists()
         assert str(review) not in git("worktree", "list").stdout
-    assert git("show-ref", "--verify", "refs/heads/review/temporary", check=False).returncode != 0
+    assert git("show-ref", "--verify", "refs/heads/review/temporary").returncode == 0
     assert git("show-ref", "--verify", "refs/heads/keep-feature").returncode == 0
     assert feature.is_dir() and (feature / "feature-untracked.txt").is_file()
     assert git("status", "--porcelain").stdout == source_status
@@ -593,3 +593,45 @@ def test_unreview_all_recognizes_review_under_an_older_cache_identity(sandbox):
     assert "Removed 1 Git review worktree(s)." in result.stdout
     assert not relocated.exists()
     assert not relocated_workspace.exists()
+
+
+def test_unreview_all_preserves_branch_created_outside_review_after_it_opened(sandbox):
+    source, home, env, git = sandbox
+    (source / "file.txt").write_text("base\n")
+    commit(git, "base")
+    (source / "file.txt").write_text("target\n")
+    commit(git, "target")
+    review = review_path(git("review", "HEAD"))
+    git("switch", "-c", "outside-feature")
+    (source / "important.txt").write_text("work outside the review\n")
+    saved_commit = commit(git, "external work")
+    git("switch", "--detach")
+    git("reset", "--hard", cwd=review)
+    git("switch", "outside-feature", cwd=review)
+
+    git("unreview-all")
+
+    assert not review.exists()
+    assert git("rev-parse", "refs/heads/outside-feature").stdout.strip() == saved_commit
+
+
+def test_unreview_all_recognizes_marked_review_migrated_to_sibling_worktrees(sandbox):
+    source, home, env, git = sandbox
+    (source / "file.txt").write_text("base\n")
+    commit(git, "base")
+    (source / "file.txt").write_text("target\n")
+    commit(git, "target")
+    review = review_path(git("review", "HEAD"))
+    sibling = source.with_name(f"{source.name}.worktrees")
+    sibling.mkdir()
+    relocated = sibling / review.name
+    git("worktree", "move", str(review), str(relocated))
+    unmarked = sibling / "review-not-owned"
+    git("worktree", "add", "--detach", str(unmarked), "HEAD")
+
+    result = git("unreview-all")
+
+    assert "Removed 1 Git review worktree(s)." in result.stdout
+    assert not relocated.exists()
+    assert unmarked.is_dir()
+    assert str(unmarked) in git("worktree", "list").stdout
