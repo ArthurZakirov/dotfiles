@@ -1,0 +1,5 @@
+#!/bin/bash
+# Keep normal Codex separate; enable the opt-in speech behavior only here.
+set -euo pipefail
+export CODEX_REALTIME_VERBATIM_SPEECH=1
+exec "$HOME/.local/share/codex-voice/bin/codex" "$@"

@@ -2,3 +2,9 @@
     # Source of truth for chezmoi apply and the macOS LaunchAgent.
     # Automatically maintain permanent checkouts and feature worktrees.
     enabled = true
+
+[codexVoice]
+    # Enable only after the first packaged release passes independent CI checks.
+    # The tag must refer to a published, tested release in ArthurZakirov/codex.
+    enabled = false
+    tag = "voice-v0.166.0-r4"

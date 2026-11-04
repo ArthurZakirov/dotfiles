@@ -1,0 +1,13 @@
+#!/bin/bash
+set -euo pipefail
+{{ if .codexVoice.enabled -}}
+if [[ -x /opt/homebrew/bin/python3 ]]; then
+  python=/opt/homebrew/bin/python3
+elif [[ -x /usr/local/bin/python3 ]]; then
+  python=/usr/local/bin/python3
+else
+  echo 'Codex Voice requires Homebrew Python 3.11+; install it before this hook.' >&2
+  exit 1
+fi
+"$python" "$HOME/.local/bin/codex-voice-install" --release-tag {{ .codexVoice.tag | quote }}
+{{- end }}
