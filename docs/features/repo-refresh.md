@@ -76,10 +76,14 @@ Each run follows this sequence:
 1. **Fetch and resolve the default branch.** The remote decides whether that is
    `main`, `master`, or another name. Offline/authentication failures are reported
    and retried later, without requesting credentials interactively.
-2. **Restore the permanent checkout.** Preserve its previous files, index and
-   commits, then force it onto the fetched default commit—even after divergence,
-   a force-push, or an interrupted Git operation. A displaced feature branch is
-   checked out in a separate development worktree.
+2. **Restore the permanent checkout.** When the permanent checkout is already
+   on a clean default branch and can fast-forward, use `git merge --ff-only`
+   without creating a redundant recovery worktree. Retain the preservation
+   path for dirty or divergent checkouts, interrupted operations, submodules,
+   sparse checkouts, and possible collisions with ignored files. In those
+   cases, preserve the previous files, index and commits before force-restoring
+   the fetched default commit. A displaced feature branch is checked out in
+   a separate development worktree.
 3. **Remove verified merged branches.** Before rebasing, verify integration
    using local Git history only, independently of GitHub or Bitbucket. A branch
    qualifies when its tip is an ancestor of the fetched remote default (but

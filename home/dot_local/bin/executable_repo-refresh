@@ -221,6 +221,36 @@ def worktree_path(repo, branch, recovery=False):
     return destination
 
 
+def clean_fast_forward(repo, branch, default, head, target, dirty, operation, remote):
+    """Update a clean default checkout without creating an unnecessary recovery."""
+    if (branch != default or dirty or operation or head == target
+            or git(repo, "merge-base", "--is-ancestor", head, target,
+                   check=False).returncode != 0):
+        return False
+    # The force-replacement path handles sparse clones and submodule state.
+    if (git(repo, "config", "--bool", "core.sparseCheckout",
+            check=False).stdout.strip() == b"true"
+            or (repo / ".gitmodules").exists()
+            or git(repo, "ls-tree", "--name-only", target, "--", ".gitmodules").stdout):
+        return False
+    # An incoming tracked file can replace an existing ignored file. Keep the
+    # full recovery path when that collision is possible.
+    additions = git(repo, "diff", "--no-renames", "--diff-filter=A",
+                    "--name-only", "-z", head, target).stdout
+    for name in additions.split(b"\0"):
+        if name:
+            existing = repo / os.fsdecode(name)
+            if existing.exists() or existing.is_symlink():
+                return False
+    git(repo, "merge", "--ff-only", target)
+    git(repo, "branch", "--set-upstream-to", f"{remote}/{default}", default)
+    if (value(repo, "symbolic-ref", "--short", "HEAD") != default
+            or value(repo, "rev-parse", "HEAD") != target
+            or git(repo, "status", "--porcelain=v1").stdout):
+        raise RefreshError("Fast-forward checkout verification failed")
+    return True
+
+
 def refresh(repo, remote):
     # Fetch and resolve the remote's actual default before disturbing local files.
     git(repo, "fetch", "--prune", "--no-recurse-submodules", remote)
@@ -251,6 +281,11 @@ def refresh(repo, remote):
     operation = any(git_path(repo, name).exists() for name in ACTIVE_OPERATION_STATE)
     if branch == default and head == target and not dirty and not operation:
         return {"state": "current", "branch": default, "commit": target}
+    if original_head and clean_fast_forward(
+        repo, branch, default, original_head, target, dirty, operation, remote
+    ):
+        return {"state": "updated", "branch": default, "commit": target,
+                "method": "fast-forward"}
 
     label = branch or f"detached-{head[:12]}"
     destination = worktree_path(repo, label, recovery=branch in (None, default))
