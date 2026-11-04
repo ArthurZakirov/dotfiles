@@ -304,7 +304,8 @@ def test_installer_handles_jsonc_trailing_commas_and_repeated_apply(installer, t
     assert "// keep task" in tasks_source
     assert "// keep binding" in keys_source
     assert {item["label"] for item in tasks} == {
-        "Unrelated Task", installer.TASK_LABEL, installer.BRANCH_LABEL
+        "Unrelated Task", installer.TASK_LABEL, installer.BRANCH_LABEL,
+        installer.REVIEW_CLEANUP_LABEL,
     }
     assert {item["key"] for item in keys} == {"ctrl+x", "ctrl+p ctrl+r"}
 
@@ -366,6 +367,8 @@ def test_vscode_installer_migrates_tasks_preserving_others(installer, tmp_path):
                for task in tasks)
     assert sum(task["label"] == installer.TASK_LABEL for task in tasks) == 1
     assert sum(task["label"] == installer.BRANCH_LABEL for task in tasks) == 1
+    cleanup = [task for task in tasks if task["label"] == installer.REVIEW_CLEANUP_LABEL]
+    assert cleanup == [installer.review_cleanup_task()]
     assert keys[0]["args"] == installer.TASK_LABEL
     assert keys[1]["key"] == "ctrl+q"
     before = tuple((user / name).read_bytes() for name in ("tasks.json", "keybindings.json"))

@@ -257,6 +257,88 @@ def unreview(cwd: Path) -> None:
     print(source)
 
 
+def unreview_all(cwd: Path) -> None:
+    """Remove every verified disposable review belonging to this Git repository."""
+    common = common_dir(cwd)
+    cache = Path.home() / ".local" / "share" / "git-review"
+    records = []
+    # A source checkout may be another linked worktree; operate from the
+    # permanent checkout so removing the invoking review does not break Git.
+    fields = git("worktree", "list", "--porcelain", "-z", cwd=cwd).split("\0")
+    for field in fields:
+        if field.startswith("worktree "):
+            records.append((Path(field[len("worktree "):]), None))
+        elif field.startswith("branch ") and records:
+            path, _ = records[-1]
+            records[-1] = (path, field[len("branch "):])
+    if not records:
+        raise SystemExit("Cannot locate the permanent Git checkout.")
+    primary = records[0][0]
+    if not primary.is_dir():
+        raise SystemExit(f"Permanent Git checkout is missing: {primary}")
+
+    sibling = primary.with_name(f"{primary.name}.worktrees")
+    removed = 0
+    errors = 0
+    for review, branch in records[1:]:
+        # An ordinary feature worktree must NEVER be deleted on name alone.
+        if not (
+            ((cache.is_dir() and review.parent.parent.is_dir()
+              and os.path.samefile(review.parent.parent, cache))
+             or (sibling.is_dir() and review.parent.is_dir()
+                 and os.path.samefile(review.parent, sibling)))
+            and review.is_dir()
+            and not review.is_symlink()
+            and review.name.startswith("review-")
+        ):
+            continue
+        try:
+            review_git_dir = Path(git(
+                "rev-parse", "--path-format=absolute", "--git-dir", cwd=review,
+            )).resolve()
+            if (
+                not os.path.samefile(review_git_dir.parent, common / "worktrees")
+                or not os.path.samefile(common_dir(review), common)
+            ):
+                continue
+            marker = review_git_dir / "GIT_REVIEW.json"
+            if not marker.is_file():
+                continue
+            data = json.loads(marker.read_text())
+            if data.get("git_review") is not True or not isinstance(
+                data.get("source_worktree"), str
+            ):
+                raise ValueError("invalid Git review metadata")
+
+            # Close this review's external workspace before unregistering it,
+            # retaining a retryable Git worktree if workspace deletion fails.
+            workspace = workspace_directory(review)
+            if workspace.exists():
+                shutil.rmtree(workspace)
+            git(
+                "worktree", "remove", "--force", "--force", str(review),
+                cwd=primary, capture=False,
+            )
+            removed += 1
+            print(f"Removed review: {review}")
+            # Reviews are created detached; the tool creates no branch to own.
+            # A later attached branch may contain work from another checkout.
+            if branch and branch.startswith("refs/heads/"):
+                print(f"Kept branch (not proven review-created): {branch}")
+            for directory in (workspace.parent, review.parent):
+                try:
+                    directory.rmdir()
+                except OSError:
+                    pass
+        except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+            errors += 1
+            print(f"Could not remove review {review}: {exc}", file=sys.stderr)
+
+    print(f"Removed {removed} Git review worktree(s).")
+    if errors:
+        raise SystemExit(1)
+
+
 def main() -> None:
     # Git shell aliases pass repository-specific environment into this helper.
     # Our subprocesses must discover the repository from their own cwd, and
@@ -272,6 +354,7 @@ def main() -> None:
     rng.add_argument("base", nargs="?")
     rng.add_argument("target", nargs="?", default="HEAD")
     sub.add_parser("unreview")
+    sub.add_parser("unreview-all")
     args = parser.parse_args()
     cwd = Path.cwd()
 
@@ -286,8 +369,10 @@ def main() -> None:
         create_review(cwd, parent, commit, "commit")
     elif args.command == "range":
         create_review(cwd, args.base or default_base(cwd), args.target, "range")
-    else:
+    elif args.command == "unreview":
         unreview(cwd)
+    else:
+        unreview_all(cwd)
 
 
 if __name__ == "__main__":

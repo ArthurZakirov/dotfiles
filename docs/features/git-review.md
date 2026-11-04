@@ -10,7 +10,8 @@ source branch, commits, and uncommitted edits remain untouched.
 | `git review <commit>` | One commit against its parent |
 | `git review-range` | HEAD against the fetched upstream remote's default branch |
 | `git review-range <base> [<target>]` | An explicit range using its merge base |
-| `git unreview` | Return to the source folder and remove the disposable review |
+| `git unreview` | Return to the source folder and remove one disposable review |
+| `git unreview-all` | Force-remove all verified disposable reviews for the current repository |
 
 The `code` CLI opens the review in VS Code when available; otherwise the command
 prints the review folder. VS Code displays a named workspace such as
@@ -22,6 +23,34 @@ disposable worktree, including its `.venv`. Run `git unreview` from the review
 folder, or from the source folder when exactly one review exists. Successful
 cleanup unregisters and deletes the worktree, deletes its VS Code workspace,
 and removes its now-empty cache directories without touching other reviews.
+
+## 🧹 Clean up accumulated reviews
+
+Run `git unreview-all` from the source checkout, any linked checkout, or a
+review workspace. The command does not prompt for confirmation: it discards
+both tracked and untracked changes in **all** worktrees it can verify as Git
+reviews for that repository. It removes their separate VS Code workspace files
+and empty review-cache directories, but does not remove regular feature
+worktrees or modify source checkout files. Repeating the command with no
+reviews is harmless.
+
+Review worktrees are verified using the `GIT_REVIEW.json` marker in their Git
+metadata **and** their registered worktree location under
+`~/.local/share/git-review/` or the permanent checkout's sibling
+`<checkout-name>.worktrees/` directory (for migrated reviews). Naming an ordinary
+worktree `review-...` alone does not make it eligible for removal. A failed deletion is reported;
+the command continues with other reviews and exits nonzero.
+
+Git review creates detached worktrees and no branches. Branches manually
+checked out in a review are retained: being absent when a review opened does
+not prove that a branch was created there, and deleting it could discard work
+from another checkout. Remote branches are never removed.
+
+VS Code exposes the global **Git: Unreview All** task via
+`Tasks: Run Task`, alongside **Git: Unreview**. It runs the cleanup against
+the active workspace's Git repository; no additional shortcut is assigned.
+The existing installer merges the task into the user-level
+`tasks.json` without replacing unrelated tasks.
 
 ## Automatic Python setup in VS Code
 
