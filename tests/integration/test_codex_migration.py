@@ -576,3 +576,31 @@ def test_hooks_template_preserves_expected_events():
         assert "agents-md-freshness/check.py" in hook["command"]
         assert hook["async"] is True
         assert "block" not in hook["command"]
+
+
+def test_checkout_review_output_has_path_only_copy_block():
+    """One click copies a path, never a variable assignment or branch metadata."""
+    import re
+
+    source = (
+        CANONICAL
+        / "global-guidance/agents-md-components/information-presentation/chat-response-presentation.md"
+    ).read_text(encoding="utf-8")
+    rendered = (SOURCE / "AGENTS.md.tmpl").read_text(encoding="utf-8")
+    section_title = "### 📁 Checkout review output format"
+    assert source.count(section_title) == 1
+    assert rendered.count(section_title) == 1
+    assert "exactly one line: the raw absolute checkout directory path" in source
+
+    example = source.split(section_title, 1)[1]
+    match = re.search(
+        r"\*\*Checkout path \(copy for VS Code\):\*\*\n\n"
+        r"```bash\n(?P<path>[^\n]+)\n```\n\n"
+        r"\*\*Branch:\*\* `(?P<branch>[^`]+)`",
+        example,
+    )
+    assert match is not None
+    assert match.group("path").startswith("/")
+    assert "=" not in match.group("path")
+    assert match.group("branch") == "feat/example"
+    assert "cd " not in match.group("path")
