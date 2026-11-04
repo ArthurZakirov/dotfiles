@@ -1646,3 +1646,33 @@ def test_failed_feature_backup_is_not_repeated(scenario, monkeypatch):
     assert first["branches"][0]["state"] == "failed"
     assert len(recoveries) == 2  # One development worktree and one recovery.
     assert (feature / "pending.txt").read_text() == "unfinished\n"
+
+
+@pytest.mark.parametrize("cache", ["node_modules", ".next", "out"])
+def test_disposable_cache_updates_do_not_repeat_failed_recovery(scenario, monkeypatch, cache):
+    import runpy
+
+    module = runpy.run_path(str(CLI))
+    refresh_one = module["refresh_one"]
+    with (scenario.repo / ".gitignore").open("a") as stream:
+        stream.write(f"{cache}/\n")
+    (scenario.repo / cache).mkdir()
+    (scenario.repo / cache / "build.txt").write_text("initial build\n")
+    (scenario.repo / "tracked.txt").write_text("unfinished\n")
+
+    def fail(*args, **kwargs):
+        raise module["RefreshError"]("Injected reset failure")
+
+    monkeypatch.setitem(refresh_one.__globals__, "restore_default", fail)
+
+    assert refresh_one(scenario.repo, "origin")["state"] == "failed"
+    recoveries = list(scenario.worktrees.iterdir())
+    for iteration in range(3):
+        (scenario.repo / cache / "build.txt").write_text(f"build {iteration}\n")
+        repeated = refresh_one(scenario.repo, "origin")
+        assert "already attempted" in repeated["error"]
+        assert list(scenario.worktrees.iterdir()) == recoveries
+
+    assert len(recoveries) == 1
+    assert not (recoveries[0] / cache).exists()
+    assert (scenario.repo / "tracked.txt").read_text() == "unfinished\n"

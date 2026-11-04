@@ -121,12 +121,7 @@ def copy_entry(source, destination):
         shutil.copy2(source, destination, follow_symlinks=False)
 
 
-def preserve(repo, destination, branch, head, original_head, default, target):
-    if not os.path.samefile(value(repo, "rev-parse", "--show-toplevel"), repo):
-        raise RefreshError("Working tree redirects outside its selected path; left untouched")
-    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    # Recovery may include ignored local credentials. Keep the entire hierarchy private.
-    os.chmod(destination.parent, 0o700)
+def disposable_caches(repo):
     # Preserve all untracked data except well-known rebuildable dependencies
     # and build output, and only when Git confirms the directory is ignored.
     excluded_caches = set()
@@ -136,6 +131,16 @@ def preserve(repo, destination, branch, head, original_head, default, target):
                 and git(repo, "check-ignore", "-q", "--", name, check=False).returncode == 0
                 and not git(repo, "ls-files", "--", name).stdout):
             excluded_caches.add(name)
+    return excluded_caches
+
+
+def preserve(repo, destination, branch, head, original_head, default, target):
+    if not os.path.samefile(value(repo, "rev-parse", "--show-toplevel"), repo):
+        raise RefreshError("Working tree redirects outside its selected path; left untouched")
+    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # Recovery may include ignored local credentials. Keep the entire hierarchy private.
+    os.chmod(destination.parent, 0o700)
+    excluded_caches = disposable_caches(repo)
     # Reject unsupported nested linked worktrees before allocating a recovery.
     for current, directories, files in os.walk(repo, followlinks=False):
         directories[:] = [name for name in directories
@@ -282,7 +287,7 @@ def checkout_fingerprint(repo, default, target):
     state = {"branch": os.fsdecode(branch.stdout).strip() if branch.returncode == 0 else None,
              "head": os.fsdecode(head.stdout).strip() if head.returncode == 0 else None,
              "default": default,
-             "target": target, "files": inventory(repo),
+             "target": target, "files": inventory(repo, disposable_caches(repo)),
              "index": hashlib.sha256(index.read_bytes()).hexdigest() if index.exists() else None,
              "operations": {name: inventory(git_path(repo, name))
                             if git_path(repo, name).is_dir() else
