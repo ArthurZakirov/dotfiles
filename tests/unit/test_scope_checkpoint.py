@@ -205,6 +205,8 @@ def test_recorder_with_shell_quoted_assessment_and_workdir_is_not_blocked(
 @pytest.mark.parametrize(
     "suffix",
     ["; touch /tmp/unsafe", "&& touch /tmp/unsafe", "| cat", "> /tmp/unsafe",
+     "&> /tmp/unsafe", ">| /tmp/unsafe", "<> /tmp/unsafe",
+     "2>| /tmp/unsafe", "2>&1", "|| touch /tmp/unsafe",
      "\n touch /tmp/unsafe", "--reason \"$(touch /tmp/unsafe)\"",
      '--reason "`touch /tmp/unsafe`"'],
 )

@@ -121,10 +121,14 @@ def allowed_record_command(command: str) -> bool:
         return False
     if parts[2] not in ("record", "status", "disable"):
         return False
-    # Reject unquoted shell operators, including after the recorder command.
+    # shlex emits unquoted shell punctuation as punctuation-only tokens,
+    # including compound redirections (&>, >|, <>, etc.). Quoted assessment
+    # prose may contain punctuation alongside ordinary text without becoming
+    # a shell operator.
+    shell_punctuation = ";&|<>()"
     return not any(
-        part in (";", ";;", "&", "&&", "|", "||", "|&", ">", ">>",
-                 "<", "<<", "(", ")") for part in parts[3:]
+        part and all(char in shell_punctuation for char in part)
+        for part in parts[3:]
     )
 
 
