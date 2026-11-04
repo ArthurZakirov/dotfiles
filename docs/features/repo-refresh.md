@@ -118,6 +118,51 @@ working directories still fail the safety check. A newly created feature
 branch without its own commits is not treated as merged, even if the default
 branch advances before its first commit.
 
+### Archived recoveries
+
+With the Chezmoi-managed `"archiveRecoveries": true` configuration, each
+scheduled run archives completed, detached recovery worktrees **after**
+repository refresh and branch maintenance. The archive is outside the
+repository root:
+
+```text
+~/Archives/repo-refresh/<repo>/<timestamp>-<id>/
+├── gitdir/                 # Independent copy of the complete Git database and indices
+├── recoveries/
+│   └── recovery-<branch>-<timestamp>-<id>/  # All files, including ignored data
+└── manifest.json           # Source paths, commit IDs, integrity checks and progress
+```
+
+The script first copies the Git database and *every* eligible recovery,
+checks file contents, symlinks, modes, ownership, and extended attributes
+(excluding `com.apple.provenance`, which macOS reassigns on copy), then verifies
+`HEAD`, staged index entries, and Git status against the original.
+Only when the **entire** batch passes validation does it unregister the
+original worktrees. It uses `cp -pR` on macOS to preserve symlinks, ACLs,
+extended attributes and resource forks. Unfinished, locked, actively rebasing,
+unverified and ordinary development worktrees are not eligible for removal.
+If an archive or verification fails, existing worktrees are retained.
+
+To archive old recoveries without running a Git refresh:
+
+```bash
+repo-refresh --archive-recoveries --repository "$HOME/Repos/dotfiles"
+```
+
+Omit `--repository` to archive completed recoveries from every permanent
+checkout in the configured repository root. Existing feature worktrees remain
+registered and untouched.
+
+Archived recoveries are still independently inspectable. Open a folder under
+`~/Archives/repo-refresh/<repo>/<batch>/recoveries/<recovery-name>` in
+VS Code, or use `git -C <archived-recovery-path> status`,
+`git -C <archived-recovery-path> log` and
+`git -C <archived-recovery-path> show :file` to inspect staged files.
+The archive contains its own Git database so the live repository does not
+need to retain the detached recovery worktree or its metadata. Keep these
+archives as long as their history or local changes may be needed; no automatic
+retention/deletion policy is applied.
+
 ### Branch outcomes
 
 Use `repo-refresh --status` to find each branch's state and relevant paths:

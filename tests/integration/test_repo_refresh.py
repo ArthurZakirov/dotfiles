@@ -526,6 +526,127 @@ def test_new_feature_worktree_at_main_tip_is_not_deleted_before_first_commit(sce
     assert scenario.outcome()["branches"][0]["state"] == "current"
 
 
+def test_manual_archive_preserves_index_ignored_files_and_git_history(scenario):
+    # Arrange: an interrupted feature checkout has staged, unstaged and ignored
+    # data, so the regular refresh creates a complete recovery worktree.
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "tracked.txt").write_text("staged\n")
+    git(scenario.repo, "add", "tracked.txt")
+    (scenario.repo / "tracked.txt").write_text("unstaged\n")
+    (scenario.repo / "ignored").mkdir()
+    (scenario.repo / "ignored/private.txt").write_text("private\n")
+    if sys.platform == "darwin":
+        subprocess.run(["xattr", "-w", "com.example.repo-refresh-test", "preserved",
+                        str(scenario.repo / "ignored/private.txt")], check=True)
+    scenario.advance()
+    first = subprocess.run(scenario.command, capture_output=True, text=True)
+    assert first.returncode == 0, first.stdout + first.stderr
+    recoveries = [Path(line[9:]) for line in
+                  git(scenario.repo, "worktree", "list", "--porcelain").splitlines()
+                  if line.startswith("worktree ") and
+                  Path(line[9:]).name.startswith("recovery-")]
+    assert recoveries
+    baseline = {
+        str(path): (git(path, "rev-parse", "HEAD"),
+                    git(path, "status", "--porcelain=v1", "--untracked-files=all"))
+        for path in recoveries
+    }
+    main_head = git(scenario.repo, "rev-parse", "HEAD")
+    marker_path = Path(git(scenario.repo, "rev-parse", "--path-format=absolute",
+                           "--git-path", "repo-refresh-rebase.json"))
+    marker_path.write_text(json.dumps({"state": "conflicts", "recovery": str(recoveries[0])}))
+
+    # Act: run the public archive command without refreshing the repository.
+    result = subprocess.run([*scenario.command, "--archive-recoveries",
+                             "--repository", str(scenario.repo)],
+                            capture_output=True, text=True)
+
+    # Assert: every historical snapshot is independently usable in Archives.
+    assert result.returncode == 0, result.stdout + result.stderr
+    outcome = json.loads(result.stdout.strip())
+    assert outcome["count"] == len(recoveries)
+    directory = Path(outcome["directory"])
+    assert directory.parent == Path(os.environ["HOME"]) / "Archives/repo-refresh/project"
+    manifest = json.loads((directory / "manifest.json").read_text())
+    assert manifest["status"] == "archived"
+    assert len(manifest["snapshots"]) == len(recoveries)
+    for original in recoveries:
+        archived = directory / "recoveries" / original.name
+        assert not original.exists()
+        assert git(archived, "rev-parse", "HEAD") == baseline[str(original)][0]
+        assert git(archived, "status", "--porcelain=v1", "--untracked-files=all") == baseline[str(original)][1]
+        assert Path(git(archived, "rev-parse", "--git-common-dir")).resolve() == (
+            directory / "gitdir").resolve()
+        if "feature" in original.name:
+            assert (archived / "tracked.txt").read_text() == "unstaged\n"
+            assert git(archived, "show", ":tracked.txt") == "staged"
+            assert (archived / "ignored/private.txt").read_text() == "private\n"
+            if sys.platform == "darwin":
+                actual_xattr = subprocess.run(
+                    ["xattr", "-p", "com.example.repo-refresh-test",
+                     str(archived / "ignored/private.txt")],
+                    capture_output=True, text=True, check=True).stdout.strip()
+                assert actual_xattr == "preserved"
+    assert git(scenario.repo, "rev-parse", "HEAD") == main_head
+    assert git(scenario.repo, "worktree", "list", "--porcelain").count("\nworktree ") == 1
+    updated_marker = json.loads(marker_path.read_text())
+    assert updated_marker["recovery_archived_from"] == str(recoveries[0])
+    assert updated_marker["recovery"] == str(directory / "recoveries" / recoveries[0].name)
+    saved = scenario.outcome()
+    for record in [saved, *saved.get("branches", [])]:
+        if "recovery_archived_from" in record:
+            assert not Path(record["recovery_archived_from"]).exists()
+            assert Path(record["recovery"]).is_dir()
+
+    # Repeating archiving does not duplicate or re-register old snapshots.
+    repeat = subprocess.run([*scenario.command, "--archive-recoveries",
+                             "--repository", str(scenario.repo)],
+                            capture_output=True, text=True)
+    assert repeat.returncode == 0
+    assert repeat.stdout.strip() == ""
+
+
+def test_scheduled_refresh_archives_complete_recoveries_automatically(scenario):
+    # Arrange: enable archival as the Chezmoi-managed production profile does.
+    scenario.config.write_text(json.dumps({"root": str(scenario.repo.parent),
+                                           "archiveRecoveries": True}))
+    git(scenario.repo, "switch", "-c", "feature")
+    (scenario.repo / "tracked.txt").write_text("unfinished work\n")
+    scenario.advance()
+
+    # Act: run the regular scheduled entry point.
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    # Assert: active development worktree remains registered; recovery copies
+    # exist only as verified, Git-readable archives outside the repository.
+    assert result.returncode == 0, result.stdout + result.stderr
+    outcome = scenario.outcome()
+    assert outcome["archive_directory"]
+    assert outcome["archived_recoveries"] >= 1
+    assert Path(outcome["recovery"]).is_dir()
+    worktrees = git(scenario.repo, "worktree", "list", "--porcelain")
+    assert "/recovery-" not in worktrees
+    assert git(scenario.repo, "branch", "--show-current") == "main"
+    assert git(Path(outcome["recovery"]), "rev-parse", "--git-common-dir") == str(
+        Path(outcome["archive_directory"]) / "gitdir")
+
+
+def test_archive_ignores_unmanaged_recovery_named_worktrees(scenario):
+    # Arrange: a worktree that only *looks* like a recovery must not be removed.
+    scenario.worktrees.mkdir()
+    named = scenario.worktrees / "recovery-not-managed"
+    git(scenario.repo, "worktree", "add", "--detach", named, "main")
+
+    # Act: request archival.
+    result = subprocess.run([*scenario.command, "--archive-recoveries"],
+                            capture_output=True, text=True)
+
+    # Assert: the unmarked worktree is untouched.
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert named.is_dir()
+    assert str(named) in git(scenario.repo, "worktree", "list", "--porcelain")
+
+
 def test_repeated_run_does_not_create_more_recovery_worktrees(scenario):
     git(scenario.repo, "switch", "-c", "feature")
     first = subprocess.run(scenario.command, capture_output=True, text=True)
@@ -1114,6 +1235,7 @@ def test_chezmoi_installs_executable_schedule_and_reconciles_configuration(
     subprocess.run(disabled_command, check=True, capture_output=True)
     assert json.loads(config.read_text()) == {
         "enabled": False, "root": str(scenario.repo.parent), "remote": "origin",
+        "archiveRecoveries": True,
     }
     enabled_command = [
         "chezmoi", "--source", str(ROOT), "--config", str(rendered.config),
