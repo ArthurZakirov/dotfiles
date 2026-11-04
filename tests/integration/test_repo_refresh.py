@@ -1538,3 +1538,141 @@ def test_real_launchd_executes_installed_updater(scenario, profile_factory):
         assert git(Path(branch["worktree"]), "ls-files", "--unmerged")
     finally:
         subprocess.run(["launchctl", "bootout", f"{domain}/{payload['Label']}"], capture_output=True)
+
+
+@pytest.mark.parametrize("failure", ["copy", "reset"])
+def test_failed_checkout_polling_does_not_allocate_duplicate_recoveries(scenario, monkeypatch, failure):
+    import runpy
+
+    module = runpy.run_path(str(CLI))
+    refresh_one = module["refresh_one"]
+    namespace = refresh_one.__globals__
+    (scenario.repo / "tracked.txt").write_text("unfinished\n")
+    (scenario.repo / "ignored").mkdir()
+    (scenario.repo / "ignored/valuable.txt").write_text("local data\n")
+    original = namespace["copy_entry" if failure == "copy" else "restore_default"]
+
+    def fail(*args, **kwargs):
+        raise module["RefreshError"]("Injected preservation failure")
+
+    monkeypatch.setitem(namespace, "copy_entry" if failure == "copy" else "restore_default", fail)
+
+    first = refresh_one(scenario.repo, "origin")
+    recoveries = list(scenario.worktrees.iterdir())
+    for _ in range(3):
+        repeated = refresh_one(scenario.repo, "origin")
+        assert "already attempted" in repeated["error"]
+        assert list(scenario.worktrees.iterdir()) == recoveries
+
+    assert first["state"] == "failed"
+    assert len(recoveries) == 1
+    assert (scenario.repo / "tracked.txt").read_text() == "unfinished\n"
+    assert (scenario.repo / "ignored/valuable.txt").read_text() == "local data\n"
+
+    # A crash leaves the write-ahead record in running state: also no retry.
+    marker = scenario.repo / ".git/repo-refresh-checkout.json"
+    record = json.loads(marker.read_text())
+    record["state"] = "running"
+    marker.write_text(json.dumps(record))
+    assert "already attempted" in refresh_one(scenario.repo, "origin")["error"]
+    assert list(scenario.worktrees.iterdir()) == recoveries
+
+    # Valuable ignored changes are relevant even though Git status omits them.
+    record["state"] = "failed"
+    marker.write_text(json.dumps(record))
+    (scenario.repo / "ignored/valuable.txt").write_text("changed local data\n")
+    assert "Injected" in refresh_one(scenario.repo, "origin")["error"]
+    assert len(list(scenario.worktrees.iterdir())) == 2
+
+    # Acknowledgement after correcting the cause allows normal recovery again.
+    monkeypatch.setitem(namespace, "copy_entry" if failure == "copy" else "restore_default", original)
+    (scenario.repo / ".git/repo-refresh-checkout.json").unlink()
+    assert refresh_one(scenario.repo, "origin")["state"] == "updated"
+
+
+def test_nested_linked_worktree_is_rejected_before_copying(scenario):
+    git(scenario.repo, "worktree", "add", "--detach", scenario.repo / "nested", "HEAD")
+    (scenario.repo / "tracked.txt").write_text("unfinished\n")
+
+    for _ in range(3):
+        result = subprocess.run(scenario.command, capture_output=True, text=True)
+        assert result.returncode == 1
+        assert "Nested linked worktree" in scenario.outcome()["error"] or "already attempted" in scenario.outcome()["error"]
+
+    assert not scenario.worktrees.exists() or not list(scenario.worktrees.iterdir())
+    assert (scenario.repo / "tracked.txt").read_text() == "unfinished\n"
+
+
+def test_real_reset_failure_is_not_retried_after_head_was_detached(scenario):
+    (scenario.repo / "tracked.txt").write_text("unfinished\n")
+    (scenario.repo / ".git/index.lock").touch()
+
+    first = subprocess.run(scenario.command, capture_output=True, text=True)
+    recoveries = list(scenario.worktrees.iterdir())
+    for _ in range(3):
+        result = subprocess.run(scenario.command, capture_output=True, text=True)
+        assert result.returncode == 1
+        assert "already attempted" in scenario.outcome()["error"]
+        assert list(scenario.worktrees.iterdir()) == recoveries
+
+    assert first.returncode == 1
+    assert len(recoveries) == 1
+    assert (scenario.repo / "tracked.txt").read_text() == "unfinished\n"
+    assert (recoveries[0] / "tracked.txt").read_text() == "unfinished\n"
+
+
+def test_failed_feature_backup_is_not_repeated(scenario, monkeypatch):
+    import runpy
+
+    module = runpy.run_path(str(CLI))
+    refresh_one = module["refresh_one"]
+    feature = scenario.worktrees / "feature"
+    git(scenario.repo, "worktree", "add", "-b", "feature", feature)
+    (feature / "pending.txt").write_text("unfinished\n")
+    scenario.advance()
+
+    def fail(*args, **kwargs):
+        raise module["RefreshError"]("Injected copy failure")
+
+    monkeypatch.setitem(refresh_one.__globals__, "copy_entry", fail)
+
+    first = refresh_one(scenario.repo, "origin")
+    recoveries = sorted(scenario.worktrees.iterdir())
+    for _ in range(3):
+        repeated = refresh_one(scenario.repo, "origin")
+        assert repeated["branches"][0]["state"] == "failed"
+        assert sorted(scenario.worktrees.iterdir()) == recoveries
+
+    assert first["branches"][0]["state"] == "failed"
+    assert len(recoveries) == 2  # One development worktree and one recovery.
+    assert (feature / "pending.txt").read_text() == "unfinished\n"
+
+
+@pytest.mark.parametrize("cache", ["node_modules", ".next", "out"])
+def test_disposable_cache_updates_do_not_repeat_failed_recovery(scenario, monkeypatch, cache):
+    import runpy
+
+    module = runpy.run_path(str(CLI))
+    refresh_one = module["refresh_one"]
+    with (scenario.repo / ".gitignore").open("a") as stream:
+        stream.write(f"{cache}/\n")
+    (scenario.repo / cache).mkdir()
+    (scenario.repo / cache / "build.txt").write_text("initial build\n")
+    (scenario.repo / "tracked.txt").write_text("unfinished\n")
+
+    def fail(*args, **kwargs):
+        raise module["RefreshError"]("Injected reset failure")
+
+    monkeypatch.setitem(refresh_one.__globals__, "restore_default", fail)
+
+    assert refresh_one(scenario.repo, "origin")["state"] == "failed"
+    recoveries = list(scenario.worktrees.iterdir())
+    for iteration in range(3):
+        (scenario.repo / cache / "build.txt").write_text(f"build {iteration}\n")
+        repeated = refresh_one(scenario.repo, "origin")
+        assert "already attempted" in repeated["error"]
+        assert list(scenario.worktrees.iterdir()) == recoveries
+
+    assert len(recoveries) == 1
+    assert not (recoveries[0] / cache).exists()
+    assert (scenario.repo / "tracked.txt").read_text() == "unfinished\n"

@@ -200,6 +200,32 @@ The reported paths distinguish the places you may need:
 | Recovery worktree | Files and index from before replacement or rebase. |
 | Protected `refs/repo-refresh/` refs | Previous commits and separately retained edit stashes. |
 
+### Retry a failed permanent checkout
+
+Before allocating a recovery, the updater writes `repo-refresh-checkout.json`
+inside the checkout's Git directory. A failed or interrupted attempt is not
+repeated while the checkout state, index, active operation, and upstream target
+remain unchanged. This includes incomplete backup copies. Nested linked worktrees
+are rejected before files are copied, and the existing free-space check still
+applies.
+
+Inspect the failure and any recovery first. After correcting its cause, explicitly
+acknowledge the attempt by removing only the retry record:
+
+```sh
+cd ~/Repos/example
+rm -- "$(git rev-parse --git-path repo-refresh-checkout.json)"
+```
+
+A changed checkout or upstream target permits another attempt after a recorded
+failure. An interrupted attempt always requires acknowledgement because its
+last completed operation is unknown.
+Existing recoveries remain intact; archival moves them out of Git's worktree list
+but does not reduce total disk usage. This guard prevents duplicate retries of
+unchanged permanent-checkout state; it is not a retention policy or an incremental
+backup system. Feature-branch backup failures also use the existing failed-rebase
+record, so a copy failure cannot bypass its manual retry requirement.
+
 ### Resolve a branch conflict
 
 Work in the branch worktree from status:
