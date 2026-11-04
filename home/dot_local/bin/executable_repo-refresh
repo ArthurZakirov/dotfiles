@@ -136,6 +136,14 @@ def preserve(repo, destination, branch, head, original_head, default, target):
                 and git(repo, "check-ignore", "-q", "--", name, check=False).returncode == 0
                 and not git(repo, "ls-files", "--", name).stdout):
             excluded_caches.add(name)
+    # Reject unsupported nested linked worktrees before allocating a recovery.
+    for current, directories, files in os.walk(repo, followlinks=False):
+        directories[:] = [name for name in directories
+                          if name != ".git" and (Path(current) != repo or name not in excluded_caches)]
+        if Path(current) != repo and ".git" in files:
+            metadata = Path(value(Path(current), "rev-parse", "--absolute-git-dir"))
+            if (metadata / "commondir").exists():
+                raise RefreshError("Nested linked worktree needs manual recovery; original left untouched")
     before = inventory(repo, excluded_caches)
     estimated_bytes = sum(size for _, size, _, _ in before.values())
     free_bytes = shutil.disk_usage(destination.parent).free
@@ -267,6 +275,22 @@ def clean_fast_forward(repo, branch, default, head, target, dirty, operation, re
     return True
 
 
+def checkout_fingerprint(repo, default, target):
+    index = git_path(repo, "index")
+    branch = git(repo, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
+    head = git(repo, "rev-parse", "--verify", "HEAD", check=False)
+    state = {"branch": os.fsdecode(branch.stdout).strip() if branch.returncode == 0 else None,
+             "head": os.fsdecode(head.stdout).strip() if head.returncode == 0 else None,
+             "default": default,
+             "target": target, "files": inventory(repo),
+             "index": hashlib.sha256(index.read_bytes()).hexdigest() if index.exists() else None,
+             "operations": {name: inventory(git_path(repo, name))
+                            if git_path(repo, name).is_dir() else
+                            hashlib.sha256(git_path(repo, name).read_bytes()).hexdigest()
+                            for name in ACTIVE_OPERATION_STATE if git_path(repo, name).exists()}}
+    return hashlib.sha256(json.dumps(state, sort_keys=True).encode()).hexdigest()
+
+
 def refresh(repo, remote):
     # Fetch and resolve the remote's actual default before disturbing local files.
     git(repo, "fetch", "--prune", "--no-recurse-submodules", remote)
@@ -303,14 +327,39 @@ def refresh(repo, remote):
         return {"state": "updated", "branch": default, "commit": target,
                 "method": "fast-forward"}
 
-    label = branch or f"detached-{head[:12]}"
-    destination = worktree_path(repo, label, recovery=branch in (None, default))
-    preserve(repo, destination, branch, head, original_head, default, target)
+    marker = git_path(repo, "repo-refresh-checkout.json")
+    # Write ahead of *any* backup allocation. Even interruption or a partial copy
+    # must not cause the next scheduler tick to allocate another full recovery.
+    fingerprint = checkout_fingerprint(repo, default, target)
+    if marker.exists():
+        try:
+            previous = json.loads(marker.read_text())
+        except (ValueError, UnicodeError):
+            raise RefreshError("Invalid checkout retry record; inspect repo-refresh-checkout.json") from None
+        if not isinstance(previous, dict):
+            raise RefreshError("Invalid checkout retry record; inspect repo-refresh-checkout.json")
+        if previous.get("state") == "running" or previous.get("fingerprint") == fingerprint:
+            raise RefreshError(
+                "Checkout recovery already attempted for unchanged or interrupted state; "
+                "inspect recovery and remove repo-refresh-checkout.json from the Git directory to retry")
+    record = {"fingerprint": fingerprint, "state": "running"}
+    write_json(marker, record)
     try:
+        label = branch or f"detached-{head[:12]}"
+        destination = worktree_path(repo, label, recovery=branch in (None, default))
+        record["recovery"] = str(destination)
+        write_json(marker, record)
+        preserve(repo, destination, branch, head, original_head, default, target)
         released = restore_default(repo, destination, branch, head, default, target, remote)
-    except (RefreshError, OSError) as error:
+    except (RefreshError, OSError, shutil.Error) as error:
+        record["state"] = "failed"
+        # Restoration can detach HEAD before failing. Do not mistake our own
+        # partial operation for new user work on the next scheduler tick.
+        record["fingerprint"] = checkout_fingerprint(repo, default, target)
+        write_json(marker, record)
         message = str(error) if isinstance(error, RefreshError) else type(error).__name__
-        raise RefreshError(f"{message}; recovery: {destination}") from None
+        raise RefreshError(f"{message}; recovery: {record.get('recovery', 'not allocated')}") from None
+    marker.unlink()
     return {"state": "updated", "branch": default, "commit": target,
             "recovery": str(destination), "removed_main_worktrees": released}
 
@@ -430,12 +479,17 @@ def rebase_branch(repo, branch, candidates, default, target):
         git(repo, "worktree", "add", source, branch)
     head = value(source, "rev-parse", "HEAD")
     recovery = worktree_path(repo, branch, recovery=True)
+    marker = git_path(source, "repo-refresh-rebase.json")
+    record = {"branch": branch, "base": target, "original_head": head,
+              "recovery": str(recovery), "worktree": str(source), "state": "failed",
+              "error": "Preservation did not complete; inspect recovery before acknowledging"}
+    # The existing failed-rebase guard must also cover failed backup copies.
+    write_json(marker, record)
     preserve(source, recovery, branch, head, head, default, target)
     if value(source, "symbolic-ref", "--short", "HEAD") != branch:
         raise RefreshError(f"Branch changed during preservation; recovery: {recovery}")
-    marker = git_path(source, "repo-refresh-rebase.json")
-    record = {"branch": branch, "base": target, "original_head": head,
-              "recovery": str(recovery), "worktree": str(source), "state": "running"}
+    record.update(state="running")
+    record.pop("error")
     write_json(marker, record)
     previous_stash = git(source, "rev-parse", "--verify", "refs/stash", check=False).stdout.strip()
     # Native autostash restores tracked edits; an independent recovery worktree
