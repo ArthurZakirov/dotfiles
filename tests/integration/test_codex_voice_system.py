@@ -59,13 +59,8 @@ def isolated_voice(tmp_path: Path) -> tuple[Path, dict[str, str], str, str]:
 
     metadata = (SOURCE / ".chezmoidata.toml").read_text()
     assert "[codexVoice]" in metadata
-    # This is an opt-in test install; production rollout remains disabled
-    # until interactive microphone/audio checks have passed.
-    metadata = metadata.replace(
-        '    enabled = false\n    tag = "voice-',
-        '    enabled = true\n    tag = "voice-',
-        1,
-    )
+    # The committed defaults must provision the release on a new machine.
+    assert '    enabled = true\n    tag = "voice-v0.166.0-r4"' in metadata
     (source / ".chezmoidata.toml").write_text(metadata)
 
     config = tmp_path / "chezmoi.toml"
@@ -79,16 +74,12 @@ def isolated_voice(tmp_path: Path) -> tuple[Path, dict[str, str], str, str]:
         "chezmoi", "--source", str(source), "--config", str(config),
         "--destination", str(home),
     ]
-    command(*base, "apply", "--exclude", "scripts", "--force", env=env)
     hook = command(
         *base, "execute-template", "--file", str(source / HOOK), env=env
     )
     command("bash", "-n", "-c", hook, env=env)
     assert "--release-tag" in hook
     assert "voice-v0.166.0-r4" in hook
-    for relative in (LAUNCHER, INSTALLER):
-        assert (home / relative).is_file()
-        assert os.access(home / relative, os.X_OK)
     return home, env, hook, "voice-v0.166.0-r4"
 
 
@@ -96,6 +87,15 @@ def test_chezmoi_launcher_forwards_flags_and_sets_verbatim_speech(
     isolated_voice: tuple[Path, dict[str, str], str, str],
 ) -> None:
     home, env, _, _ = isolated_voice
+    base = [
+        "chezmoi", "--source", str(home.parent / "source"),
+        "--config", str(home.parent / "chezmoi.toml"),
+        "--destination", str(home),
+    ]
+    command(*base, "apply", "--exclude", "scripts", "--force", env=env)
+    for relative in (LAUNCHER, INSTALLER):
+        assert (home / relative).is_file()
+        assert os.access(home / relative, os.X_OK)
     binary = home / PACKAGE / "bin/codex"
     binary.parent.mkdir(parents=True)
     binary.write_text(
@@ -109,6 +109,62 @@ def test_chezmoi_launcher_forwards_flags_and_sets_verbatim_speech(
     assert (home / ".local/share/codex-voice-experiment/keep-me.txt").read_text() == "previous-build"
 
 
+@pytest.mark.parametrize("profile", ["personal", "professional"])
+def test_one_apply_installs_missing_voice_and_reuses_existing_voice(
+    isolated_voice: tuple[Path, dict[str, str], str, str],
+    profile: str,
+) -> None:
+    home, env, _, tag = isolated_voice
+    (home.parent / "chezmoi.toml").write_text(
+        f'[data]\nprofile = "{profile}"\n'
+    )
+    # Stub only the network/package boundary. Real chezmoi applies the source,
+    # installs the launcher and executes the actual run_after template.
+    installer = home.parent / "source/dot_local/bin/executable_codex-voice-install"
+    installer.write_text(
+        """#!/usr/bin/env python3
+import os
+from pathlib import Path
+import sys
+
+assert sys.argv[1:] == ["--release-tag", "voice-v0.166.0-r4"]
+home = Path(os.environ["HOME"])
+destination = home / ".local/share/codex-voice"
+executable = destination / "bin/codex"
+log = home / ".local/share/codex-voice-install-calls"
+log.parent.mkdir(parents=True, exist_ok=True)
+with log.open("a") as output:
+    output.write("reused\\n" if executable.is_file() else "installed\\n")
+if not executable.is_file():
+    executable.parent.mkdir(parents=True, exist_ok=True)
+    executable.write_text('#!/bin/sh\\necho codex-cli 0.166.0\\n')
+    executable.chmod(0o755)
+"""
+    )
+    base = [
+        "chezmoi", "--source", str(home.parent / "source"),
+        "--config", str(home.parent / "chezmoi.toml"),
+        "--destination", str(home),
+    ]
+    # First invocation starts from an empty managed HOME, not a pre-applied one.
+    command(*base, "apply", "--force", env=env)
+    binary = home / PACKAGE / "bin/codex"
+    assert binary.is_file()
+    assert "codex-cli 0.166.0" in command(
+        str(home / LAUNCHER), "--version", env=env
+    )
+    assert (home / ".local/share/codex-voice-install-calls").read_text() == "installed\n"
+
+    # Subsequent applies execute the same hook but do not reinstall the binary.
+    command(*base, "apply", "--force", env=env)
+    assert (home / ".local/share/codex-voice-install-calls").read_text() == (
+        "installed\nreused\n"
+    )
+    assert (home / ".local/share/codex-voice-experiment/keep-me.txt").read_text() == (
+        "previous-build"
+    )
+
+
 @pytest.mark.skipif(
     platform.system() != "Darwin"
     or os.environ.get("RUN_CODEX_VOICE_SYSTEM_E2E") != "1",
@@ -119,9 +175,17 @@ def test_chezmoi_installs_pinned_release_and_launches_real_cli(
 ) -> None:
     home, env, hook, tag = isolated_voice
 
-    # This invokes the real after-hook, Python installer and verified release.
-    output = command("bash", "-c", hook, env=env, timeout=240)
+    # One real chezmoi apply must install files AND execute the after-hook.
+    base = [
+        "chezmoi", "--source", str(home.parent / "source"),
+        "--config", str(home.parent / "chezmoi.toml"),
+        "--destination", str(home),
+    ]
+    output = command(*base, "apply", "--force", "--verbose", env=env, timeout=240)
     assert f"Installed Codex Voice {tag}" in output
+    for relative in (LAUNCHER, INSTALLER):
+        assert (home / relative).is_file()
+        assert os.access(home / relative, os.X_OK)
 
     receipt = json.loads((home / PACKAGE / "codex-voice-install.json").read_text())
     voice = home / PACKAGE / "codex-resources/voice"
@@ -143,6 +207,9 @@ def test_chezmoi_installs_pinned_release_and_launches_real_cli(
     # Keep the separately maintained experimental fork untouched.
     assert (home / ".local/share/codex-voice-experiment/keep-me.txt").read_text() == "previous-build"
 
-    # Re-running chezmoi's hook must verify and reuse the installed release.
-    second = command("bash", "-c", hook, env=env, timeout=90)
+    # A repeated apply must verify and reuse the package, not download it.
+    initial_receipt = (home / PACKAGE / "codex-voice-install.json").read_bytes()
+    second = command(*base, "apply", "--force", "--verbose", env=env, timeout=90)
     assert f"Codex Voice already installed: {tag}" in second
+    assert (home / PACKAGE / "codex-voice-install.json").read_bytes() == initial_receipt
+    assert not list((home / PACKAGE).parent.glob("codex-voice.backup-*"))
