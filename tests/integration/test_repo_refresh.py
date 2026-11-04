@@ -631,6 +631,72 @@ def test_scheduled_refresh_archives_complete_recoveries_automatically(scenario):
         Path(outcome["archive_directory"]) / "gitdir")
 
 
+@pytest.mark.parametrize("failure", ["copy", "verification", "head", "second-removal"])
+def test_archive_failure_preserves_recoveries_and_references(scenario, monkeypatch, failure):
+    """Real Git archives remain safe across preparation and partial removal failures."""
+    import runpy
+
+    module = runpy.run_path(str(CLI))
+    archive_existing = module["archive_existing"]
+    namespace = archive_existing.__globals__
+    recoveries = []
+    for name in ("recovery-first", "recovery-second"):
+        source = scenario.worktrees / name
+        git(scenario.repo, "worktree", "add", "--detach", source, "HEAD")
+        marker = Path(git(source, "rev-parse", "--git-path", "repo-refresh/recovery.json"))
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(json.dumps({"complete": True, "source": str(scenario.repo)}))
+        recoveries.append(source)
+    marker = Path(git(scenario.repo, "rev-parse", "--path-format=absolute", "--git-path", "repo-refresh-rebase.json"))
+    marker.write_text(json.dumps({"recovery": str(recoveries[0])}))
+    scenario.state.mkdir()
+    status = scenario.state / "status.json"
+    status.write_text(json.dumps({"repositories": [{"repository": str(scenario.repo),
+                                                  "recovery": str(recoveries[0])}]}))
+    archive_root = Path.home() / "Archives/repo-refresh"
+    original_copy = namespace["copy_snapshot"]
+    original_write = namespace["write_json"]
+    original_git = namespace["git"]
+
+    def interrupted_copy(source, destination):
+        original_copy(source, destination)
+        if failure == "copy":
+            raise OSError("Simulated copy failure")
+        (destination / "unexpected.txt").write_text("invalid copy")
+
+    def change_head_after_verification(path, record):
+        original_write(path, record)
+        if path.name == "manifest.json" and record.get("status") == "verified":
+            git(recoveries[0], "commit", "--allow-empty", "-m", "Concurrent commit")
+
+    def fail_second_removal(repo, *args, **kwargs):
+        if args[:2] == ("worktree", "remove") and Path(args[-1]) == recoveries[1]:
+            raise namespace["RefreshError"]("Simulated removal failure")
+        return original_git(repo, *args, **kwargs)
+
+    if failure in {"copy", "verification"}:
+        monkeypatch.setitem(namespace, "copy_snapshot", interrupted_copy)
+    elif failure == "head":
+        monkeypatch.setitem(namespace, "write_json", change_head_after_verification)
+    else:
+        monkeypatch.setitem(namespace, "git", fail_second_removal)
+
+    with pytest.raises((OSError, namespace["RefreshError"])):
+        archive_existing(scenario.config, scenario.state)
+
+    if failure in {"copy", "verification"}:
+        assert not list(archive_root.glob("project/*"))
+    if failure == "second-removal":
+        assert not recoveries[0].exists()
+        archived = Path(json.loads(marker.read_text())["recovery"])
+        assert archived.is_dir()
+        assert json.loads(status.read_text())["repositories"][0]["recovery"] == str(archived)
+        assert git(archived, "rev-parse", "HEAD")
+    else:
+        assert recoveries[0].is_dir()
+    assert recoveries[1].is_dir()
+
+
 def test_archive_ignores_unmanaged_recovery_named_worktrees(scenario):
     # Arrange: a worktree that only *looks* like a recovery must not be removed.
     scenario.worktrees.mkdir()

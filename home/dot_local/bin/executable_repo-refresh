@@ -780,7 +780,7 @@ def update_saved_status(state_dir, repo, snapshots):
         write_json(status_file, status)
 
 
-def archive_recoveries(repo, archive_root):
+def archive_recoveries(repo, archive_root, on_removed):
     """Fully copy, verify, then deregister only explicitly marked recoveries."""
     candidates = recoveries_to_archive(repo)
     if not candidates:
@@ -792,63 +792,70 @@ def archive_recoveries(repo, archive_root):
         time.strftime("%Y-%m-%d--%H-%M-%S") + "-" + uuid.uuid4().hex[:10])
     destination.mkdir(parents=True, mode=0o700)
     os.chmod(destination, 0o700)
-    archived_git = destination / "gitdir"
-    manifest = {"repository": str(repo), "status": "copying",
-                "created_at": time.time(), "snapshots": []}
-    write_json(destination / "manifest.json", manifest)
-    # A copy of the entire common Git database makes detached commits and
-    # worktree indices available independently of the live checkout.
-    copy_snapshot(common, archived_git)
-    if (snapshot_fingerprint(common) != snapshot_fingerprint(archived_git)
-            or mac_xattr_fingerprint(common) != mac_xattr_fingerprint(archived_git)):
-        raise RefreshError(f"Git metadata archival verification failed: {destination}")
-    for source, admin, record in candidates:
-        archived = destination / "recoveries" / source.name
-        archived.parent.mkdir(mode=0o700, exist_ok=True)
-        copy_snapshot(source, archived)
-        original_fingerprint = snapshot_fingerprint(source, skip_gitfile=True)
-        if (original_fingerprint != snapshot_fingerprint(archived, skip_gitfile=True)
-                or mac_xattr_fingerprint(source) != mac_xattr_fingerprint(archived)):
-            # The .git pointer itself is intentionally rewritten below.
-            raise RefreshError(f"Recovery content verification failed: {destination}")
-        archived_admin = archived_git / "worktrees" / admin.name
-        if not archived_admin.is_dir():
-            raise RefreshError(f"Recovery Git index missing from archive: {destination}")
-        archived_head = value(source, "rev-parse", "HEAD")
-        original_status = git(source, "status", "--porcelain=v1", "-z",
-                              "--untracked-files=all").stdout
-        original_index = git(source, "ls-files", "--stage", "-z").stdout
-        original_xattrs = mac_xattr_fingerprint(source)
-        # Change only the *copied* administrative pointers. The snapshot is
-        # then a usable Git worktree of the archived, independent Git database.
-        (archived / ".git").write_text(f"gitdir: {archived_admin}\n")
-        (archived_admin / "gitdir").write_text(str(archived / ".git") + "\n")
-        if (value(archived, "rev-parse", "HEAD") != archived_head
-                or not os.path.samefile(value(archived, "rev-parse",
-                                              "--path-format=absolute", "--git-common-dir"),
-                                        archived_git)
-                or git(archived, "status", "--porcelain=v1", "-z",
-                       "--untracked-files=all").stdout != original_status
-                or git(archived, "ls-files", "--stage", "-z").stdout != original_index
-                or original_fingerprint != snapshot_fingerprint(archived, skip_gitfile=True)):
-            raise RefreshError(f"Recovery Git verification failed: {destination}")
-        manifest["snapshots"].append({
-            "source": str(source), "archived": str(archived),
-            "head": archived_head, "fingerprint": original_fingerprint,
-            "admin": admin.name, "removed": False,
-            "index_sha256": hashlib.sha256(original_index).hexdigest(),
-            "status_sha256": hashlib.sha256(original_status).hexdigest(),
-            "xattrs_sha256": original_xattrs,
-        })
+    try:
+        archived_git = destination / "gitdir"
+        manifest = {"repository": str(repo), "status": "copying",
+                    "created_at": time.time(), "snapshots": []}
         write_json(destination / "manifest.json", manifest)
-    manifest["status"] = "verified"
-    write_json(destination / "manifest.json", manifest)
+        # A copy of the entire common Git database makes detached commits and
+        # worktree indices available independently of the live checkout.
+        copy_snapshot(common, archived_git)
+        if (snapshot_fingerprint(common) != snapshot_fingerprint(archived_git)
+                or mac_xattr_fingerprint(common) != mac_xattr_fingerprint(archived_git)):
+            raise RefreshError(f"Git metadata archival verification failed: {destination}")
+        for source, admin, record in candidates:
+            archived = destination / "recoveries" / source.name
+            archived.parent.mkdir(mode=0o700, exist_ok=True)
+            copy_snapshot(source, archived)
+            original_fingerprint = snapshot_fingerprint(source, skip_gitfile=True)
+            if (original_fingerprint != snapshot_fingerprint(archived, skip_gitfile=True)
+                    or mac_xattr_fingerprint(source) != mac_xattr_fingerprint(archived)):
+                # The .git pointer itself is intentionally rewritten below.
+                raise RefreshError(f"Recovery content verification failed: {destination}")
+            archived_admin = archived_git / "worktrees" / admin.name
+            if not archived_admin.is_dir():
+                raise RefreshError(f"Recovery Git index missing from archive: {destination}")
+            archived_head = value(source, "rev-parse", "HEAD")
+            original_status = git(source, "status", "--porcelain=v1", "-z",
+                                  "--untracked-files=all").stdout
+            original_index = git(source, "ls-files", "--stage", "-z").stdout
+            original_xattrs = mac_xattr_fingerprint(source)
+            # Change only the *copied* administrative pointers. The snapshot is
+            # then a usable Git worktree of the archived, independent Git database.
+            (archived / ".git").write_text(f"gitdir: {archived_admin}\n")
+            (archived_admin / "gitdir").write_text(str(archived / ".git") + "\n")
+            if (value(archived, "rev-parse", "HEAD") != archived_head
+                    or not os.path.samefile(value(archived, "rev-parse",
+                                                  "--path-format=absolute", "--git-common-dir"),
+                                            archived_git)
+                    or git(archived, "status", "--porcelain=v1", "-z",
+                           "--untracked-files=all").stdout != original_status
+                    or git(archived, "ls-files", "--stage", "-z").stdout != original_index
+                    or original_fingerprint != snapshot_fingerprint(archived, skip_gitfile=True)):
+                raise RefreshError(f"Recovery Git verification failed: {destination}")
+            manifest["snapshots"].append({
+                "source": str(source), "archived": str(archived),
+                "head": archived_head, "fingerprint": original_fingerprint,
+                "admin": admin.name, "removed": False,
+                "index_sha256": hashlib.sha256(original_index).hexdigest(),
+                "status_sha256": hashlib.sha256(original_status).hexdigest(),
+                "xattrs_sha256": original_xattrs,
+            })
+            write_json(destination / "manifest.json", manifest)
+        manifest["status"] = "verified"
+        write_json(destination / "manifest.json", manifest)
+    except Exception:
+        # No originals have been removed during preparation. Failed attempts
+        # must not accumulate a new Git database on every scheduled retry.
+        shutil.rmtree(destination)
+        raise
     # Never remove an original until all copies are verified and durable.
     # Recheck each live source immediately before removing it to detect edits
     # made while the long batch copy was in progress.
     for item in manifest["snapshots"]:
         source = Path(item["source"])
-        if (snapshot_fingerprint(source, skip_gitfile=True) != item["fingerprint"]
+        if (value(source, "rev-parse", "HEAD") != item["head"]
+                or snapshot_fingerprint(source, skip_gitfile=True) != item["fingerprint"]
                 or mac_xattr_fingerprint(source) != item["xattrs_sha256"]
                 or hashlib.sha256(git(source, "ls-files", "--stage", "-z").stdout).hexdigest()
                 != item["index_sha256"]
@@ -858,11 +865,13 @@ def archive_recoveries(repo, archive_root):
             raise RefreshError(f"Recovery changed during archival; originals retained: {destination}")
         git(repo, "worktree", "remove", "--force", "--force", source)
         item["removed"] = True
+        snapshots = {item["source"]: item["archived"]}
+        update_recovery_markers(repo, snapshots)
+        on_removed(snapshots)
         write_json(destination / "manifest.json", manifest)
     manifest["status"] = "archived"
     write_json(destination / "manifest.json", manifest)
     snapshots = {item["source"]: item["archived"] for item in manifest["snapshots"]}
-    update_recovery_markers(repo, snapshots)
     return {"directory": str(destination), "count": len(candidates),
             "snapshots": snapshots}
 
@@ -884,13 +893,14 @@ def refresh_one(repo, remote, archive_root=None):
                     outcome["recovery"] = branch["recovery"]
                     break
             if archive_root is not None:
-                archived = archive_recoveries(repo, archive_root)
+                def update_outcome(snapshots):
+                    for entry in [outcome, *outcome["branches"]]:
+                        replace_archived_recovery_reference(entry, snapshots)
+
+                archived = archive_recoveries(repo, archive_root, update_outcome)
                 if archived:
                     outcome["archived_recoveries"] = archived["count"]
                     outcome["archive_directory"] = archived["directory"]
-                    for entry in [outcome, *outcome["branches"]]:
-                        if entry.get("recovery") in archived["snapshots"]:
-                            entry["recovery"] = archived["snapshots"][entry["recovery"]]
     except BlockingIOError:
         outcome.update(state="busy")
     except (RefreshError, OSError, shutil.Error) as error:
@@ -967,7 +977,9 @@ def archive_existing(config_path, state_dir, selected_repository=None):
             common = Path(value(repo, "rev-parse", "--absolute-git-dir"))
             with (common / "repo-refresh.lock").open("a") as repo_lock:
                 fcntl.flock(repo_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                result = archive_recoveries(repo, Path.home() / "Archives/repo-refresh")
+                result = archive_recoveries(
+                    repo, Path.home() / "Archives/repo-refresh",
+                    lambda snapshots: update_saved_status(state_dir, repo, snapshots))
                 if result:
                     update_saved_status(state_dir, repo, result["snapshots"])
                     print(json.dumps({"repository": str(repo), **result}), flush=True)
