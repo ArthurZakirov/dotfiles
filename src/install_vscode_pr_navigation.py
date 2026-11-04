@@ -15,6 +15,7 @@ import tempfile
 
 TASK_LABEL = "Git: Open Current Pull Request in Chrome"
 BRANCH_LABEL = "Git: Open Current Branch in Chrome"
+REVIEW_CLEANUP_LABEL = "Git: Unreview All"
 OLD_PR_LABEL = "Bitbucket: Open Current Pull Request in Chrome"
 OLD_BRANCH_LABEL = "Bitbucket: Open Current Branch in Chrome"
 
@@ -127,13 +128,14 @@ def array_entries(source: str, key: str | None):
 def merge_source(source: str, updated, is_tasks: bool) -> str:
     if not source:
         return json.dumps(updated, indent=2, ensure_ascii=False) + "\n"
-    labels = (TASK_LABEL, BRANCH_LABEL) if is_tasks else (TASK_LABEL,)
+    labels = (TASK_LABEL, BRANCH_LABEL, REVIEW_CLEANUP_LABEL) if is_tasks else (TASK_LABEL,)
     for label in labels:
         key = "tasks" if is_tasks else None
         opening, closing, entries = array_entries(source, key)
         if is_tasks:
             value = next(item for item in updated["tasks"] if item["label"] == label)
-            old = OLD_PR_LABEL if label == TASK_LABEL else OLD_BRANCH_LABEL
+            old = (OLD_PR_LABEL if label == TASK_LABEL else
+                   OLD_BRANCH_LABEL if label == BRANCH_LABEL else None)
             matches = [(a, b) for a, b, item in entries
                        if item.get("label") in (label, old)]
         else:
@@ -205,6 +207,18 @@ def task(label: str, action: str) -> dict:
     }
 
 
+def review_cleanup_task() -> dict:
+    return {
+        "label": REVIEW_CLEANUP_LABEL,
+        "type": "process",
+        "command": "git",
+        "args": ["unreview-all"],
+        "options": {"cwd": "${workspaceFolder}"},
+        "problemMatcher": [],
+        "presentation": {"reveal": "silent", "panel": "dedicated", "close": True},
+    }
+
+
 def update_tasks(existing: dict) -> bool:
     tasks = existing.setdefault("tasks", [])
     if not isinstance(tasks, list):
@@ -222,6 +236,13 @@ def update_tasks(existing: dict) -> bool:
             entry.update(task(label, action))
         else:
             tasks.append(task(label, action))
+    review_tasks = [entry for entry in tasks if entry.get("label") == REVIEW_CLEANUP_LABEL]
+    if len(review_tasks) > 1:
+        raise ValueError(f"Duplicate VS Code tasks for {REVIEW_CLEANUP_LABEL}")
+    if review_tasks:
+        review_tasks[0].update(review_cleanup_task())
+    else:
+        tasks.append(review_cleanup_task())
     existing.setdefault("version", "2.0.0")
     return before != json.dumps(tasks, sort_keys=True)
 
