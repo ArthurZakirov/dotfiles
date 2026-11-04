@@ -108,6 +108,14 @@ def test_chezmoi_launcher_forwards_flags_and_sets_verbatim_speech(
     output = command(str(home / LAUNCHER), "--no-daemon", env=env)
 
     assert output.strip() == "1:--no-daemon"
+    binary.write_text(
+        '#!/bin/sh\nprintf "%s\\n" "$CODEX_STATUS_LINE_COMMANDS"\n'
+    )
+    binary.chmod(0o755)
+    status = command(str(home / LAUNCHER), env=env)
+    assert json.loads(status) == [
+        {"label": "AGENTS", "command": "codex-agents-status"}
+    ]
     assert (home / ".local/share/codex-voice-experiment/keep-me.txt").read_text() == "previous-build"
 
 

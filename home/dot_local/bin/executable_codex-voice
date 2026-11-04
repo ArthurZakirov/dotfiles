@@ -2,4 +2,9 @@
 # Keep normal Codex separate; enable the opt-in speech behavior only here.
 set -euo pipefail
 export CODEX_REALTIME_VERBATIM_SPEECH=1
+# Older releases safely ignore the new environment variable. The updated
+# custom fork enables its AGENTS indicator when no explicit /statusline choice
+# exists, without passing unsupported -c keys to previous binaries.
+export PATH="$HOME/.local/bin:$PATH"
+export CODEX_STATUS_LINE_COMMANDS='[{"label":"AGENTS","command":"codex-agents-status"}]'
 exec "$HOME/.local/share/codex-voice/bin/codex" "$@"
