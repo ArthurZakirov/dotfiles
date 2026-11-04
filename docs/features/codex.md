@@ -267,18 +267,20 @@ release version and the installation toggle. To check them:
 grep -A4 '^\[codexVoice\]' home/.chezmoidata.toml
 ```
 
-After the release exists and the package has passed CI and a real voice
-session smoke test, set `codexVoice.enabled = true` and update
-`codexVoice.tag` to the **published** tag. The initial setting is disabled
-until that release is verified. Commit this update before relying on fresh
-Mac onboarding.
+The verified `voice-v0.166.0-r4` release is **enabled by default**.
+A single `chezmoi apply` installs the pinned release if missing and verifies
+an existing installation before skipping it. This applies to both personal
+and professional profiles. Set `codexVoice.enabled = false` only to opt out
+of automatic provisioning; the launcher alone cannot run without its package.
+Change `codexVoice.tag` only to another published and tested release.
 
 Chezmoi installs the
 [launcher](../../home/dot_local/bin/executable_codex-voice), the
 [stdlib-only installer](../../home/dot_local/bin/executable_codex-voice-install)
 and the [after-hook](../../home/run_after_45-install-codex-voice.sh.tmpl).
-The hook installs the macOS-architecture-specific release into
-`~/.local/share/codex-voice/` and preserves both the normal `codex`
+The hook uses Python 3.11+ from `PATH` (including pyenv/asdf), falling
+back to Homebrew Python when necessary. It installs the architecture-specific
+macOS release into `~/.local/share/codex-voice/` and preserves both the normal `codex`
 and the separate development builds in `~/.local/share/codex-voice-experiment/`.
 The release tarball is SHA-256 checked against the release's
 `SHA256SUMS`, inspected for unsafe paths, validated against the embedded

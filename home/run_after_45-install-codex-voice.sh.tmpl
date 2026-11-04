@@ -1,12 +1,19 @@
 #!/bin/bash
 set -euo pipefail
 {{ if .codexVoice.enabled -}}
-if [[ -x /opt/homebrew/bin/python3 ]]; then
-  python=/opt/homebrew/bin/python3
-elif [[ -x /usr/local/bin/python3 ]]; then
-  python=/usr/local/bin/python3
-else
-  echo 'Codex Voice requires Homebrew Python 3.11+; install it before this hook.' >&2
+# Prefer the Python selected by the setup environment (including pyenv/asdf).
+# A fallback to the Homebrew locations supports non-interactive applies whose
+# PATH does not include Homebrew yet. Reject older/system Python versions.
+python=""
+for candidate in "$(command -v python3 || true)" /opt/homebrew/bin/python3 /usr/local/bin/python3; do
+  if [[ -n "$candidate" && -x "$candidate" ]] &&
+    "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 11))' >/dev/null 2>&1; then
+    python="$candidate"
+    break
+  fi
+done
+if [[ -z "$python" ]]; then
+  echo 'Codex Voice requires Python 3.11+ (via PATH or Homebrew); install it before this hook.' >&2
   exit 1
 fi
 "$python" "$HOME/.local/bin/codex-voice-install" --release-tag {{ .codexVoice.tag | quote }}
