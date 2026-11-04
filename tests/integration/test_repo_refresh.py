@@ -305,6 +305,54 @@ def test_clean_checkout_tracks_actual_remote_default(scenario, branch):
     assert git(scenario.repo, "symbolic-ref", "refs/remotes/origin/HEAD") == f"refs/remotes/origin/{branch}"
 
 
+@pytest.mark.parametrize("with_ignored_file", [False, True])
+def test_clean_main_fast_forward_skips_recovery_worktree(scenario, with_ignored_file):
+    # Arrange: only the remote default advanced; ignored local files are valuable.
+    if with_ignored_file:
+        (scenario.repo / "ignored").mkdir()
+        (scenario.repo / "ignored/private.txt").write_text("keep this file\n")
+    scenario.advance()
+    initial_worktrees = [line for line in git(scenario.repo, "worktree", "list", "--porcelain").splitlines()
+                         if line.startswith("worktree ")]
+
+    # Act: refresh through the actual CLI.
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    # Assert: main is current without a new registered historical checkout.
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert scenario.outcome()["state"] == "updated"
+    assert scenario.outcome()["method"] == "fast-forward"
+    assert "recovery" not in scenario.outcome()
+    assert git(scenario.repo, "rev-parse", "HEAD") == git(scenario.remote, "rev-parse", "main")
+    assert [line for line in git(scenario.repo, "worktree", "list", "--porcelain").splitlines()
+            if line.startswith("worktree ")] == initial_worktrees
+    if with_ignored_file:
+        assert (scenario.repo / "ignored/private.txt").read_text() == "keep this file\n"
+
+
+def test_main_fast_forward_falls_back_when_new_tracked_file_collides_with_ignored_data(scenario):
+    # Arrange: upstream adds a tracked path which overlaps valuable ignored data.
+    local = scenario.repo / "ignored"
+    local.mkdir()
+    (local / "incoming.txt").write_text("local confidential content\n")
+    upstream = scenario.upstream / "ignored"
+    upstream.mkdir()
+    (upstream / "incoming.txt").write_text("committed upstream content\n")
+    git(scenario.upstream, "add", "-f", "ignored/incoming.txt")
+    git(scenario.upstream, "commit", "-m", "Track previously ignored file")
+    git(scenario.upstream, "push", "origin", "HEAD")
+
+    # Act: refresh without bypassing the normal preservation path.
+    result = subprocess.run(scenario.command, capture_output=True, text=True)
+
+    # Assert: the old ignored file remains recoverable.
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "method" not in scenario.outcome()
+    recovery = Path(scenario.outcome()["recovery"])
+    assert (recovery / "ignored/incoming.txt").read_text() == "local confidential content\n"
+    assert (scenario.repo / "ignored/incoming.txt").read_text() == "committed upstream content\n"
+
+
 @pytest.mark.parametrize("branch", ["main", "feature/unfinished", None])
 def test_forces_default_and_preserves_complete_working_state(scenario, branch):
     if branch is None:
