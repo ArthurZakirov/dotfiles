@@ -98,6 +98,7 @@ def test_local_git_config_overrides_shared_config(tmp_path):
     assert git("user.name") == "Local User"
     assert git("user.email") == "local@example.invalid"
     assert git("alias.review") == "!git-review-worktree commit"
+    assert git("alias.unreview-all") == "!git-review-worktree unreview-all"
 
 
 def test_migration_preserves_existing_git_config_as_local_override(tmp_path):

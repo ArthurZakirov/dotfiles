@@ -9,6 +9,9 @@
 	# Leave an isolated review worktree and return VS Code to its source worktree.
 	unreview = "!git-review-worktree unreview"
 
+	# Discard every marked disposable review and review-created active branch in this repository.
+	unreview-all = "!git-review-worktree unreview-all"
+
 # Local identity, signing, credentials, and employer-specific settings override
 # shared settings. The setup script creates this file when it is absent.
 [include]

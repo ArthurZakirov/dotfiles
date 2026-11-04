@@ -109,7 +109,13 @@ ACTIVE_OPERATION_STATE = (
 
 
 def copy_entry(source, destination):
-    if source.is_dir() and not source.is_symlink():
+    if sys.platform == "darwin":
+        # cp -pR preserves symlinks, extended attributes, ACLs and resource forks.
+        result = subprocess.run(["cp", "-pR", str(source), str(destination)],
+                                capture_output=True, check=False)
+        if result.returncode:
+            raise RefreshError("Could not preserve macOS file metadata; original retained")
+    elif source.is_dir() and not source.is_symlink():
         shutil.copytree(source, destination, symlinks=True)
     else:
         shutil.copy2(source, destination, follow_symlinks=False)
@@ -618,7 +624,259 @@ def repair_permanent_checkout_path(repo):
     return True
 
 
-def refresh_one(repo, remote):
+def copy_snapshot(source, destination):
+    """Copy all worktree data, including ignored files, ACLs and macOS xattrs."""
+    if sys.platform == "darwin":
+        result = subprocess.run(["cp", "-pR", str(source), str(destination)],
+                                capture_output=True, check=False)
+        if result.returncode:
+            raise RefreshError("Archival copy failed; registered worktrees retained")
+    else:
+        shutil.copytree(source, destination, symlinks=True)
+
+
+def snapshot_fingerprint(root, skip_gitfile=False):
+    """Check files, symlinks, file types, modes, ownership and extended attributes."""
+    entries = {}
+    for current, directories, files in os.walk(root, followlinks=False):
+        for name in sorted(directories + files):
+            path = Path(current) / name
+            rel = path.relative_to(root).as_posix()
+            if skip_gitfile and rel == ".git":
+                continue
+            info = path.lstat()
+            record = {"mode": stat.S_IMODE(info.st_mode),
+                      "type": stat.S_IFMT(info.st_mode),
+                      "owner": info.st_uid, "group": info.st_gid}
+            if stat.S_ISLNK(info.st_mode):
+                record["link"] = os.readlink(path)
+            elif stat.S_ISREG(info.st_mode):
+                digest = hashlib.sha256()
+                with path.open("rb") as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                record["content"] = digest.hexdigest()
+            elif not stat.S_ISDIR(info.st_mode):
+                raise RefreshError("Unsupported recovery file type; original retained")
+            # macOS Python has no os.listxattr API; cp -pR preserves
+            # resource forks, ACLs and extended attributes on that platform.
+            if hasattr(os, "listxattr"):
+                record["xattrs"] = {
+                    attr: hashlib.sha256(os.getxattr(
+                        path, attr, follow_symlinks=False)).hexdigest()
+                    for attr in sorted(os.listxattr(path, follow_symlinks=False))
+                }
+            entries[rel] = record
+    return hashlib.sha256(json.dumps(entries, sort_keys=True).encode()).hexdigest()
+
+
+def mac_xattr_fingerprint(root):
+    """Compare macOS extended-attribute values without Python's absent xattr API."""
+    if sys.platform != "darwin":
+        return None
+    result = subprocess.run(["xattr", "-lr", "-s", "-x", str(root)],
+                            capture_output=True, check=False)
+    if result.returncode:
+        raise RefreshError("Could not verify macOS extended attributes; originals retained")
+    normalized = result.stdout.replace(os.fsencode(str(root)), b"<ROOT>")
+    records = []
+    current = []
+    for line in normalized.splitlines(keepends=True):
+        if line.startswith(b"<ROOT>") and b": " in line:
+            if current:
+                records.append(b"".join(current))
+            current = [line]
+        else:
+            current.append(line)
+    if current:
+        records.append(b"".join(current))
+    # macOS reassigns com.apple.provenance when a file is copied. It is OS
+    # execution provenance, not a portable user attribute. Preserve and verify
+    # all other xattrs, including Finder metadata and custom user attributes.
+    records = [record for record in records
+               if b": com.apple.provenance:" not in record.splitlines()[0]]
+    return hashlib.sha256(b"".join(sorted(records))).hexdigest()
+
+
+def recoveries_to_archive(repo):
+    """Only complete, detached recoveries created by this script are eligible."""
+    sibling = repo.with_name(f"{repo.name}.worktrees")
+    if not sibling.is_dir() or sibling.is_symlink():
+        return []
+    candidates = []
+    blocks = value(repo, "worktree", "list", "--porcelain").split("\n\n")
+    common = Path(value(repo, "rev-parse", "--absolute-git-dir"))
+    for block in blocks:
+        lines = block.splitlines()
+        if not lines or not lines[0].startswith("worktree "):
+            continue
+        source = Path(lines[0][len("worktree "):])
+        if not source.name.startswith("recovery-"):
+            continue
+        if (source.is_symlink() or not source.is_dir() or
+                not os.path.samefile(source.parent, sibling) or
+                "detached" not in lines or any(line.startswith("locked") for line in lines)):
+            continue
+        admin = Path(value(source, "rev-parse", "--absolute-git-dir"))
+        marker = git_path(source, "repo-refresh/recovery.json")
+        if (not admin.is_dir() or not marker.is_file() or
+                not os.path.samefile(admin.parent, common / "worktrees")):
+            continue
+        record = json.loads(marker.read_text())
+        if record.get("complete") is not True or not isinstance(record.get("source"), str):
+            continue
+        # Rebase recoveries come from linked feature worktrees, not the
+        # permanent checkout. Their original worktree might now be gone.
+        original = Path(record["source"])
+        if (original.exists() and
+                not os.path.samefile(value(original, "rev-parse", "--path-format=absolute",
+                                           "--git-common-dir"), common)):
+            continue
+        if any(git_path(source, state).exists() for state in ACTIVE_OPERATION_STATE):
+            continue
+        candidates.append((source, admin, record))
+    return candidates
+
+
+def replace_archived_recovery_reference(record, snapshots):
+    previous = record.get("recovery")
+    if previous in snapshots:
+        record["recovery_archived_from"] = previous
+        record["recovery"] = snapshots[previous]
+        return True
+    return False
+
+
+def update_recovery_markers(repo, snapshots):
+    # Existing failed rebases refer to a recovery path on every later run.
+    # Redirect those paths to the independent archived Git worktree.
+    for block in value(repo, "worktree", "list", "--porcelain").split("\n\n"):
+        lines = block.splitlines()
+        if not lines or not lines[0].startswith("worktree "):
+            continue
+        source = Path(lines[0][len("worktree "):])
+        if not source.is_dir():
+            continue
+        marker = git_path(source, "repo-refresh-rebase.json")
+        if marker.is_file():
+            record = json.loads(marker.read_text())
+            if replace_archived_recovery_reference(record, snapshots):
+                write_json(marker, record)
+
+
+def update_saved_status(state_dir, repo, snapshots):
+    status_file = state_dir / "status.json"
+    if not status_file.is_file():
+        return
+    status = json.loads(status_file.read_text())
+    changed = False
+    for outcome in status.get("repositories", []):
+        if (not Path(outcome.get("repository", "")).exists() or
+                not os.path.samefile(outcome["repository"], repo)):
+            continue
+        for record in [outcome, *outcome.get("branches", [])]:
+            changed = replace_archived_recovery_reference(record, snapshots) or changed
+    if changed:
+        write_json(status_file, status)
+
+
+def archive_recoveries(repo, archive_root, on_removed):
+    """Fully copy, verify, then deregister only explicitly marked recoveries."""
+    candidates = recoveries_to_archive(repo)
+    if not candidates:
+        return None
+    common = Path(value(repo, "rev-parse", "--absolute-git-dir"))
+    if (common / "objects/info/alternates").exists():
+        raise RefreshError("Git object alternates require an independent backup; worktrees retained")
+    destination = archive_root / repo.name / (
+        time.strftime("%Y-%m-%d--%H-%M-%S") + "-" + uuid.uuid4().hex[:10])
+    destination.mkdir(parents=True, mode=0o700)
+    os.chmod(destination, 0o700)
+    try:
+        archived_git = destination / "gitdir"
+        manifest = {"repository": str(repo), "status": "copying",
+                    "created_at": time.time(), "snapshots": []}
+        write_json(destination / "manifest.json", manifest)
+        # A copy of the entire common Git database makes detached commits and
+        # worktree indices available independently of the live checkout.
+        copy_snapshot(common, archived_git)
+        if (snapshot_fingerprint(common) != snapshot_fingerprint(archived_git)
+                or mac_xattr_fingerprint(common) != mac_xattr_fingerprint(archived_git)):
+            raise RefreshError(f"Git metadata archival verification failed: {destination}")
+        for source, admin, record in candidates:
+            archived = destination / "recoveries" / source.name
+            archived.parent.mkdir(mode=0o700, exist_ok=True)
+            copy_snapshot(source, archived)
+            original_fingerprint = snapshot_fingerprint(source, skip_gitfile=True)
+            if (original_fingerprint != snapshot_fingerprint(archived, skip_gitfile=True)
+                    or mac_xattr_fingerprint(source) != mac_xattr_fingerprint(archived)):
+                # The .git pointer itself is intentionally rewritten below.
+                raise RefreshError(f"Recovery content verification failed: {destination}")
+            archived_admin = archived_git / "worktrees" / admin.name
+            if not archived_admin.is_dir():
+                raise RefreshError(f"Recovery Git index missing from archive: {destination}")
+            archived_head = value(source, "rev-parse", "HEAD")
+            original_status = git(source, "status", "--porcelain=v1", "-z",
+                                  "--untracked-files=all").stdout
+            original_index = git(source, "ls-files", "--stage", "-z").stdout
+            original_xattrs = mac_xattr_fingerprint(source)
+            # Change only the *copied* administrative pointers. The snapshot is
+            # then a usable Git worktree of the archived, independent Git database.
+            (archived / ".git").write_text(f"gitdir: {archived_admin}\n")
+            (archived_admin / "gitdir").write_text(str(archived / ".git") + "\n")
+            if (value(archived, "rev-parse", "HEAD") != archived_head
+                    or not os.path.samefile(value(archived, "rev-parse",
+                                                  "--path-format=absolute", "--git-common-dir"),
+                                            archived_git)
+                    or git(archived, "status", "--porcelain=v1", "-z",
+                           "--untracked-files=all").stdout != original_status
+                    or git(archived, "ls-files", "--stage", "-z").stdout != original_index
+                    or original_fingerprint != snapshot_fingerprint(archived, skip_gitfile=True)):
+                raise RefreshError(f"Recovery Git verification failed: {destination}")
+            manifest["snapshots"].append({
+                "source": str(source), "archived": str(archived),
+                "head": archived_head, "fingerprint": original_fingerprint,
+                "admin": admin.name, "removed": False,
+                "index_sha256": hashlib.sha256(original_index).hexdigest(),
+                "status_sha256": hashlib.sha256(original_status).hexdigest(),
+                "xattrs_sha256": original_xattrs,
+            })
+            write_json(destination / "manifest.json", manifest)
+        manifest["status"] = "verified"
+        write_json(destination / "manifest.json", manifest)
+    except Exception:
+        # No originals have been removed during preparation. Failed attempts
+        # must not accumulate a new Git database on every scheduled retry.
+        shutil.rmtree(destination)
+        raise
+    # Never remove an original until all copies are verified and durable.
+    # Recheck each live source immediately before removing it to detect edits
+    # made while the long batch copy was in progress.
+    for item in manifest["snapshots"]:
+        source = Path(item["source"])
+        if (value(source, "rev-parse", "HEAD") != item["head"]
+                or snapshot_fingerprint(source, skip_gitfile=True) != item["fingerprint"]
+                or mac_xattr_fingerprint(source) != item["xattrs_sha256"]
+                or hashlib.sha256(git(source, "ls-files", "--stage", "-z").stdout).hexdigest()
+                != item["index_sha256"]
+                or hashlib.sha256(git(source, "status", "--porcelain=v1", "-z",
+                                      "--untracked-files=all").stdout).hexdigest()
+                != item["status_sha256"]):
+            raise RefreshError(f"Recovery changed during archival; originals retained: {destination}")
+        git(repo, "worktree", "remove", "--force", "--force", source)
+        item["removed"] = True
+        snapshots = {item["source"]: item["archived"]}
+        update_recovery_markers(repo, snapshots)
+        on_removed(snapshots)
+        write_json(destination / "manifest.json", manifest)
+    manifest["status"] = "archived"
+    write_json(destination / "manifest.json", manifest)
+    snapshots = {item["source"]: item["archived"] for item in manifest["snapshots"]}
+    return {"directory": str(destination), "count": len(candidates),
+            "snapshots": snapshots}
+
+
+def refresh_one(repo, remote, archive_root=None):
     outcome = {"repository": str(repo)}
     try:
         # The common directory is the lock boundary shared by linked worktrees.
@@ -634,6 +892,15 @@ def refresh_one(repo, remote):
                     outcome["development_worktree"] = outcome["recovery"]
                     outcome["recovery"] = branch["recovery"]
                     break
+            if archive_root is not None:
+                def update_outcome(snapshots):
+                    for entry in [outcome, *outcome["branches"]]:
+                        replace_archived_recovery_reference(entry, snapshots)
+
+                archived = archive_recoveries(repo, archive_root, update_outcome)
+                if archived:
+                    outcome["archived_recoveries"] = archived["count"]
+                    outcome["archive_directory"] = archived["directory"]
     except BlockingIOError:
         outcome.update(state="busy")
     except (RefreshError, OSError, shutil.Error) as error:
@@ -649,6 +916,8 @@ def run(config_path, state_dir):
     config = json.loads(config_path.read_text())
     if not isinstance(config.get("enabled", True), bool):
         raise RefreshError("enabled must be a JSON boolean")
+    if not isinstance(config.get("archiveRecoveries", False), bool):
+        raise RefreshError("archiveRecoveries must be a JSON boolean")
     setting = config.get("root")
     if (not isinstance(setting, str) or not setting.strip()
             or not Path(setting).expanduser().is_absolute()):
@@ -663,6 +932,7 @@ def run(config_path, state_dir):
         return 0
     if not root.is_dir():
         raise RefreshError("Configured repository root is not a directory")
+    archive_root = Path.home() / "Archives/repo-refresh" if config.get("archiveRecoveries", False) else None
     state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (state_dir / "run.lock").open("a") as lock:
         try:
@@ -671,7 +941,7 @@ def run(config_path, state_dir):
             return 0
         outcomes = []
         with ThreadPoolExecutor(max_workers=4) as pool:
-            pending = [pool.submit(refresh_one, repo, remote)
+            pending = [pool.submit(refresh_one, repo, remote, archive_root)
                        for repo in repositories(root)]
             for future in as_completed(pending):
                 outcome = future.result()
@@ -687,6 +957,35 @@ def run(config_path, state_dir):
         ) for item in outcomes))
 
 
+def archive_existing(config_path, state_dir, selected_repository=None):
+    if not config_path.is_file():
+        raise RefreshError("Repository configuration not found")
+    config = json.loads(config_path.read_text())
+    root = Path(config["root"]).expanduser().resolve()
+    if not root.is_dir():
+        raise RefreshError("Configured repository root is not a directory")
+    state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    candidates = list(repositories(root))
+    if selected_repository is not None:
+        target = selected_repository.expanduser().resolve()
+        candidates = [repo for repo in candidates if os.path.samefile(repo, target)] if target.is_dir() else []
+        if len(candidates) != 1:
+            raise RefreshError("Selected repository is not a direct checkout under the configured root")
+    with (state_dir / "run.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        for repo in candidates:
+            common = Path(value(repo, "rev-parse", "--absolute-git-dir"))
+            with (common / "repo-refresh.lock").open("a") as repo_lock:
+                fcntl.flock(repo_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                result = archive_recoveries(
+                    repo, Path.home() / "Archives/repo-refresh",
+                    lambda snapshots: update_saved_status(state_dir, repo, snapshots))
+                if result:
+                    update_saved_status(state_dir, repo, result["snapshots"])
+                    print(json.dumps({"repository": str(repo), **result}), flush=True)
+    return 0
+
+
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
@@ -695,12 +994,20 @@ def main():
     parser.add_argument("--state-dir", type=Path,
                         default=Path.home() / ".local/state/repo-refresh")
     parser.add_argument("--status", action="store_true", help="show the last scheduled run")
+    parser.add_argument("--archive-recoveries", action="store_true",
+                        help="verify and archive detached recovery worktrees without refreshing repos")
+    parser.add_argument("--repository", type=Path,
+                        help="limit manual archival to one permanent checkout")
     args = parser.parse_args()
     try:
         if args.status:
             path = args.state_dir / "status.json"
             print(path.read_text() if path.exists() else "No runs recorded.")
             return 0
+        if args.archive_recoveries:
+            return archive_existing(args.config, args.state_dir, args.repository)
+        if args.repository is not None:
+            raise RefreshError("--repository requires --archive-recoveries")
         return run(args.config, args.state_dir)
     except (RefreshError, OSError, ValueError, KeyError, TypeError) as error:
         message = str(error) if isinstance(error, RefreshError) else type(error).__name__

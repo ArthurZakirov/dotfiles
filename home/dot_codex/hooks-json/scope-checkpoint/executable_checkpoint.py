@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in, turn-scoped Scope & Effort checkpoint for supported Codex tool hooks.
+"""Turn-scoped Scope & Effort checkpoint controlled by native Codex hooks.
 
 This gate checks that an assessment was recorded, not whether its judgment is
 correct or whether Codex actually displayed the assessment in chat.
@@ -35,9 +35,6 @@ def codex_home() -> Path:
 def state_root() -> Path:
     return codex_home() / "scope-checkpoint"
 
-
-def enabled() -> bool:
-    return (state_root() / "enabled").is_file()
 
 
 def checkpoint_path(session: str, turn: str, cwd: str) -> Path:
@@ -119,7 +116,7 @@ def allowed_record_command(command: str) -> bool:
         return False
     if Path(parts[1]).expanduser().resolve() != Path(__file__).resolve():
         return False
-    if parts[2] not in ("record", "status", "disable"):
+    if parts[2] != "record":
         return False
     # shlex emits unquoted shell punctuation as punctuation-only tokens,
     # including compound redirections (&>, >|, <>, etc.). Quoted assessment
@@ -187,8 +184,6 @@ def deny(reason: str) -> None:
 
 
 def hook(event: dict) -> int:
-    if not enabled():
-        return 0
     kind = event.get("hook_event_name")
     if kind == "UserPromptSubmit":
         session, turn, cwd = (event.get(key) for key in ("session_id", "turn_id", "cwd"))
@@ -243,31 +238,16 @@ def hook(event: dict) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("enable", "disable", "status", "hook"):
-        commands.add_parser(name)
+    commands.add_parser("hook")
     record = commands.add_parser("record")
     for flag in ("session-id", "turn-id", "cwd", "baseline", "change", "source",
                  "classification", "reason", "human-effort", "remaining-budget"):
         record.add_argument("--" + flag, required=True, choices=CLASSIFICATIONS if flag == "classification" else None)
     record.add_argument("--decision", choices=("proceed", "pause"), required=True)
     args = parser.parse_args()
-    if args.command == "enable":
-        root = state_root()
-        root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        os.chmod(root, 0o700)
-        (root / "enabled").touch(mode=0o600)
-        os.chmod(root / "enabled", 0o600)
-        print("Scope checkpoint enabled for this Codex home.")
-    elif args.command == "disable":
-        (state_root() / "enabled").unlink(missing_ok=True)
-        print("Scope checkpoint disabled; previous local records remain.")
-    elif args.command == "status":
-        print(json.dumps({"enabled": enabled()}))
-    elif args.command == "record":
+    if args.command == "record":
         return assessment(args)
-    else:
-        return hook(json.load(sys.stdin))
-    return 0
+    return hook(json.load(sys.stdin))
 
 
 if __name__ == "__main__":

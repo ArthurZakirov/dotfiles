@@ -81,7 +81,7 @@ Bitbucket PR creation is not implemented.
 ## 🛠️ Install and verify
 
 `chezmoi apply` deploys `git-pr`, the existing Bitbucket Chrome helper,
-and the Hammerspoon module, and merges the two global VS Code tasks/binding
+and the Hammerspoon module, and merges the three managed global VS Code tasks/binding
 without overwriting unrelated entries or comments. It uses the existing
 Hammerspoon reload lifecycle.
 

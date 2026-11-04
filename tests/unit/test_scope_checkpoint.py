@@ -58,13 +58,16 @@ def result(tmp_path: Path, event_data: dict) -> dict:
     return json.loads(outcome.stdout) if outcome.stdout else {}
 
 
-def test_disabled_gate_never_interrupts_an_edit(tmp_path):
-    assert result(tmp_path, event("PreToolUse")) == {}
-    assert json.loads(run_script(tmp_path, "status").stdout) == {"enabled": False}
+def test_native_hook_invocation_enforces_checkpoint_without_local_toggle(tmp_path):
+    # Codex controls whether to invoke the hook. No separate enable command is required.
+    blocked = result(tmp_path, event("PreToolUse"))
+    assert blocked["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert not (tmp_path / ".codex/scope-checkpoint/enabled").exists()
+    for obsolete_command in ("enable", "disable", "status"):
+        assert run_script(tmp_path, obsolete_command).returncode != 0
 
 
 def test_missing_record_blocks_write_but_not_read_only_research(tmp_path):
-    run_script(tmp_path, "enable")
     assert result(tmp_path, event("PreToolUse", tool="Bash", command="git status")) == {}
     blocked = result(tmp_path, event("PreToolUse"))
     assert blocked["hookSpecificOutput"]["permissionDecision"] == "deny"
@@ -72,7 +75,6 @@ def test_missing_record_blocks_write_but_not_read_only_research(tmp_path):
 
 
 def test_in_scope_record_allows_edit_and_is_isolated_to_turn_and_workspace(tmp_path):
-    run_script(tmp_path, "enable")
     saved = record(tmp_path)
     assert saved.returncode == 0, saved.stderr
     assert result(tmp_path, event("PreToolUse")) == {}
@@ -102,16 +104,13 @@ def test_significant_effort_without_budget_does_not_allow_proceed(tmp_path):
 
 
 def test_pause_record_prevents_mutation(tmp_path):
-    run_script(tmp_path, "enable")
     assert record(tmp_path, decision="pause", classification="disputed").returncode == 0
     blocked = result(tmp_path, event("PreToolUse", tool="mcp__fs__write_file"))
     assert "PAUSE" in blocked["hookSpecificOutput"]["permissionDecisionReason"]
     assert result(tmp_path, event("PreToolUse", tool="mcp__fs__read_file")) == {}
 
 
-def test_user_prompt_provides_turn_scoped_instruction_when_enabled(tmp_path):
-    assert result(tmp_path, event("UserPromptSubmit")) == {}
-    run_script(tmp_path, "enable")
+def test_user_prompt_provides_turn_scoped_instruction_when_invoked(tmp_path):
     reminder = result(tmp_path, event("UserPromptSubmit"))
     context = reminder["hookSpecificOutput"]["additionalContext"]
     assert SESSION in context and TURN in context
@@ -120,7 +119,6 @@ def test_user_prompt_provides_turn_scoped_instruction_when_enabled(tmp_path):
 
 
 def test_shell_recorder_is_exempt_but_compound_command_is_not(tmp_path):
-    run_script(tmp_path, "enable")
     cmd = f"{sys.executable} {SCRIPT} record --session-id {SESSION} --turn-id {TURN}"
     assert result(tmp_path, event("PreToolUse", tool="Bash", command=cmd)) == {}
     mixed = result(tmp_path, event("PreToolUse", tool="Bash", command=cmd + "; touch demo.txt"))
@@ -138,8 +136,7 @@ def test_shell_recorder_is_exempt_but_compound_command_is_not(tmp_path):
 def test_shell_gate_allows_recording_and_read_only_commands_before_checkpoint(
     tmp_path, tool, input_key,
 ):
-    # Arrange: enforcement is enabled, but no assessment has been recorded.
-    run_script(tmp_path, "enable")
+    # Arrange: Codex invoked the hook, but no assessment has been recorded.
     recorder = f"{sys.executable} {SCRIPT} record --session-id {SESSION} --turn-id {TURN}"
 
     # Act: send real hook-shaped shell inputs through the public hook entrypoint.
@@ -156,7 +153,6 @@ def test_shell_gate_allows_recording_and_read_only_commands_before_checkpoint(
 
 
 def test_native_exec_command_with_missing_or_invalid_cmd_is_not_exempt(tmp_path):
-    run_script(tmp_path, "enable")
     request = event("PreToolUse", tool="exec_command")
     for tool_input in ({}, {"cmd": 123}, {"cmd": None}):
         request["tool_input"] = tool_input
@@ -175,7 +171,6 @@ def test_recorder_with_shell_quoted_assessment_and_workdir_is_not_blocked(
     tmp_path, tool, input_key,
 ):
     # Regression: quoted punctuation was previously rejected before recording.
-    run_script(tmp_path, "enable")
     reason = "Necessary; tests && reviews | dependencies"
     recorder = (
         f"python3 {SCRIPT} record --session-id {SESSION} --turn-id {TURN} "
@@ -211,7 +206,6 @@ def test_recorder_with_shell_quoted_assessment_and_workdir_is_not_blocked(
      '--reason "`touch /tmp/unsafe`"'],
 )
 def test_recorder_exemption_rejects_shell_chains(tmp_path, suffix):
-    run_script(tmp_path, "enable")
     safe = (
         f"python3 {SCRIPT} record --reason 'necessary; harmless && literal' "
         f"--session-id {SESSION}"
@@ -222,22 +216,23 @@ def test_recorder_exemption_rejects_shell_chains(tmp_path, suffix):
     assert blocked["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
-def test_recovery_disable_is_not_blocked_by_checkpoint_itself(tmp_path):
-    run_script(tmp_path, "enable")
+def test_only_recorder_subcommand_is_exempt_from_pretooluse(tmp_path):
     request = event("PreToolUse", tool="exec_command")
-    request["tool_input"] = {"cmd": f"python3 {SCRIPT} disable"}
-    assert result(tmp_path, request) == {}
-    assert run_script(tmp_path, "disable").returncode == 0
-    assert result(tmp_path, event("PreToolUse")) == {}
+    for subcommand in ("enable", "disable", "status"):
+        request["tool_input"] = {"cmd": f"python3 {SCRIPT} {subcommand}"}
+        blocked = result(tmp_path, request)
+        assert blocked["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 def test_unrecognized_commands_are_checked_conservatively(tmp_path):
-    run_script(tmp_path, "enable")
     assert result(tmp_path, event("PreToolUse", tool="Bash", command="python3 -c 'print(1)'"))["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert result(tmp_path, event("PreToolUse", tool="mcp__fs__rename_file"))["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
-def test_disabling_gate_restores_unblocked_execution(tmp_path):
-    run_script(tmp_path, "enable")
-    assert run_script(tmp_path, "disable").returncode == 0
-    assert result(tmp_path, event("PreToolUse")) == {}
+def test_legacy_activation_file_is_ignored(tmp_path):
+    marker = tmp_path / ".codex/scope-checkpoint/enabled"
+    marker.parent.mkdir(parents=True)
+    marker.touch()
+    assert result(tmp_path, event("PreToolUse"))["hookSpecificOutput"]["permissionDecision"] == "deny"
+    marker.unlink()
+    assert result(tmp_path, event("PreToolUse"))["hookSpecificOutput"]["permissionDecision"] == "deny"
