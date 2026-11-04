@@ -17,17 +17,15 @@ def check() -> str:
     """Return a truthful five-stage indicator, including unknown checks."""
     unknown = "AGENTS " + " ".join(f"{label}?" for label in LABELS)
     session_id = os.environ.get("CODEX_THREAD_ID")
-    if not session_id:
-        return unknown
     codex_home = Path(os.environ.get("CODEX_HOME", "~/.codex")).expanduser()
     pipeline = codex_home / "hooks-json/agents-md-freshness/pipeline.py"
     if not pipeline.is_file():
         return unknown
     try:
         output = subprocess.run(
-            [sys.executable, str(pipeline), "--codex-home", str(codex_home),
-             "--session-id", session_id],
-            capture_output=True, text=True, timeout=16, check=False,
+            [sys.executable, str(pipeline), "--codex-home", str(codex_home)]
+            + (["--session-id", session_id] if session_id else []),
+            capture_output=True, text=True, timeout=25, check=False,
         )
         if output.returncode != 0:
             return unknown

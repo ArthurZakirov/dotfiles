@@ -48,7 +48,7 @@ def test_reports_five_actual_pipeline_states_without_reinterpreting_unknown(tmp_
     assert result.stdout == "AGENTS G✓ L? R✓ C✓ S✕\n"
 
 
-def test_missing_session_or_pipeline_does_not_show_false_green(tmp_path):
+def test_missing_pipeline_does_not_show_false_green(tmp_path):
     for session_id in (None, THREAD):
         result = run_provider(tmp_path, session_id)
 
@@ -65,3 +65,20 @@ def test_invalid_pipeline_response_returns_unknown(tmp_path):
 
     assert result.returncode == 0
     assert result.stdout == "AGENTS G? L? R? C? S?\n"
+
+
+def test_missing_session_preserves_other_pipeline_stages(tmp_path):
+    pipeline = tmp_path / "hooks-json/agents-md-freshness/pipeline.py"
+    pipeline.parent.mkdir(parents=True)
+    pipeline.write_text(
+        "import json, sys\n"
+        "assert '--session-id' not in sys.argv\n"
+        "print(json.dumps({'stages': ["
+        "{'key': key, 'status': 'current' if key != 'session' else 'unknown'} "
+        "for key in ('github', 'local', 'generated', 'deployed', 'session')]}))\n"
+    )
+
+    result = run_provider(tmp_path, None)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "AGENTS G✓ L✓ R✓ C✓ S?\n"
