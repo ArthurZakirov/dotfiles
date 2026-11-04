@@ -1,6 +1,7 @@
 """Behavioral tests for both machine profiles; low-level setup lives in fixtures."""
 
 import os
+import json
 import shlex
 from pathlib import Path
 
@@ -182,3 +183,29 @@ def test_preapply_backup_hook_uses_invoking_chezmoi_paths(
     assert f'{source}' in hook.read_text()
     assert 'snapshot_existing_managed' in hook.read_text()
     profile_factory.run("/bin/bash", "-n", str(hook))
+
+
+@pytest.mark.parametrize("profile", ["personal", "professional"])
+def test_scope_checkpoint_renders_as_synchronous_codex_hook(profile, profile_factory):
+    # Arrange: the actual rendered machine profile, without installing into HOME.
+    rendered = profile_factory.render(profile)
+
+    # Act: render the hook configuration Codex would load on that profile.
+    config_text = profile_factory.chezmoi(
+        rendered.config, "cat", str(Path.home() / ".codex/hooks.json")
+    )
+    hooks = json.loads(config_text)["hooks"]
+
+    # Assert: the checkpoint is a synchronous pre-tool guard and prompt reminder.
+    before_edit = hooks["PreToolUse"][0]["hooks"][0]
+    assert before_edit["async"] is False
+    assert before_edit["timeoutSec"] > 0
+    assert shlex.split(before_edit["command"])[-1] == "hook"
+    assert shlex.split(before_edit["command"])[1].endswith(
+        "/scope-checkpoint/checkpoint.py"
+    )
+    assert any(
+        "/scope-checkpoint/checkpoint.py" in handler["command"]
+        and handler["async"] is False
+        for entry in hooks["UserPromptSubmit"] for handler in entry["hooks"]
+    )
