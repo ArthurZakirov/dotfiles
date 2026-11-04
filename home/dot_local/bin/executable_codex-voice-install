@@ -144,17 +144,17 @@ def install(tag: str, destination: Path, *, base_url: str | None = None,
         raise ValueError("Refusing to replace a symlink installation")
     receipt = destination / "codex-voice-install.json"
     if receipt.is_file():
-        current = json.loads(receipt.read_text())
-        if (current.get("tag") == tag and current.get("target") == target
-                and current.get("repository") == repository):
-            try:
+        try:
+            current = json.loads(receipt.read_text())
+            if not isinstance(current, dict):
+                raise ValueError("Codex Voice installation receipt must be an object")
+            if (current.get("tag") == tag and current.get("target") == target
+                    and current.get("repository") == repository):
                 verify_package(destination, target, tag)
-            except (ValueError, OSError, KeyError, json.JSONDecodeError,
-                    subprocess.SubprocessError):
-                print("Existing Codex Voice package failed verification; reinstalling")
-            else:
                 print(f"Codex Voice already installed: {tag} ({target})")
                 return False
+        except (ValueError, OSError, KeyError, subprocess.SubprocessError):
+            print("Existing Codex Voice package or receipt failed verification; reinstalling")
 
     archive_name = f"codex-voice-{target}.tar.gz"
     base_url = base_url or f"https://github.com/{repository}/releases/download/{tag}"
@@ -196,7 +196,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--release-tag", required=True)
     parser.add_argument("--destination", type=Path,
-                        default=Path.home() / ".local/share/codex-voice-experiment")
+                        default=Path.home() / ".local/share/codex-voice")
     args = parser.parse_args()
     install(args.release_tag, args.destination)
 

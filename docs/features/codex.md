@@ -278,11 +278,23 @@ Chezmoi installs the
 [stdlib-only installer](../../home/dot_local/bin/executable_codex-voice-install)
 and the [after-hook](../../home/run_after_45-install-codex-voice.sh.tmpl).
 The hook installs the macOS-architecture-specific release into
-`~/.local/share/codex-voice-experiment/` and preserves the normal `codex`.
+`~/.local/share/codex-voice/` and preserves both the normal `codex`
+and the separate development builds in `~/.local/share/codex-voice-experiment/`.
 The release tarball is SHA-256 checked against the release's
 `SHA256SUMS`, inspected for unsafe paths, validated against the embedded
 voice package manifest, and installed with a rollback of the preceding
 package. Reapplying the same tag skips the download.
+
+To verify the actual release with Chezmoi in an isolated HOME on macOS
+(without changing the current Codex installation), run:
+
+```sh
+RUN_CODEX_VOICE_SYSTEM_E2E=1 poetry run pytest -q tests/integration/test_codex_voice_system.py
+```
+
+This checks the download, package integrity, launcher, voice helper and
+repeated installation. Microphone capture, playback and interactive model
+selection still require a manual voice session.
 
 After applying the pinned release:
 

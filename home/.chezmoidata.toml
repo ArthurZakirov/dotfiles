@@ -7,4 +7,4 @@
     # Enable only after the first packaged release passes independent CI checks.
     # The tag must refer to a published, tested release in ArthurZakirov/codex.
     enabled = false
-    tag = "voice-v0.166.0-r1"
+    tag = "voice-v0.166.0-r4"

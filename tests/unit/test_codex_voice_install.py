@@ -123,6 +123,36 @@ def test_rejected_release_does_not_replace_previous_installation(
     assert not (destination / "bin/codex").exists()
 
 
+@pytest.mark.parametrize("damaged_receipt", [
+    "{",
+    "null",
+    "[]",
+    '"unexpected string"',
+    "42",
+])
+def test_damaged_install_receipt_triggers_reinstallation(
+    tmp_path, installer, damaged_receipt
+):
+    # Arrange: keep the installed package but damage only its receipt.
+    release = release_fixture(tmp_path)
+    destination = tmp_path / "installation"
+    installer(TAG, destination, base_url=release.as_uri(), target=TARGET)
+    receipt = destination / "codex-voice-install.json"
+    receipt.write_text(damaged_receipt)
+
+    # Act: the installer must repair the installation instead of aborting.
+    changed = installer(TAG, destination, base_url=release.as_uri(), target=TARGET)
+
+    # Assert: the replacement package is valid and the old one is backed up.
+    assert changed is True
+    assert json.loads(receipt.read_text())["tag"] == TAG
+    assert (destination / "bin/codex").is_file()
+    backups = list(tmp_path.glob("installation.backup-*"))
+    assert len(backups) == 1
+    assert (backups[0] / "codex-voice-install.json").read_text() == damaged_receipt
+    assert installer(TAG, destination, base_url=release.as_uri(), target=TARGET) is False
+
+
 def test_invalid_version_is_rejected_before_download(tmp_path, installer):
     # Arrange
     destination = tmp_path / "installation"
