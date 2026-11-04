@@ -10,7 +10,14 @@ determines which host is used; no separate GitHub/Bitbucket hotkeys are needed.
 | Context | Shortcut | Result |
 | --- | --- | --- |
 | VS Code, inside a Git worktree | `Ctrl+P`, `Ctrl+R` | Find its open PR and open it in Chrome |
-| Chrome, on a GitHub/Bitbucket PR or branch page | `Ctrl+Option+Cmd+V` | Open/create the source branch's linked worktree in VS Code |
+| Chrome or an installed Chrome web app, on a GitHub/Bitbucket PR or branch page | `Ctrl+Option+Cmd+V` | Open/create the source branch's linked worktree in VS Code |
+
+For a normal Chrome tab, Hammerspoon reads the front Chrome window through
+AppleScript (Automation permission). For installed Chrome web apps such as
+GitHub.app, Hammerspoon captures the app at keypress and reads its document URL
+through macOS Accessibility. It never substitutes an unrelated Chrome tab when
+the web-app URL is unavailable. Hammerspoon needs Accessibility permission for
+that app.
 
 The VS Code global task **Git: Open Current Pull Request in Chrome** calls
 `~/.local/bin/git-pr open-pr --path ${workspaceFolder}`. The companion task
