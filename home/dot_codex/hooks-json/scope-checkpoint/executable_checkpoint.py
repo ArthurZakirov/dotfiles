@@ -92,18 +92,40 @@ def assessment(args: argparse.Namespace) -> int:
 
 
 def allowed_record_command(command: str) -> bool:
-    # Never exempt a compound shell command; the exemption is only for the recorder itself.
-    if re.search(r"[;&|><\n\x60]|\$\(", command):
+    """Allow a standalone checkpoint CLI invocation, never unrelated shell work.
+
+    Quoted assessment punctuation is data, not a command separator.
+    A leading cd into an absolute workspace is permitted because agents often
+    prefix terminal calls with the working directory.
+    """
+    if any(token in command for token in ("\n", "\r", "`", "$(")):
         return False
     try:
-        parts = shlex.split(command)
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>()")
+        lexer.whitespace_split = True
+        parts = list(lexer)
     except ValueError:
         return False
-    if len(parts) < 3 or Path(parts[0]).name not in ("python", "python3", "python3.11", "py"):
+
+    if len(parts) >= 4 and parts[0] == "cd" and parts[2] == "&&":
+        if not Path(parts[1]).is_absolute():
+            return False
+        parts = parts[3:]
+
+    if len(parts) < 3 or Path(parts[0]).name not in (
+        "python", "python3", "python3.11", "python3.12", "python3.13",
+        "python3.14", "py",
+    ):
         return False
     if Path(parts[1]).expanduser().resolve() != Path(__file__).resolve():
         return False
-    return parts[2] in ("record", "status", "disable")
+    if parts[2] not in ("record", "status", "disable"):
+        return False
+    # Reject unquoted shell operators, including after the recorder command.
+    return not any(
+        part in (";", ";;", "&", "&&", "|", "||", "|&", ">", ">>",
+                 "<", "<<", "(", ")") for part in parts[3:]
+    )
 
 
 def is_read_only_bash(command: str) -> bool:

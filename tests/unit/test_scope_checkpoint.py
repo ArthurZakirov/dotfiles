@@ -164,6 +164,71 @@ def test_native_exec_command_with_missing_or_invalid_cmd_is_not_exempt(tmp_path)
         assert blocked["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
+@pytest.mark.parametrize(
+    ("tool", "input_key"),
+    [
+        pytest.param("Bash", "command", id="bash"),
+        pytest.param("exec_command", "cmd", id="codex-native"),
+    ],
+)
+def test_recorder_with_shell_quoted_assessment_and_workdir_is_not_blocked(
+    tmp_path, tool, input_key,
+):
+    # Regression: quoted punctuation was previously rejected before recording.
+    run_script(tmp_path, "enable")
+    reason = "Necessary; tests && reviews | dependencies"
+    recorder = (
+        f"python3 {SCRIPT} record --session-id {SESSION} --turn-id {TURN} "
+        f"--cwd {CWD} --baseline 'Accepted endpoint' "
+        f"--change 'Add targeted regression test' --source 'review thread' "
+        f"--classification routine --reason '{reason}' "
+        f"--human-effort '20 minutes' --remaining-budget unknown "
+        f"--decision proceed"
+    )
+    for command in (recorder, f"cd /workspace && {recorder}"):
+        request = event("PreToolUse", tool=tool)
+        request["tool_input"] = {input_key: command}
+        assert result(tmp_path, request) == {}
+
+    saved = run_script(
+        tmp_path, "record", "--session-id", SESSION, "--turn-id", TURN,
+        "--cwd", CWD, "--baseline", "Accepted endpoint",
+        "--change", "Add targeted regression test", "--source", "review thread",
+        "--classification", "routine", "--reason", reason,
+        "--human-effort", "20 minutes", "--remaining-budget", "unknown",
+        "--decision", "proceed",
+    )
+    assert saved.returncode == 0, saved.stderr
+    assert result(tmp_path, event("PreToolUse")) == {}
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    ["; touch /tmp/unsafe", "&& touch /tmp/unsafe", "| cat", "> /tmp/unsafe",
+     "\n touch /tmp/unsafe", "--reason \"$(touch /tmp/unsafe)\"",
+     '--reason "`touch /tmp/unsafe`"'],
+)
+def test_recorder_exemption_rejects_shell_chains(tmp_path, suffix):
+    run_script(tmp_path, "enable")
+    safe = (
+        f"python3 {SCRIPT} record --reason 'necessary; harmless && literal' "
+        f"--session-id {SESSION}"
+    )
+    request = event("PreToolUse", tool="exec_command")
+    request["tool_input"] = {"cmd": f"cd /workspace && {safe}{suffix}"}
+    blocked = result(tmp_path, request)
+    assert blocked["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_recovery_disable_is_not_blocked_by_checkpoint_itself(tmp_path):
+    run_script(tmp_path, "enable")
+    request = event("PreToolUse", tool="exec_command")
+    request["tool_input"] = {"cmd": f"python3 {SCRIPT} disable"}
+    assert result(tmp_path, request) == {}
+    assert run_script(tmp_path, "disable").returncode == 0
+    assert result(tmp_path, event("PreToolUse")) == {}
+
+
 def test_unrecognized_commands_are_checked_conservatively(tmp_path):
     run_script(tmp_path, "enable")
     assert result(tmp_path, event("PreToolUse", tool="Bash", command="python3 -c 'print(1)'"))["hookSpecificOutput"]["permissionDecision"] == "deny"
