@@ -5,7 +5,7 @@ Use this guide when building, checking, or testing Rust projects, including Code
 ## 1. Inspect before compiling
 
 1. Check the Git worktree and workspace root (`git rev-parse --show-toplevel` and `Cargo.toml`); inspect `rust-toolchain.toml`, `.cargo/config.toml`, `CARGO_TARGET_DIR`, and any documented build scripts. Do not confuse `rustup` (toolchain selection) with `cargo` (build driver) or `rustc` (compiler).
-2. Check whether an equivalent build is **already running** (`ps`), whether the requested executable already exists, and where prior `target/debug` / `target/release` artifacts and incremental caches live. Do not launch competing builds, restart an expensive build merely to change its target directory, or delete a usable cache.
+2. Check whether an equivalent build is **already running** (`ps`), whether the requested executable already exists **and reflects the current source**, and where prior `target/debug` / `target/release` artifacts and incremental caches live. Inspect existing repository-specific target directories **before choosing or creating a new one**. Do not launch competing builds, restart an expensive build merely to change its target directory, or delete a usable cache.
 3. Confirm selected toolchain with `rustup toolchain list` and `rustup which cargo` / `rustup which rustc` **from the Rust workspace**. If `cargo` is missing from `PATH` but `rustup` works, use the toolchain's real executables; do not declare Rust unavailable or install another toolchain without evidence.
 4. Check disk space before a large cold build. Cargo's default `target/` is relative to the workspace, so sibling worktrees ordinarily have separate caches. An existing **installed `codex` binary is not a Cargo compilation cache**; likewise, different toolchains, profiles, targets, or compile flags may cause partial recompilation.
 
@@ -35,7 +35,7 @@ rustc_bin="$(rustup which rustc)"
 PATH="$(dirname "$cargo_bin"):$PATH" RUSTC="$rustc_bin" "$cargo_bin" --version
 ```
 
-Use the same `PATH` and `RUSTC` assignments for the actual `cargo build`, `cargo check`, or `cargo test` command. This also works when the rustup shims in `~/.cargo/bin` are absent but the toolchain binaries exist. If `rustup which` reports a missing pinned toolchain, diagnose before installing anything.
+Use the same `PATH` and `RUSTC` assignments for the actual `cargo build`, `cargo check`, or `cargo test` command; invoke `"$cargo_bin"` rather than assuming a `cargo` shim exists. This also works when the rustup shims in `~/.cargo/bin` are absent but the toolchain binaries exist. If `rustup which` reports a missing pinned toolchain, diagnose before installing anything.
 
 ## 4. Validate locally before releasing
 
@@ -49,8 +49,10 @@ Use the narrowest test that answers the current question, followed by broader ch
 For Codex, the CLI executable is the `codex` binary of Cargo package `codex-cli`, built from the `codex-rs` workspace:
 
 ```sh
-# With the correct toolchain and CARGO_TARGET_DIR already selected:
-cargo build -p codex-cli --bin codex
+# Run in codex-rs with CARGO_TARGET_DIR already selected and inspected:
+cargo_bin="$(rustup which cargo)"
+rustc_bin="$(rustup which rustc)"
+PATH="$(dirname "$cargo_bin"):$PATH" RUSTC="$rustc_bin" "$cargo_bin" build -p codex-cli --bin codex
 # For the local word-faithful speech path:
 CODEX_REALTIME_VERBATIM_SPEECH=1 "$CARGO_TARGET_DIR/debug/codex" --no-daemon
 ```
