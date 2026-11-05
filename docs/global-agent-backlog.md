@@ -9,7 +9,12 @@ stored in this public Dotfiles Git repository.
 ## Open and use
 
 - Press **Option-K** anywhere to toggle the dedicated Hammerspoon Kanban window.
-  This is a WebKit window, not another Chrome tab.
+  This is a WebKit window, not another Chrome tab. It opens on the
+  **DELL U3225QE** when connected (otherwise the macOS main display),
+  and is repositioned every time it reopens.
+- Press **Command-K** while the Backlog window is focused to search tasks.
+  This search shortcut is enabled only while that window has focus; Command-K
+  in other applications keeps its original behavior.
 - The local web service listens on `http://127.0.0.1:6420`. The managed
   `com.arthur.agent-backlog` LaunchAgent starts it at login and restarts it if
   it exits; `chezmoi apply` loads the agent during an active GUI session.

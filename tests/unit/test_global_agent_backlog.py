@@ -71,3 +71,17 @@ def test_launch_agent_uses_clean_environment_and_stable_port() -> None:
     assert args[0:2] == ["/usr/bin/env", "-i"]
     assert "browser" in args and "6420" in args and "--no-open" in args
     assert all("LANGSMITH" not in (value or "") for value in args)
+
+
+def test_hammerspoon_board_pins_preferred_display_and_scopes_search_hotkey() -> None:
+    # Assert the macOS WebView integration preserves the two user-facing contracts.
+    source = (ROOT / "home/dot_hammerspoon/modules/agent_backlog.lua").read_text()
+    assert 'PREFERRED_MONITOR = "DELL U3225QE"' in source
+    assert "hs.screen.find(PREFERRED_MONITOR) or hs.screen.mainScreen()" in source
+    assert "board:frame(rect)" in source
+    assert "window:moveToScreen(screen, false, true, 0)" in source
+    assert ":allowTextEntry(true)" in source
+    assert 'hs.hotkey.new({ "cmd" }, "k", focusSearch)' in source
+    assert 'action == "focusChange"' in source
+    assert "searchHotkey:enable()" in source
+    assert "searchHotkey:disable()" in source
