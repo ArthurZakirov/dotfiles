@@ -143,9 +143,38 @@ For every feature, consider fresh install, existing files, upgrade, repeated app
    ```
 
    Do not regenerate snapshots merely to silence a failing test. These tests do not apply configuration to your Mac.
-4. After opening the PR in Step 5, check the [GitHub Actions workflow](../.github/workflows/shell.yml). Confirm both profile jobs and fresh-home jobs pass. Do **not** run the fresh-home provisioning tests on an existing Mac.
+4. After opening the PR in Step 5, check the [GitHub Actions workflow](../.github/workflows/shell.yml). Confirm `ci-sanity` and all affected system jobs pass; unrelated jobs should be marked skipped. To verify every job, use the manual workflow trigger. Do **not** run the fresh-home provisioning tests on an existing Mac.
 
 For testing architecture and CI coverage, see [Architecture](architecture.md#testing-and-validation).
+
+### GitHub Actions: selective CI
+
+The [shell workflow](../.github/workflows/shell.yml) starts a cheap Ubuntu
+`ci-sanity` check on every PR and push to `main`. This validates shell syntax,
+documentation contracts, and the selective-CI decision tests.
+
+Expensive macOS and real GUI/E2E jobs are selected by
+[`src/ci/select_jobs.py`](../src/ci/select_jobs.py) from the actual changed
+files. The selector encodes direct dependencies (for example, a change to
+`executable_pysetup` also triggers Git-review integration tests). Changes limited
+to `README.md`, `docs/**`, or repository-local `.vscode/**` run only
+`ci-sanity`. Unrecognized paths, shared dependencies, CI changes, and changes
+to the selector itself **run all system jobs**, rather than risking a false
+negative. A diff that cannot be established or is truncated also runs all
+jobs.
+
+To check the decision table locally:
+
+```sh
+python3 -m pytest -q tests/unit/test_ci_select_jobs.py
+```
+
+To run every CI job intentionally, start **Validate Mac shell profiles** using
+GitHub Actions' **Run workflow** button (`workflow_dispatch`). PR supersessions
+cancel previous PR runs; pushes to `main` are not cancelled. When introducing
+a new production component or E2E dependency, extend the classifier and its
+tests in the same PR. Do not add broad skip rules without evidence of
+independence.
 
 ### Step 5 — Review and open a pull request
 
