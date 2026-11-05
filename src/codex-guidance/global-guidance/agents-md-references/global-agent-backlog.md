@@ -26,11 +26,75 @@ project-local board.
   e.g. `Codex CLI session: <actual-id>; resume: codex resume <actual-id>`,
   or an actual ChatGPT/Claude chat permalink. Do not fabricate IDs or
   imply a chat can be reopened with one click when the tool does not support it.
-- Keep tasks in To Do/In Progress when work remains or is blocked. Only
-  set Done after the acceptance criteria have been verified and the user
-  has accepted the result or has explicitly delegated resolution authority.
 - Do not put secrets or unnecessary employer/customer data in public Git
   sources; the task store itself is deliberately local and not committed.
 - No tool-specific hooks are part of this integration. Since text guidance
   cannot enforce execution in every agent runtime, report missed updates
   rather than representing them as synchronized.
+
+## Kanban status lifecycle
+
+The **only** column names are `To Do`, `In Progress`, `Pushed`, `PR`,
+`Merged`, `STG`, `PRD`, and `Done`. Do not introduce
+machine-specific columns, deployment-versus-validation columns, or extra
+PR statuses. Keep the same short names in the UI on both Mac profiles.
+
+- `To Do`: Captured but not being implemented.
+- `In Progress`: Implementation is active; agents should push changes promptly
+  without waiting for the user to review code.
+- `Pushed`: Changes exist on the remote, but the PR is not demonstrably
+  merge-ready (e.g., CI failed/pending, open blocking review threads,
+  required approvals missing, or PR not opened). A PR URL alone does not
+  advance the task.
+- `PR`: There is a real PR **ready to merge**, with required checks passing,
+  no unresolved blocking review comments, and required approvals. Never
+  advance here on a guess or merely because a PR exists.
+- `Merged`: The relevant change has actually been merged; this does not mean
+  deployed or accepted.
+- `STG`: Staging rollout and any staging validation share one column.
+  For private Dotfiles work this means `chezmoi apply` on the **private Mac**;
+  for professional projects it refers to the actual staging environment.
+  Optional behavioral acceptance testing is tracked independently.
+- `PRD`: Production rollout and any production validation share one column.
+  For private Dotfiles work this means deployment on the **work Mac**; the
+  optional behavioral acceptance check is tracked independently. The agent on
+  the private Mac must
+  **never inspect** the work Mac to establish this: rely solely on the user's
+  explicit report. For professional projects this means actual production
+  deployment and post-deployment observation/acceptance.
+- `Done`: The required final acceptance was explicitly confirmed, or verified
+  under a previously delegated completion rule. Neither merging nor
+  deploying on its own is sufficient.
+
+`STG` and `PRD` describe the lifecycle phase, including deployment and
+validation activity; use comments/checklists for in-phase progress rather
+than new columns. Manual behavioral testing is optional and never gates a
+workflow transition. Do not assume that a user's personal change was deployed on the
+work Mac, that a professional deployment occurred, or that human review
+passed without evidence. For tasks not involving Git or deployment, do not
+invent commits, PRs, or rollout requirements; record the actual applicable
+completion criteria.
+
+## Independent confirmation labels
+
+Two optional, independent **positive-only** labels are available on task cards
+at **any** workflow stage. These describe the current change, not its CI
+status. Never add columns for these properties.
+
+- `✅ Reviewed`: The user explicitly confirmed that they **personally**
+  inspected the relevant code/diff (for example in VS Code). An agent's own
+  code review, CI success or a PR approval cannot establish this fact.
+- `✅ Behavior tested`: The user explicitly confirmed that they tried the
+  actual implemented behavior and it worked as intended (for example they
+  invoked Option-K and verified display positioning and search). Unit tests,
+  CI, an agent-run check or `chezmoi apply` alone do **not** establish this.
+
+A missing label means **unconfirmed**, not failed. Either or both can be
+skipped without blocking push, PR, merge, STG, PRD or Done. Only set a label
+on clear user confirmation. Use `agent-backlog task edit <task-id> --add-label
+"✅ Reviewed"` or `agent-backlog task edit <task-id> --add-label "✅ Behavior
+tested"`, preserving unrelated task labels. A failed manual behavior test
+belongs in a task comment, not in a positive label. If later substantive
+changes invalidate a previous check, clear the stale label using
+`--remove-label` and ask for confirmation again. Never silently carry an old
+checkmark onto a changed implementation.
