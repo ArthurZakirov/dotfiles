@@ -250,8 +250,8 @@ builds the app from the workspace's pinned Rust toolchain and the voice helper
 and native runtime from the repository's existing Bazel/voice packaging
 pipeline. It validates native library receipts, build commits, package hashes
 and target architecture before publishing a **prerelease** for Apple Silicon
-and Intel Macs. The packaging process runs in GitHub Actions; fresh Macs do
-not need Rust, Cargo, Bazel or GStreamer installed separately.
+macOS. The packaging process runs in GitHub Actions; fresh Macs do not need
+Rust, Cargo, Bazel or GStreamer installed separately.
 
 Preview artifacts are **not Apple Developer ID signed or notarized**. They
 are unsuitable for managed/public distribution without a signing and Gatekeeper
@@ -267,7 +267,10 @@ release version and the installation toggle. To check them:
 grep -A4 '^\[codexVoice\]' home/.chezmoidata.toml
 ```
 
-The verified `voice-v0.166.0-r4` release is **enabled by default**.
+The release selected by `codexVoice.tag` is **enabled by default**.
+The [checked-in configuration](../../home/.chezmoidata.toml) is the source of
+truth for the currently verified version; this guide deliberately does not
+duplicate a release tag that would become stale on the next upgrade.
 A single `chezmoi apply` installs the pinned release if missing and verifies
 an existing installation before skipping it. This applies to both personal
 and professional profiles. Set `codexVoice.enabled = false` only to opt out
