@@ -34,24 +34,47 @@ stored in this public Dotfiles Git repository.
 
 ## Kanban columns
 
-The same nine columns appear on both Mac profiles: `To Do`, `In Progress`,
-`Local Review`, `Pushed`, `PR`, `Merged`, `STG`, `PRD`, and `Done`. `PR` means
+The same eight columns appear on both Mac profiles: `To Do`, `In Progress`,
+`Pushed`, `PR`, `Merged`, `STG`, `PRD`, and `Done`. `PR` means
 **merge-ready**, not merely an opened PR: CI must pass, blocking review
 threads must be resolved, and required approvals must be present. `Pushed`
 contains remote changes that are not yet merge-ready.
 
-Both rollout stages combine **deployment and validation**. In a private
-Dotfiles workflow, `STG` is applying and validating the configuration on the
-private Mac; `PRD` is the corresponding rollout and user-confirmed validation
-on the professional Mac. The agent on the private Mac must not inspect the
+Both rollout stages group **deployment and optional validation**. In a
+private Dotfiles workflow, `STG` means applying the configuration on the
+private Mac; `PRD` means deployment on the professional Mac, confirmed by the
+user. Behavioral acceptance can happen at either point or be skipped; it is
+tracked independently. The agent on the private Mac must not inspect the
 professional Mac. For actual company projects, `STG` and `PRD` correspond
 to the real staging and production environments. The machine-specific
 interpretation is agent guidance, **not a column name**. `Done` requires
 final acceptance, not merely a merge or rollout.
 
-`chezmoi apply` manages the workflow-column configuration while preserving
-all existing task files. This does not implement agent-specific hooks or
-automatic observation of manual reviews/deployments.
+## Optional confirmation labels
+
+Two visible checkmark labels are available on task cards at **any stage**:
+
+- `✅ Reviewed` — you personally inspected the code or diff in VS Code.
+- `✅ Behavior tested` — you exercised the functionality and confirmed it
+  behaves as intended (automated unit/CI tests do not count).
+
+Absence means **not yet confirmed**, not failed. You may skip both: neither
+blocks pushing, PR readiness, merge, deployment or completion. Agents must
+not infer a checkmark from successful CI, a push, a merge or their own tests.
+They only add it after your explicit confirmation. Clear a label if later
+code changes invalidate that earlier approval.
+
+To update a task manually while keeping its existing labels:
+
+```bash
+agent-backlog task edit AGENT-1 --add-label "✅ Reviewed"
+agent-backlog task edit AGENT-1 --add-label "✅ Behavior tested"
+agent-backlog task edit AGENT-1 --remove-label "✅ Behavior tested"
+```
+
+`chezmoi apply` manages the workflow columns and the available label choices
+while preserving all existing task files and user labels. This does not
+implement agent-specific hooks or automated observation of user actions.
 
 ## Deployment and troubleshooting
 

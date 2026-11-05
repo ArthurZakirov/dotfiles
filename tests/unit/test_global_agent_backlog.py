@@ -104,6 +104,7 @@ def test_shared_workflow_columns_preserve_tasks_across_repeated_apply(tmp_path: 
     config.write_text(
         'project_name: "Mac Agent Work"\n'
         'statuses: ["To Do", "In Progress", "Done"]\n'
+        'labels: []\n'
         'filesystem_only: true\n'
     )
     script = ROOT / "home/run_after_55-configure-agent-backlog-statuses.sh"
@@ -116,6 +117,16 @@ def test_shared_workflow_columns_preserve_tasks_across_repeated_apply(tmp_path: 
 
     # Assert: names are concise and consistent, and task data is untouched.
     assert first == config.read_text()
-    assert 'statuses: ["To Do", "In Progress", "Local Review", "Pushed", "PR", "Merged", "STG", "PRD", "Done"]' in first
+    assert 'statuses: ["To Do", "In Progress", "Pushed", "PR", "Merged", "STG", "PRD", "Done"]' in first
+    assert 'labels: ["✅ Reviewed", "✅ Behavior tested"]' in first
     assert 'filesystem_only: true' in first
+    assert task.read_text() == "---\nid: AGENT-1\nstatus: In Progress\n---\n"
+
+    # User-defined label vocabulary survives future chezmoi applies.
+    config.write_text(first.replace(
+        'labels: ["✅ Reviewed", "✅ Behavior tested"]',
+        'labels: ["custom:important", "✅ Reviewed", "✅ Behavior tested"]',
+    ))
+    subprocess.run(["bash", str(script)], env=environment, check=True, capture_output=True, text=True)
+    assert 'labels: ["custom:important", "✅ Reviewed", "✅ Behavior tested"]' in config.read_text()
     assert task.read_text() == "---\nid: AGENT-1\nstatus: In Progress\n---\n"
