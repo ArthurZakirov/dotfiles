@@ -2,11 +2,17 @@
 
 # 🔎 Code evidence and VS Code navigation
 
-Use this procedure when responding to a question about repository code.
+Use this procedure only when the global anchoring rule selects editor navigation or the user explicitly requests it. Citing repository code alone does not trigger navigation.
 
-## Establish the evidence location
+## Decide whether navigation helps
 
-1. Verify the relevant repository or Git worktree, its current revision, and the exact file and valid line number supporting the answer. Do not guess a similarly named checkout or location.
-2. When local VS Code is available and the user has not requested otherwise, proactively open the **first relevant location** on the user's computer. For the first target in a repository, run `code --new-window "$repo" --goto "$file:$line"` using verified absolute paths. For a subsequent location in the same verified VS Code window, use `code --goto "$file:$line"`. If the active editor workspace is uncertain or the repository changes, use a new window.
-3. Check the editor command's exit status; when a suitable UI inspection tool is available, verify that VS Code actually displays the intended file and line. A successful CLI exit by itself does not establish visible navigation. If local editor control is unavailable, give the user one exact, manually accessible path and line instead.
-4. Ground every code claim in the inspected source and make its verified location directly accessible to the user.
+1. Infer the user's likely viewing context from the conversation, without inspecting open windows, editor tabs, macOS activity, or logs. A question or critique about a specific function, class, or design normally implies the user already has that code in front of them. **Do not open or refocus VS Code for that location**, even if you looked it up to answer. Give the exact file and line in text.
+2. Navigate when the user asks where code lives, explicitly asks to open it, or the answer uncovers a relevant location the user is unlikely to be viewing (such as a caller, dependency, implementation, or root cause elsewhere). A why-question about familiar code may justify opening this *other* location, not reopening the code named in the question.
+3. When several locations matter, select only those whose automatic display materially reduces the user's navigation effort; don't open every cited file. If uncertain whether a location is already visible, prefer a precise text reference over an intrusive editor action. Do not run extra environment checks just to decide.
+
+## Open a useful location
+
+1. Verify the repository or worktree, current revision, exact file, and valid line number. Never guess a similarly named checkout or location.
+2. When local VS Code is available, navigate only to the selected location using verified absolute paths. Prefer `code --reuse-window --goto "$file:$line"` when the intended workspace is known, avoiding duplicate windows. Use `code --new-window "$repo" --goto "$file:$line"` only when a distinct repository/worktree window is necessary or the user explicitly requests one. Do not create a new window merely because editor state is uncertain; fall back to a text locator instead.
+3. Check the command's exit status and verify visible navigation if a suitable UI inspection tool is already available; do not add UI inspection solely to decide whether navigation was necessary. If editor control is unavailable, provide the exact file and line instead.
+4. Keep every code claim grounded in inspected source and make its location accessible in the response, whether or not editor navigation occurred.
