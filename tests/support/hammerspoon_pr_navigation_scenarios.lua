@@ -6,6 +6,8 @@ if scenario == "github_branch" then
   url = "https://github.com/ArthurZakirov/dotfiles/tree/main"
 elseif scenario == "bitbucket_pr" or scenario == "pwa_bitbucket_pr" then
   url = "https://bitbucket.org/team/app/pull-requests/12"
+elseif scenario == "bitbucket_comment" or scenario == "pwa_bitbucket_comment" then
+  url = "https://bitbucket.org/team/app/pull-requests/12#comment-8192"
 end
 
 local running = scenario ~= "chrome_stopped"

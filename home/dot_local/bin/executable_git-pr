@@ -11,7 +11,7 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
@@ -328,10 +328,32 @@ def open_chrome(url: str) -> None:
     command(["/usr/bin/open", "-a", "Google Chrome", url])
 
 
+def comment_file(target: Path, relative_path: str) -> Path:
+    """Allow only an existing regular file within the selected Git worktree."""
+    if not isinstance(relative_path, str) or not relative_path or "\x00" in relative_path:
+        raise NavigationError("Bitbucket returned an invalid comment file path.")
+    path = PurePosixPath(relative_path)
+    if path.is_absolute() or ".." in path.parts or "\\" in relative_path:
+        raise NavigationError("Bitbucket comment path escapes the selected worktree.")
+    resolved = (target / relative_path).resolve()
+    if not resolved.is_relative_to(target.resolve()):
+        raise NavigationError("Bitbucket comment path escapes the selected worktree.")
+    if not resolved.is_file():
+        raise NavigationError("The commented file is no longer present in the source worktree.")
+    return resolved
+
+
 def open_local(url: str, config: dict, root: Path, *, print_only: bool) -> Path:
+    location = None
+    if urlsplit(url).hostname == "bitbucket.org":
+        try:
+            location = bitbucket.comment_location(url)
+        except bitbucket.NavigationError as exc:
+            raise NavigationError(str(exc)) from exc
     identity, branch = parse_url(url)
     repo, remote = ensure_repo(root, identity, config)
     target = ensure_worktree(repo, remote, branch)
+    selected_file = comment_file(target, location[0]) if location else None
     parsed = urlsplit(url)
     parts = parsed.path.strip("/").split("/")
     if (len(parts) >= 4
@@ -346,7 +368,13 @@ def open_local(url: str, config: dict, root: Path, *, print_only: bool) -> Path:
         code = shutil.which("code")
         if not code:
             raise NavigationError("VS Code command 'code' is not installed.")
-        command([code, "--new-window", str(target)])
+        argv = [code, "--new-window", str(target)]
+        if selected_file:
+            if location[1] is not None:
+                argv.extend(["--goto", f"{selected_file}:{location[1]}"])
+            else:
+                argv.append(str(selected_file))
+        command(argv)
     return target
 
 

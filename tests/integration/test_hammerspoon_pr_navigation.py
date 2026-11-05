@@ -22,6 +22,8 @@ pytestmark = pytest.mark.skipif(LUA is None, reason="LuaJIT is required for Hamm
         pytest.param("chrome_background", id="chrome-background-after-key-release"),
         pytest.param("github_branch", id="github-branch-from-background"),
         pytest.param("bitbucket_pr", id="bitbucket-pr-from-background"),
+        pytest.param("bitbucket_comment", id="bitbucket-comment-permalink"),
+        pytest.param("pwa_bitbucket_comment", id="bitbucket-pwa-comment-permalink"),
         pytest.param("chrome_stopped", id="chrome-not-running"),
         pytest.param("chrome_unreadable", id="browser-tab-unreadable"),
         pytest.param("pwa_github", id="github-installed-chrome-app"),
