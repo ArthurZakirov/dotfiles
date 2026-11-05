@@ -16,4 +16,5 @@ brew "zstd" # binary: zstd; decompress archived Codex rollouts
 cask "codex" # binary: codex
 cask "claude-code" # binary: claude
 brew "node" # binary: node
+brew "backlog-md" # binary: backlog
 brew "openclaw/tap/peekaboo" # binary: peekaboo

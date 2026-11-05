@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Mac-wide Backlog.md command; intentionally independent of the current Git repository.
+set -euo pipefail
+umask 077
+
+root="${AGENT_BACKLOG_DIR:-$HOME/.local/share/agent-backlog}"
+if ! command -v backlog >/dev/null 2>&1; then
+  printf 'Backlog.md is missing. Install the shared Homebrew dependency (backlog-md).\n' >&2
+  exit 127
+fi
+
+if [[ ! -f "$root/backlog/config.yml" && ! -f "$root/.backlog/config.yml" && ! -f "$root/backlog.config.yml" ]]; then
+  mkdir -p "$root"
+  (
+    cd "$root"
+    backlog init "Mac Agent Work" --defaults --no-git --integration-mode none \
+      --task-prefix AGENT --web-port 6420 --auto-open-browser false
+  ) >&2
+fi
+
+cd "$root"
+exec backlog "$@"
