@@ -47,11 +47,18 @@ left-to-right screen order (then top-to-bottom).
 | Claude | `Ctrl+Alt+P` | Session actions menu |
 | Claude | `Ctrl+Alt+D` or double-tap right `Cmd` | Toggle dictation |
 | Claude | `Ctrl+Alt+H` | Interactive action palette |
+| All apps | `Option+1` | Toggle Codex CLI Realtime Voice (`F8`) in the last focused Warp window |
 | All apps | `Hyper+Ä` | SteelSeries audio and microphone check |
 | All apps | `Hyper+R` | Reload Hammerspoon configuration |
 
 Claude shortcuts activate only when Claude is frontmost. The ChatGPT shortcut
 activates only when ChatGPT is frontmost and the input source is German/QWERTZ.
+The global `Option+1` hotkey briefly focuses the last used Warp window,
+sends `F8` after Option is released, then restores the previous app and window.
+If multiple Warp windows are open, focus the intended one once before using it.
+The current Warp tab must contain the Codex CLI session; Hammerspoon cannot
+identify the Codex tab. No tmux or Codex modification is required.
+
 The audio check is available on **both** profiles; its expected device names
 are defined in the shared source, so a Mac without those devices can show
 device warnings without preventing the rest of Hammerspoon from working.

@@ -15,6 +15,7 @@ def test_full_hammerspoon_configuration_is_shared_across_profiles(profile, profi
     assert ".hammerspoon/init.lua" in managed
     assert ".hammerspoon/modules/displays.lua" in managed
     assert ".hammerspoon/modules/claude.lua" in managed
+    assert ".hammerspoon/modules/codex_voice.lua" in managed
     assert ".hammerspoon/modules/agents_freshness.lua" in managed
 
     audio_files = {
