@@ -9,8 +9,9 @@ local inFlight = false
 local function isWarpWindow(win)
   if not win or not win:id() then return false end
   local app = win:application()
+  -- A remembered window may be on another Space; hs.window.get(id)
+  -- only searches the current one, so the stored handle is authoritative.
   return app and app:bundleID() == WARP_BUNDLE and win:isStandard()
-    and hs.window.get(win:id()) ~= nil
 end
 
 -- Remember the user's intended Warp window, not an arbitrary terminal window.
@@ -50,12 +51,13 @@ local function toggleVoice()
   local originalWindow = hs.window.focusedWindow()
 
   local function restoreFocus()
-    if originalWindow and originalWindow:id()
-      and hs.window.get(originalWindow:id()) then
-      originalWindow:focus()
-    elseif originalApp then
-      originalApp:activate()
+    local restored = false
+    if originalWindow and originalWindow:id() then
+      -- The original window may now be on another Space too.
+      local ok, focused = pcall(function() return originalWindow:focus() end)
+      restored = ok and focused ~= nil and focused ~= false
     end
+    if not restored and originalApp then originalApp:activate() end
     inFlight = false
   end
 

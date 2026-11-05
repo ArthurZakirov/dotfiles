@@ -18,6 +18,7 @@ pytestmark = pytest.mark.skipif(LUAJIT is None, reason="LuaJIT is required")
     "scenario",
     [
         "editor_background",
+        "across_spaces",
         "already_in_warp",
         "duplicate",
         "warp_missing",

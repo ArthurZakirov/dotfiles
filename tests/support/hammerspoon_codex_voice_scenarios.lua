@@ -31,7 +31,7 @@ function warpApp:mainWindow()
   return warpWindow
 end
 function warpApp:allWindows()
-  if scenario == "no_terminal" then return {} end
+  if scenario == "no_terminal" or scenario == "across_spaces" then return {} end
   return { warpWindow }
 end
 state.frontApp, state.frontWindow = editorApp, editorWindow
@@ -39,7 +39,7 @@ if scenario == "already_in_warp" then
   state.frontApp, state.frontWindow = warpApp, warpWindow
 end
 
-local hotkey
+local hotkey, warpFocusObserver
 HammerspoonConfig = { afterModsReleased = function(fn) state.deferred = fn end }
 hs = {
   application = {
@@ -53,6 +53,9 @@ hs = {
     frontmostWindow = function() return state.frontWindow end,
     focusedWindow = function() return state.frontWindow end,
     get = function(id)
+      -- An existing window on a different Mission Control Space is not
+      -- returned by hs.window.get even though its handle can still focus it.
+      if scenario == "across_spaces" then return nil end
       if id == 88 and scenario ~= "no_terminal" then return warpWindow end
       if id == 99 then return editorWindow end
       return nil
@@ -60,7 +63,10 @@ hs = {
     filter = {
       windowFocused = "windowFocused",
       new = function()
-        return { subscribe = function() end }
+        return { subscribe = function(_, event, callback)
+          assert(event == "windowFocused")
+          warpFocusObserver = callback
+        end }
       end,
     },
   },
@@ -80,6 +86,10 @@ hs = {
 
 dofile(module)
 assert(type(hotkey) == "function")
+if scenario == "across_spaces" then
+  assert(type(warpFocusObserver) == "function")
+  warpFocusObserver(warpWindow) -- Focused in Warp before switching to VS Code Space.
+end
 hotkey()
 if scenario == "duplicate" then hotkey() end
 if state.deferred then
