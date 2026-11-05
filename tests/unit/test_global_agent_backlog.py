@@ -85,3 +85,37 @@ def test_hammerspoon_board_pins_preferred_display_and_scopes_search_hotkey() -> 
     assert 'action == "focusChange"' in source
     assert "searchHotkey:enable()" in source
     assert "searchHotkey:disable()" in source
+
+
+def test_shared_workflow_columns_preserve_tasks_across_repeated_apply(tmp_path: Path) -> None:
+    # Arrange: simulate an existing central Backlog.md board with a task.
+    home = tmp_path / "home"
+    bin_dir = home / ".local/bin"
+    bin_dir.mkdir(parents=True)
+    cli = bin_dir / "agent-backlog"
+    cli.write_text("#!/bin/sh\nexit 0\n")
+    cli.chmod(0o755)
+    root = home / ".local/share/agent-backlog/backlog"
+    tasks = root / "tasks"
+    tasks.mkdir(parents=True)
+    task = tasks / "agent-1 - Existing-task.md"
+    task.write_text("---\nid: AGENT-1\nstatus: In Progress\n---\n")
+    config = root / "config.yml"
+    config.write_text(
+        'project_name: "Mac Agent Work"\n'
+        'statuses: ["To Do", "In Progress", "Done"]\n'
+        'filesystem_only: true\n'
+    )
+    script = ROOT / "home/run_after_55-configure-agent-backlog-statuses.sh"
+    environment = {**os.environ, "HOME": str(home)}
+
+    # Act: first application and repeat are intentionally idempotent.
+    subprocess.run(["bash", str(script)], env=environment, check=True, capture_output=True, text=True)
+    first = config.read_text()
+    subprocess.run(["bash", str(script)], env=environment, check=True, capture_output=True, text=True)
+
+    # Assert: names are concise and consistent, and task data is untouched.
+    assert first == config.read_text()
+    assert 'statuses: ["To Do", "In Progress", "Local Review", "Pushed", "PR", "Merged", "STG", "PRD", "Done"]' in first
+    assert 'filesystem_only: true' in first
+    assert task.read_text() == "---\nid: AGENT-1\nstatus: In Progress\n---\n"

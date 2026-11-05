@@ -26,9 +26,48 @@ project-local board.
   e.g. `Codex CLI session: <actual-id>; resume: codex resume <actual-id>`,
   or an actual ChatGPT/Claude chat permalink. Do not fabricate IDs or
   imply a chat can be reopened with one click when the tool does not support it.
-- Keep tasks in To Do/In Progress when work remains or is blocked. Only
-  set Done after the acceptance criteria have been verified and the user
-  has accepted the result or has explicitly delegated resolution authority.
+## Kanban status lifecycle
+
+The **only** column names are `To Do`, `In Progress`, `Local Review`,
+`Pushed`, `PR`, `Merged`, `STG`, `PRD`, and `Done`. Do not introduce
+machine-specific columns, deployment-versus-validation columns, or extra
+PR statuses. Keep the same short names in the UI on both Mac profiles.
+
+- `To Do`: Captured but not being implemented.
+- `In Progress`: Implementation is active; code may still be local and unreviewed.
+- `Local Review`: Code is ready for the user's **explicit** review in VS Code.
+  Neither a clean diff nor an agent's statement proves human review.
+- `Pushed`: Changes exist on the remote, but the PR is not demonstrably
+  merge-ready (e.g., CI failed/pending, open blocking review threads,
+  required approvals missing, or PR not opened). A PR URL alone does not
+  advance the task.
+- `PR`: There is a real PR **ready to merge**, with required checks passing,
+  no unresolved blocking review comments, and required approvals. Never
+  advance here on a guess or merely because a PR exists.
+- `Merged`: The relevant change has actually been merged; this does not mean
+  deployed or accepted.
+- `STG`: Staging rollout **and** staging validation belong to this one column.
+  For private Dotfiles work it means `chezmoi apply` on the **private Mac**
+  followed by local acceptance testing. For professional projects it refers
+  to the project's actual staging environment and validation.
+- `PRD`: Production rollout **and** production validation belong to this one
+  column. For private Dotfiles work, this means deployment on the **work Mac**
+  followed by acceptance testing there. The agent on the private Mac must
+  **never inspect** the work Mac to establish this: rely solely on the user's
+  explicit report. For professional projects this means actual production
+  deployment and post-deployment observation/acceptance.
+- `Done`: The required final acceptance was explicitly confirmed, or verified
+  under a previously delegated completion rule. Neither merging nor
+  deploying on its own is sufficient.
+
+`STG` and `PRD` describe the lifecycle phase, including deployment and
+validation; use comments/checklists for in-phase progress rather than new
+columns. A task stays in that phase until the appropriate validation is
+confirmed. Do not assume that a user's personal change was deployed on the
+work Mac, that a professional deployment occurred, or that human review
+passed without evidence. For tasks not involving Git or deployment, do not
+invent commits, PRs, or rollout requirements; record the actual applicable
+completion criteria.
 - Do not put secrets or unnecessary employer/customer data in public Git
   sources; the task store itself is deliberately local and not committed.
 - No tool-specific hooks are part of this integration. Since text guidance

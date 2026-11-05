@@ -32,6 +32,27 @@ stored in this public Dotfiles Git repository.
   updates from agents with command access. It is **best-effort**; without
   runtime enforcement/hooks it does not guarantee that every turn is recorded.
 
+## Kanban columns
+
+The same nine columns appear on both Mac profiles: `To Do`, `In Progress`,
+`Local Review`, `Pushed`, `PR`, `Merged`, `STG`, `PRD`, and `Done`. `PR` means
+**merge-ready**, not merely an opened PR: CI must pass, blocking review
+threads must be resolved, and required approvals must be present. `Pushed`
+contains remote changes that are not yet merge-ready.
+
+Both rollout stages combine **deployment and validation**. In a private
+Dotfiles workflow, `STG` is applying and validating the configuration on the
+private Mac; `PRD` is the corresponding rollout and user-confirmed validation
+on the professional Mac. The agent on the private Mac must not inspect the
+professional Mac. For actual company projects, `STG` and `PRD` correspond
+to the real staging and production environments. The machine-specific
+interpretation is agent guidance, **not a column name**. `Done` requires
+final acceptance, not merely a merge or rollout.
+
+`chezmoi apply` manages the workflow-column configuration while preserving
+all existing task files. This does not implement agent-specific hooks or
+automatic observation of manual reviews/deployments.
+
 ## Deployment and troubleshooting
 
 A normal `chezmoi apply` installs the shell wrapper, Hammerspoon module,
