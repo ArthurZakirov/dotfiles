@@ -494,11 +494,14 @@ def test_voice_frontend_owns_walkthrough_and_backend_owns_editor_commands():
         canonical / "agents-md-components/reasoning-and-agent-behavior/evidence-grounding.md"
     ).read_text()
     assert reference not in evidence_routing
-    assert "Presenting verified repository code evidence to a user" in routing
-    assert "Use this procedure when responding to a question about repository code." in detailed
+    assert "the user explicitly requests opening a file or code location" in routing
+    assert "presume that location is already visible" in routing
+    assert "Citing repository code alone does not trigger navigation." in detailed
+    assert "Do not open or refocus VS Code for that location" in detailed
+    assert "Navigate when the user asks where code lives" in detailed
+    assert 'code --reuse-window --goto "$file:$line"' in detailed
     assert 'code --new-window "$repo" --goto "$file:$line"' in detailed
-    assert 'code --goto "$file:$line"' in detailed
-    assert "A successful CLI exit" in detailed
+    assert "Check the command's exit status" in detailed
     assert "Guided interactive walkthroughs" not in detailed
     assert "voice frontend" not in detailed.lower()
     assert (SOURCE / "agents-md-references" / reference).read_text().endswith(detailed)
