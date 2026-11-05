@@ -6,6 +6,7 @@ components:
       - path: agents-md-components/workspace-and-agent-system/external-system-access.md
       - path: agents-md-components/workspace-and-agent-system/managed-repositories-skills-global-rules.md
       - path: agents-md-components/workspace-and-agent-system/agent-behavior-lifecycle.md
+      - path: agents-md-components/workspace-and-agent-system/global-agent-backlog.md
   - path: agents-md-components/runtime-and-interaction/runtime-and-interaction.md
     children:
       - path: agents-md-components/runtime-and-interaction/delegated-chat-naming.md

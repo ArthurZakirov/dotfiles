@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.arthur.agent-backlog</string>
+  <key>ProgramArguments</key>
+  <array>
+    <!-- Do not expose credentials inherited from an interactive login environment. -->
+    <string>/usr/bin/env</string>
+    <string>-i</string>
+    <string>HOME={{ .chezmoi.homeDir }}</string>
+    <string>PATH={{ .chezmoi.homeDir }}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <string>{{ .chezmoi.homeDir }}/.local/bin/agent-backlog</string>
+    <string>browser</string>
+    <string>--port</string>
+    <string>6420</string>
+    <string>--no-open</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>{{ .chezmoi.homeDir }}</string>
+    <key>PATH</key><string>{{ .chezmoi.homeDir }}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>20</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>{{ .chezmoi.homeDir }}/Library/Logs/agent-backlog.log</string>
+  <key>StandardErrorPath</key><string>{{ .chezmoi.homeDir }}/Library/Logs/agent-backlog.err.log</string>
+</dict>
+</plist>
