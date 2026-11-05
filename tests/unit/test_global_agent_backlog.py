@@ -7,6 +7,9 @@ from pathlib import Path
 import subprocess
 import xml.etree.ElementTree as ET
 
+import pytest
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[2]
 WRAPPER = ROOT / "home/dot_local/bin/executable_agent-backlog"
@@ -130,3 +133,85 @@ def test_shared_workflow_columns_preserve_tasks_across_repeated_apply(tmp_path: 
     subprocess.run(["bash", str(script)], env=environment, check=True, capture_output=True, text=True)
     assert 'labels: ["custom:important", "✅ Reviewed", "✅ Behavior tested"]' in config.read_text()
     assert task.read_text() == "---\nid: AGENT-1\nstatus: In Progress\n---\n"
+
+@pytest.mark.parametrize(
+    "config_relative",
+    ["backlog/config.yml", ".backlog/config.yml", "backlog.config.yml"],
+    ids=["standard", "hidden-backlog", "root-with-custom-directory"],
+)
+@pytest.mark.parametrize("item_indent", ["  ", ""], ids=["indented-yaml-items", "indentless-yaml-items"])
+def test_backlog_workflow_updater_resolves_active_config_without_touching_tasks(
+    tmp_path: Path, config_relative: str, item_indent: str
+) -> None:
+    # Arrange: alternate valid project layouts and an existing task payload.
+    home = tmp_path / "home"
+    bin_dir = home / ".local/bin"
+    bin_dir.mkdir(parents=True)
+    cli = bin_dir / "agent-backlog"
+    cli.write_text("#!/bin/sh\nexit 0\n")
+    cli.chmod(0o755)
+    board = home / ".local/share/agent-backlog"
+    config = board / config_relative
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        "project_name: alternate layout\n"
+        "backlog_directory: custom-backlog\n"
+        "statuses:\n"
+        f"{item_indent}- To Do\n"
+        f"{item_indent}- In Progress\n"
+        f"{item_indent}- Done\n"
+        "labels:\n"
+        f"{item_indent}- 'custom:urgent'\n"
+        f"{item_indent}- '✅ Reviewed'\n"
+        "filesystem_only: true\n"
+        "custom_settings:\n"
+        "  nested: keep-me\n"
+    )
+    task = board / "custom-backlog/tasks/agent-1 - Existing.md"
+    task.parent.mkdir(parents=True)
+    task.write_text("---\nid: AGENT-1\nstatus: In Progress\n---\n")
+    fallback = board / "backlog/config.yml"
+    if config_relative == "backlog.config.yml":
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        fallback.write_text("statuses: [not-the-active-config]\n")
+    env = {**os.environ, "HOME": str(home)}
+    script = ROOT / "home/run_after_55-configure-agent-backlog-statuses.sh"
+
+    # Act: run the actual chezmoi-managed updater twice.
+    subprocess.run(["bash", str(script)], env=env, check=True, capture_output=True, text=True)
+    first = config.read_text()
+    subprocess.run(["bash", str(script)], env=env, check=True, capture_output=True, text=True)
+
+    # Assert: YAML remains valid; user data and unrelated config are preserved.
+    parsed = yaml.safe_load(first)
+    assert parsed["statuses"] == ["To Do", "In Progress", "Pushed", "PR", "Merged", "STG", "PRD", "Done"]
+    assert parsed["labels"] == ["custom:urgent", "✅ Reviewed", "✅ Behavior tested"]
+    assert parsed["custom_settings"] == {"nested": "keep-me"}
+    assert parsed["backlog_directory"] == "custom-backlog"
+    assert config.read_text() == first
+    assert task.read_text() == "---\nid: AGENT-1\nstatus: In Progress\n---\n"
+    if config_relative == "backlog.config.yml":
+        assert fallback.read_text() == "statuses: [not-the-active-config]\n"
+
+
+def test_backlog_workflow_updater_can_add_optional_missing_yaml_sequences(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    bin_dir = home / ".local/bin"
+    bin_dir.mkdir(parents=True)
+    cli = bin_dir / "agent-backlog"
+    cli.write_text("#!/bin/sh\nexit 0\n")
+    cli.chmod(0o755)
+    config = home / ".local/share/agent-backlog/backlog.config.yml"
+    config.parent.mkdir(parents=True)
+    config.write_text("project_name: minimal\nfilesystem_only: true\n")
+    script = ROOT / "home/run_after_55-configure-agent-backlog-statuses.sh"
+
+    subprocess.run(
+        ["bash", str(script)], env={**os.environ, "HOME": str(home)},
+        check=True, capture_output=True, text=True
+    )
+
+    parsed = yaml.safe_load(config.read_text())
+    assert parsed["project_name"] == "minimal"
+    assert len(parsed["statuses"]) == 8
+    assert parsed["labels"] == ["✅ Reviewed", "✅ Behavior tested"]
