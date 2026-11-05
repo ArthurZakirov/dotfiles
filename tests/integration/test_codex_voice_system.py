@@ -9,10 +9,12 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shlex
 import shutil
 import subprocess
 import sys
+import tomllib
 
 import pytest
 
@@ -60,9 +62,12 @@ def isolated_voice(tmp_path: Path) -> tuple[Path, dict[str, str], str, str]:
         shutil.copy2(original, target)
 
     metadata = (SOURCE / ".chezmoidata.toml").read_text()
-    assert "[codexVoice]" in metadata
-    # The committed defaults must provision the release on a new machine.
-    assert '    enabled = true\n    tag = "voice-v0.166.0-r4"' in metadata
+    # The committed defaults must provision a valid, pinned release on a
+    # fresh machine. Keep the test independent of the next immutable tag bump.
+    config = tomllib.loads(metadata)["codexVoice"]
+    assert config["enabled"] is True
+    tag = config["tag"]
+    assert re.fullmatch(r"voice-v[0-9]+\.[0-9]+\.[0-9]+-r[1-9][0-9]*", tag)
     (source / ".chezmoidata.toml").write_text(metadata)
 
     config = tmp_path / "chezmoi.toml"
@@ -81,8 +86,8 @@ def isolated_voice(tmp_path: Path) -> tuple[Path, dict[str, str], str, str]:
     )
     command("bash", "-n", "-c", hook, env=env)
     assert "--release-tag" in hook
-    assert "voice-v0.166.0-r4" in hook
-    return home, env, hook, "voice-v0.166.0-r4"
+    assert tag in hook
+    return home, env, hook, tag
 
 
 def test_chezmoi_launcher_forwards_flags_and_sets_verbatim_speech(
@@ -144,12 +149,12 @@ def test_one_apply_installs_missing_voice_and_reuses_existing_voice(
     # installs the launcher and executes the actual run_after template.
     installer = home.parent / "source/dot_local/bin/executable_codex-voice-install"
     installer.write_text(
-        """#!/usr/bin/env python3
+        f"""#!/usr/bin/env python3
 import os
 from pathlib import Path
 import sys
 
-assert sys.argv[1:] == ["--release-tag", "voice-v0.166.0-r4"]
+assert sys.argv[1:] == ["--release-tag", {tag!r}]
 home = Path(os.environ["HOME"])
 destination = home / ".local/share/codex-voice"
 executable = destination / "bin/codex"
