@@ -374,3 +374,172 @@ def test_vscode_installer_migrates_tasks_preserving_others(installer, tmp_path):
     before = tuple((user / name).read_bytes() for name in ("tasks.json", "keybindings.json"))
     installer.install(user)
     assert tuple((user / name).read_bytes() for name in ("tasks.json", "keybindings.json")) == before
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://bitbucket.org/team/app/pull-requests/42#comment-8192",
+         ("src/service.py", 73)),
+        ("https://bitbucket.org/team/app/pull-requests/42#comment-8193",
+         ("src/deleted.py", None)),
+    ],
+    ids=["new-side-line", "deleted-side-has-no-current-line"],
+)
+def test_bitbucket_comment_permalink_resolves_inline_file_and_line(
+    nav, monkeypatch, url, expected,
+):
+    responses = {
+        8192: {"id": 8192, "inline": {"path": "src/service.py", "to": 73, "from": None}},
+        8193: {"id": 8193, "inline": {"path": "src/deleted.py", "to": None, "from": 91}},
+    }
+    requests = []
+    monkeypatch.setattr(nav.bitbucket, "bitbucket_tab", lambda _: (1, 2))
+
+    def fake_api(tab, endpoint):
+        requests.append((tab, endpoint))
+        return responses[int(endpoint.rsplit("/", 1)[-1])]
+
+    monkeypatch.setattr(nav.bitbucket, "browser_api", fake_api)
+
+    location = nav.bitbucket.comment_location(url)
+
+    assert location == expected
+    assert requests == [
+        ((1, 2), "/!api/2.0/repositories/team/app/pullrequests/42/comments/"
+         + url.rsplit("-", 1)[-1]),
+    ]
+
+
+def test_bitbucket_comment_reply_uses_original_inline_anchor(nav, monkeypatch):
+    responses = {
+        8194: {"id": 8194, "parent": {"id": 8192}},
+        8192: {"id": 8192, "inline": {"path": "src/service.py", "to": 73}},
+    }
+    monkeypatch.setattr(nav.bitbucket, "bitbucket_tab", lambda _: (1, 2))
+    monkeypatch.setattr(nav.bitbucket, "browser_api",
+                        lambda tab, endpoint: responses[int(endpoint.rsplit("/", 1)[-1])])
+
+    location = nav.bitbucket.comment_location(
+        "https://bitbucket.org/team/app/pull-requests/42#comment-8194"
+    )
+
+    assert location == ("src/service.py", 73)
+
+
+@pytest.mark.parametrize(
+    ("comment", "error"),
+    [
+        ({"id": 1, "inline": None}, "not attached"),
+        ({"id": 1, "parent": {"id": 1}}, "cycle"),
+        ({"id": 2, "inline": {"path": "src/a.py", "to": 12}}, "different comment"),
+        ({"id": 1, "inline": {"path": "src/a.py", "to": -3}},
+         None),
+    ],
+    ids=["general-pr-comment", "cyclic-reply", "wrong-comment-id", "invalid-new-line"],
+)
+def test_bitbucket_comment_location_handles_missing_or_invalid_anchors(
+    nav, monkeypatch, comment, error,
+):
+    monkeypatch.setattr(nav.bitbucket, "bitbucket_tab", lambda _: (1, 2))
+    monkeypatch.setattr(nav.bitbucket, "browser_api", lambda *_: comment)
+    url = "https://bitbucket.org/team/app/pull-requests/42#comment-1"
+
+    if error:
+        with pytest.raises(nav.bitbucket.NavigationError, match=error):
+            nav.bitbucket.comment_location(url)
+    else:
+        assert nav.bitbucket.comment_location(url) == ("src/a.py", None)
+
+
+def test_non_comment_bitbucket_url_does_not_lookup_comment(nav, monkeypatch):
+    monkeypatch.setattr(nav.bitbucket, "bitbucket_tab",
+                        lambda _: pytest.fail("Ordinary PR must not request a comment"))
+
+    assert nav.bitbucket.comment_location(
+        "https://bitbucket.org/team/app/pull-requests/42"
+    ) is None
+    assert nav.bitbucket.comment_location(
+        "https://bitbucket.org/team/app/pull-requests/42#activity"
+    ) is None
+
+    with pytest.raises(nav.bitbucket.NavigationError, match="Invalid.*permalink"):
+        nav.bitbucket.comment_location(
+            "https://bitbucket.org/team/app/pull-requests/42#comment-../../no"
+        )
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    ["/tmp/outside.py", "../outside.py", "src/../../outside.py",
+     "src\\outside.py", "src/missing.py", "", "src/unsafe" + chr(0) + ".py"],
+)
+def test_bitbucket_comment_cannot_open_file_outside_worktree(
+    nav, tmp_path, relative_path,
+):
+    target = tmp_path / "worktree"
+    (target / "src").mkdir(parents=True)
+    (target / "src/exists.py").write_text("pass")
+    with pytest.raises(nav.NavigationError, match="(invalid|escapes|no longer)"):
+        nav.comment_file(target, relative_path)
+
+
+def test_bitbucket_comment_rejects_symlink_escaping_worktree(nav, tmp_path):
+    target = tmp_path / "worktree"
+    target.mkdir()
+    external = tmp_path / "secret.py"
+    external.write_text("private = True")
+    (target / "source.py").symlink_to(external)
+
+    with pytest.raises(nav.NavigationError, match="escapes"):
+        nav.comment_file(target, "source.py")
+
+
+@pytest.mark.parametrize(
+    ("anchor", "expected_suffix"),
+    [
+        (("src/service.py", 27), ("--goto", "src/service.py:27")),
+        (("src/service.py", None), ("src/service.py",)),
+        (None, ()),
+    ],
+    ids=["line-in-code", "file-only-for-old-side", "ordinary-pr-opens-worktree"],
+)
+def test_bitbucket_pr_comment_opens_vscode_at_requested_file(
+    nav, monkeypatch, tmp_path, anchor, expected_suffix,
+):
+    target = tmp_path / "source"
+    execute("git", "init", "-b", "feat/review", str(target))
+    (target / "src").mkdir()
+    (target / "src/service.py").write_text("def service():\\n    return 1\\n")
+
+    url = "https://bitbucket.org/team/app/pull-requests/42"
+    if anchor is not None:
+        url += "#comment-8192"
+
+    monkeypatch.setattr(nav.bitbucket, "source_branch_url",
+                        lambda _: "https://bitbucket.org/team/app/branch/feat%2Freview")
+    monkeypatch.setattr(nav.bitbucket, "comment_location", lambda _: anchor)
+    monkeypatch.setattr(nav, "ensure_repo", lambda *args: (target, "origin"))
+    monkeypatch.setattr(nav, "ensure_worktree", lambda *args: target)
+    monkeypatch.setattr(nav.shutil, "which", lambda _: "/usr/local/bin/code")
+
+    actual_command = nav.command
+    vscode_calls = []
+
+    def fake_command(argv, **kwargs):
+        if argv[0] == "/usr/local/bin/code":
+            vscode_calls.append(argv)
+            return ""
+        return actual_command(argv, **kwargs)
+
+    monkeypatch.setattr(nav, "command", fake_command)
+
+    result = nav.open_local(url, config("professional"), tmp_path, print_only=False)
+
+    assert result == target
+    expected = ["/usr/local/bin/code", "--new-window", str(target)]
+    if len(expected_suffix) == 2:
+        expected += ["--goto", str(target / "src/service.py") + ":27"]
+    elif len(expected_suffix) == 1:
+        expected.append(str(target / "src/service.py"))
+    assert vscode_calls == [expected]

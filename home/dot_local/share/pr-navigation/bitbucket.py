@@ -261,6 +261,48 @@ def source_branch_url(url):
         raise NavigationError("The PR has no usable source repository and branch.") from None
 
 
+def comment_location(url):
+    """Resolve a Bitbucket PR comment permalink to (relative path, new-side line).
+
+    Replies inherit their parent's inline anchor. Removed-side-only comments
+    have no valid new-side line, so callers should open the file without goto.
+    """
+    fragment = urlsplit(url).fragment
+    if not fragment.startswith("comment-"):
+        return None
+    match = re.fullmatch(r"comment-([1-9][0-9]*)", fragment)
+    if not match:
+        raise NavigationError("Invalid Bitbucket comment permalink.")
+
+    workspace, repo, pr_id = pr_page(url)
+    tab = bitbucket_tab(url)
+    comment_id = int(match.group(1))
+    seen = set()
+    for _ in range(10):
+        if comment_id in seen:
+            raise NavigationError("Bitbucket comment reply chain contains a cycle.")
+        seen.add(comment_id)
+        endpoint = (f"/!api/2.0/repositories/{workspace}/{repo}"
+                    f"/pullrequests/{pr_id}/comments/{comment_id}")
+        comment = browser_api(tab, endpoint)
+        if not isinstance(comment, dict) or comment.get("id") != comment_id:
+            raise NavigationError("Bitbucket returned a different comment.")
+
+        inline = comment.get("inline")
+        if isinstance(inline, dict) and inline.get("path") is not None:
+            line = inline.get("to")
+            if type(line) is not int or line <= 0:
+                line = None
+            return inline["path"], line
+
+        parent = comment.get("parent") or {}
+        parent_id = parent.get("id") if isinstance(parent, dict) else None
+        if type(parent_id) is not int or parent_id <= 0:
+            raise NavigationError("This Bitbucket PR comment is not attached to a code file.")
+        comment_id = parent_id
+    raise NavigationError("Bitbucket comment reply chain is too deep.")
+
+
 def open_pull_requests(url, *, destination_repository=None):
     identity, branch = parse_branch_url(url)
     source_repository = "/".join(identity)

@@ -19,6 +19,25 @@ through macOS Accessibility. It never substitutes an unrelated Chrome tab when
 the web-app URL is unavailable. Hammerspoon needs Accessibility permission for
 that app.
 
+### Bitbucket inline comment → VS Code line
+
+On a Bitbucket Cloud pull request, open a comment's permalink
+(`https://bitbucket.org/<workspace>/<repo>/pull-requests/<PR>#comment-<ID>`)
+and press **`Ctrl+Option+Cmd+V`**. The existing shortcut retrieves the
+comment's `inline.path` and `inline.to` through the authenticated Chrome
+Bitbucket session and opens the source-branch worktree at that file and line.
+A reply follows its parent comment to the original inline anchor. Nothing
+must be copied into VS Code.
+
+Comments on deleted/old-side-only lines open the existing file **without a
+line number**; no misleading old-side line is used. Non-inline PR comments
+have no file to open and produce an explanatory error. If the file has been
+deleted or moved from the checked-out branch, navigation reports that it is
+missing instead of guessing another path. Current line numbers may drift if
+the branch changed after the comment was made. File paths are validated
+against the selected worktree; traversal and symlinks outside it are refused.
+This feature currently targets **Bitbucket Cloud**, not GitHub comments.
+
 The VS Code global task **Git: Open Current Pull Request in Chrome** calls
 `~/.local/bin/git-pr open-pr --path ${workspaceFolder}`. The companion task
 **Git: Open Current Branch in Chrome** calls `git-pr open-remote`. The
