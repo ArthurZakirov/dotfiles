@@ -34,13 +34,22 @@ local function focusSearch()
   ]])
 end
 
--- This shortcut must never replace Cmd-K in other applications.
+-- Both shortcuts are enabled only when the Backlog WebView has focus:
+-- Command-K searches it; Escape dismisses it without hijacking other apps.
 local searchHotkey = hs.hotkey.new({ "cmd" }, "k", focusSearch)
+local closeHotkey
+
+local function hideBoard()
+  if board then board:hide() end
+  searchHotkey:disable()
+  closeHotkey:disable()
+end
+
+closeHotkey = hs.hotkey.new({}, "escape", hideBoard)
 
 local function toggleBoard()
   if board and board:isVisible() then
-    board:hide()
-    searchHotkey:disable()
+    hideBoard()
     return
   end
 
@@ -55,7 +64,16 @@ local function toggleBoard()
       :deleteOnClose(false)
       :windowCallback(function(action, _, focused)
         if action == "focusChange" then
-          if focused then searchHotkey:enable() else searchHotkey:disable() end
+          if focused then
+            searchHotkey:enable()
+            closeHotkey:enable()
+          else
+            searchHotkey:disable()
+            closeHotkey:disable()
+          end
+        elseif action == "closing" then
+          searchHotkey:disable()
+          closeHotkey:disable()
         end
       end)
   end
@@ -84,6 +102,8 @@ HammerspoonConfig.agentBacklog = {
   acceptsTextEntry = function() return board ~= nil and board:allowTextEntry() end,
   focusSearch = focusSearch,
   searchHotkeyEnabled = function() return searchHotkey.enabled == true end,
+  closeHotkeyEnabled = function() return closeHotkey.enabled == true end,
+  close = hideBoard,
   searchIsFocused = function(callback)
     if not board then return callback(false) end
     board:evaluateJavaScript(

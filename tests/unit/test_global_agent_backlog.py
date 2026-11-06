@@ -90,6 +90,17 @@ def test_hammerspoon_board_pins_preferred_display_and_scopes_search_hotkey() -> 
     assert "searchHotkey:disable()" in source
 
 
+def test_hammerspoon_escape_closes_only_the_focused_backlog_window() -> None:
+    # Esc must be active only while the WebView has focus, not globally.
+    source = (ROOT / "home/dot_hammerspoon/modules/agent_backlog.lua").read_text()
+    assert 'hs.hotkey.new({}, "escape", hideBoard)' in source
+    assert "closeHotkey:enable()" in source
+    assert "closeHotkey:disable()" in source
+    assert 'action == "focusChange"' in source
+    assert "hideBoard()" in source
+    assert "close = hideBoard" in source
+
+
 def test_shared_workflow_columns_preserve_tasks_across_repeated_apply(tmp_path: Path) -> None:
     # Arrange: simulate an existing central Backlog.md board with a task.
     home = tmp_path / "home"

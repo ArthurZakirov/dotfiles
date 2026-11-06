@@ -15,6 +15,8 @@ stored in this public Dotfiles Git repository.
 - Press **Command-K** while the Backlog window is focused to search tasks.
   This search shortcut is enabled only while that window has focus; Command-K
   in other applications keeps its original behavior.
+- Press **Escape** to hide the focused Backlog window. **Option-K** still
+  toggles the window as before; Escape is not intercepted in other apps.
 - The local web service listens on `http://127.0.0.1:6420`. The managed
   `com.arthur.agent-backlog` LaunchAgent starts it at login and restarts it if
   it exits; `chezmoi apply` loads the agent during an active GUI session.
