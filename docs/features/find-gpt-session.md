@@ -63,3 +63,21 @@ Codex history uses existing local databases read-only. No new persistent search 
 The CLI's incomplete_providers field distinguishes incomplete coverage from verified zero matches. When a provider cannot return a verified result, **search_status: incomplete** is reported in JSON and the human-readable output says **“Search incomplete”**, rather than incorrectly reporting **“Found 0 sessions”**; the exit status is 2. A confirmed no-match result uses exit status 1, while a hit uses 0. The Safari navigation adapter reads URL and title together, waits up to 12 seconds for a verified result, and also accepts a new, stable conversation URL after explicitly clicking a visible search result if the page title is slow to update. Regression tests cover delayed navigation and title updates.
 
 For truly unattended background operation and faster repeated result extraction, additional browser automation capability must be validated without affecting the user's active Chrome tab. Background Safari may still hide its Accessibility search controls, in which case the query remains incomplete rather than falsely returning zero matches.
+\n### Background Safari timeouts\n
+Safari Apple Events can block when its tab is in the background. The native
+browser adapter now bounds each AppleScript child to 2.5 seconds and the
+overall provider search to 18 seconds. An unresponsive Safari is marked as
+incomplete instead of indefinitely preventing already-discovered Codex
+sessions from being opened. The Hammerspoon module exposes runtime-only
+diagnostics (status and counts, not private chat text/URLs) for troubleshooting.
+
+
+### Verified workflow and pending interaction test
+
+A live GitHub PR #2 test entered the Hammerspoon handler, searched Codex and
+ChatGPT, and opened one matching Codex session in Warp. After limiting the
+Safari AppleScript and overall browser search timeouts, the handler completed
+in approximately 13.6 seconds rather than stalling for about 90 seconds.
+An unavailable Safari search was reported as incomplete; the Codex result was
+still opened. A physical keyboard shortcut press remains user-verification
+work; a synthetic macOS keyboard event was not conclusive.
