@@ -1,0 +1,477 @@
+#!/usr/bin/env python3
+"""Read-only Codex session search by Git artifacts.
+
+Reads Codex's internal state_5.sqlite and thread_history_1.sqlite via SQLite
+mode=ro. No writes, network requests, or third-party dependencies.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sqlite3
+import subprocess
+import sys
+from collections import defaultdict
+from dataclasses import dataclass, field
+from pathlib import Path
+from urllib.parse import urlsplit
+
+JIRA_BOUNDARY = r"(?<![A-Z0-9]){value}(?![A-Z0-9])"
+REPO_SEGMENTS = {"personal", "professional", "third-party"}
+
+
+def canonical_remote(value: str | None) -> str | None:
+    """Convert git@host:owner/repo(.git) and HTTPS remotes to one identity."""
+    if not value:
+        return None
+    value = value.strip()
+    if re.match(r"^[^/@\s]+@[^:/\s]+:", value):
+        host, rest = value.split(":", 1)
+        value = host.split("@", 1)[1] + "/" + rest
+    else:
+        try:
+            p = urlsplit(value if "://" in value else "https://" + value)
+            if p.hostname is None or not p.path.strip("/"):
+                return None
+        except ValueError:
+            return None
+        value = p.hostname + "/" + p.path.strip("/")
+    return value.rstrip("/").removesuffix(".git").lower()
+
+
+def canonical_pr(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        p = urlsplit(value.strip())
+        if p.scheme not in ("https", "http") or not p.hostname:
+            return None
+    except ValueError:
+        # History messages can contain arbitrary malformed URL-like text.
+        return None
+    parts = [part.lower() for part in p.path.strip("/").split("/")]
+    if len(parts) < 4:
+        return None
+    # GitHub /owner/repo/pull/42, Bitbucket /workspace/repo/pull-requests/42
+    if parts[2] not in ("pull", "pull-requests") or not parts[3].isdigit():
+        return None
+    return f"{p.hostname.lower()}/{'/'.join(parts[:4])}"
+
+
+def git_value(path: str, *args: str) -> str | None:
+    try:
+        cp = subprocess.run(
+            ["git", "-C", path, *args], capture_output=True, text=True,
+            timeout=3, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return cp.stdout.strip() or None if cp.returncode == 0 else None
+
+
+def absolute_path(value: str) -> str:
+    value = os.path.expandvars(os.path.expanduser(value))
+    return os.path.normcase(os.path.realpath(os.path.abspath(value)))
+
+
+def path_inside(candidate: str | None, root: str | None) -> bool:
+    if not candidate or not root or not candidate.startswith("/"):
+        return False
+    c, r = absolute_path(candidate), absolute_path(root)
+    return c == r or c.startswith(r + os.sep)
+
+
+def repo_name_from_path(path: str | None, home: str) -> str | None:
+    """Recognize conventional checkout and worktree locations, never filenames."""
+    if not path or not path.startswith("/"):
+        return None
+    # Resolve macOS aliases such as /var -> /private/var for both sides.
+    # The referenced worktree may no longer exist; realpath still resolves
+    # symlinks in its existing parent directories.
+    normalized = absolute_path(path)
+    home = absolute_path(home)
+    repos = home + "/Repos/"
+    if normalized.startswith(repos):
+        parts = normalized[len(repos):].split("/")
+        if parts[0] in REPO_SEGMENTS:
+            parts = parts[1:]
+        if not parts:
+            return None
+        return parts[0].removesuffix(".worktrees")
+    codex_worktrees = home + "/.codex/worktrees/"
+    if normalized.startswith(codex_worktrees):
+        parts = normalized[len(codex_worktrees):].split("/")
+        return parts[1] if len(parts) > 1 else None
+    # ~/Tickets/PROJ-123/Worktrees/repo-name/...
+    ticket_prefix = home + "/Tickets/"
+    if normalized.startswith(ticket_prefix):
+        parts = normalized[len(ticket_prefix):].split("/")
+        if len(parts) > 2 and parts[1] == "Worktrees":
+            return parts[2]
+    return None
+
+
+def open_ro(path: Path) -> sqlite3.Connection | None:
+    if not path.is_file():
+        return None
+    # URI-escape file path, and enforce read-only at both connection and SQL level.
+    c = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
+    c.execute("PRAGMA query_only=ON")
+    c.row_factory = sqlite3.Row
+    return c
+
+
+@dataclass(frozen=True)
+class SearchQuery:
+    repo: str | None = None
+    branch: str | None = None
+    worktree: str | None = None
+    commit: str | None = None
+    pr: str | None = None
+    jira: str | None = None
+
+    @property
+    def selected(self) -> set[str]:
+        return {k for k, v in self.__dict__.items() if v}
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> "SearchQuery":
+        worktree = absolute_path(args.worktree) if args.worktree else None
+        repo = args.repo
+        if repo and (repo.startswith("/") or repo.startswith("~") or repo.startswith(".")):
+            repo = absolute_path(repo)
+        branch = args.branch
+        # Worktree gets an exact-path query. Do not silently constrain to the
+        # current branch, which may differ from the branch used by old sessions.
+        commit = args.commit.lower() if args.commit else None
+        if commit and not re.fullmatch(r"[a-f0-9]{7,40}", commit):
+            raise ValueError("--commit must be a Git SHA prefix of 7–40 hexadecimal characters")
+        pr = canonical_pr(args.pr) if args.pr else None
+        if args.pr and not pr:
+            raise ValueError("--pr must be a supported GitHub or Bitbucket pull-request URL")
+        jira = args.jira.upper() if args.jira else None
+        if jira and not re.fullmatch(r"[A-Z][A-Z0-9_]*-\d+", jira):
+            raise ValueError("--jira must look like DCP-9712")
+        q = cls(repo, branch, worktree, commit, pr, jira)
+        if not q.selected:
+            raise ValueError("At least one of --repo, --branch, --worktree, --commit, --pr, --jira is required")
+        return q
+
+
+@dataclass(frozen=True)
+class Evidence:
+    field: str
+    source: str
+    kind: str
+    score: int
+    detail: str
+
+    def asdict(self) -> dict:
+        return dict(field=self.field, source=self.source, kind=self.kind,
+                    score=self.score, detail=self.detail)
+
+
+@dataclass
+class Session:
+    id: str
+    title: str = ""
+    cwd: str | None = None
+    git_branch: str | None = None
+    git_origin_url: str | None = None
+    created_at: int | None = None
+    evidence: dict[str, list[Evidence]] = field(default_factory=lambda: defaultdict(list))
+    parent_ids: set[str] = field(default_factory=set)
+    child_ids: set[str] = field(default_factory=set)
+
+    def add(self, field_name: str, source: str, kind: str, score: int, detail: str) -> None:
+        current = self.evidence[field_name]
+        # Keep only the strongest few distinct observations. In particular,
+        # a long sequence of cwd-only commands must not crowd out later edits.
+        if any(e.source == source and e.detail == detail for e in current):
+            return
+        current.append(Evidence(field_name, source, kind, score, detail))
+        current.sort(key=lambda e: (-e.score, e.source, e.detail))
+        del current[5:]
+
+    def score(self, selected: set[str]) -> int:
+        return sum(max(e.score for e in self.evidence[field_name]) +
+                   min(len(self.evidence[field_name]) - 1, 3) * 2
+                   for field_name in selected)
+
+    def result(self, fields: set[str]) -> dict:
+        ev = [e for f in sorted(fields) for e in self.evidence[f]]
+        ev.sort(key=lambda e: -e.score)
+        best = max(e.score for e in ev)
+        confidence = "direct" if best >= 95 else "file-activity" if best >= 80 else "context" if best >= 40 else "mention"
+        return {
+            "provider": "codex", "session_id": self.id,
+            "title": self.title[:160], "cwd": self.cwd,
+            "created_at": self.created_at,
+            "git_branch_at_start": self.git_branch,
+            "git_origin_at_start": self.git_origin_url,
+            "score": self.score(fields), "evidence_strength": confidence,
+            "evidence": [e.asdict() for e in ev],
+            "related_parent_session_ids": sorted(self.parent_ids),
+            "related_child_session_ids": sorted(self.child_ids),
+            "resume_command": f"codex resume {self.id}",
+        }
+
+
+class CodexSearcher:
+    def __init__(self, codex_home: Path | None = None, home: str | None = None):
+        self.home = absolute_path(home or str(Path.home()))
+        self.codex_home = codex_home or Path(os.getenv("CODEX_HOME", str(Path.home() / ".codex")))
+        self.state_path = self.codex_home / "state_5.sqlite"
+        self.history_path = self.codex_home / "thread_history_1.sqlite"
+        self._repo_remotes: dict[str, set[str]] = defaultdict(set)
+        self._requested_repo_remote: str | None = None
+
+    def _build_repo_remote_lookup(self, state: sqlite3.Connection) -> None:
+        """Resolve activity path -> remote only for unambiguous repo names.
+
+        Native state metadata and currently existing Git checkouts are evidence.
+        Deleted worktrees may still be matched using their parent repo name,
+        but never if multiple distinct remotes share that name.
+        """
+        for row in state.execute("SELECT cwd, git_origin_url FROM threads WHERE git_origin_url IS NOT NULL"):
+            name = repo_name_from_path(row["cwd"], self.home)
+            remote = canonical_remote(row["git_origin_url"])
+            if name and remote:
+                self._repo_remotes[name.lower()].add(remote)
+        for base in [Path(self.home) / "Repos", *(Path(self.home) / "Repos" / x for x in REPO_SEGMENTS)]:
+            if not base.is_dir():
+                continue
+            for entry in base.iterdir():
+                if not entry.is_dir() or not (entry / ".git").exists():
+                    continue
+                remote = canonical_remote(git_value(str(entry), "remote", "get-url", "origin"))
+                if remote:
+                    self._repo_remotes[entry.name.lower()].add(remote)
+
+    def _repo_matches(self, name_or_path: str | None, origin: str | None, requested: str) -> bool:
+        wanted_origin = canonical_remote(requested) if "://" in requested or "@" in requested else None
+        if wanted_origin:
+            if origin:
+                return canonical_remote(origin) == wanted_origin
+            name = repo_name_from_path(name_or_path, self.home) if name_or_path else None
+            # Do not infer identity when the same repo basename maps to more
+            # than one remote; this would mix unrelated repositories.
+            return bool(name and self._repo_remotes.get(name.lower()) == {wanted_origin})
+        if requested.startswith("/"):
+            if origin and self._requested_repo_remote:
+                if canonical_remote(origin) == self._requested_repo_remote:
+                    return True
+            if name_or_path and name_or_path.startswith("/"):
+                if path_inside(name_or_path, requested):
+                    return True
+            req_name = repo_name_from_path(requested, self.home)
+            got_name = repo_name_from_path(name_or_path, self.home) if name_or_path else None
+            return bool(req_name and got_name and req_name.lower() == got_name.lower())
+        return any(x and x.lower() == requested.lower() for x in (
+            origin.rstrip("/").split("/")[-1].removesuffix(".git") if origin else None,
+            repo_name_from_path(name_or_path, self.home) if name_or_path else None,
+        ))
+
+    @staticmethod
+    def _text_has(value: str | None, needle: str, *, jira: bool = False) -> bool:
+        if not value:
+            return False
+        if jira:
+            return bool(re.search(JIRA_BOUNDARY.format(value=re.escape(needle)), value, re.IGNORECASE))
+        return needle.casefold() in value.casefold()
+
+    def search(self, q: SearchQuery, limit: int = 25) -> tuple[list[dict], dict]:
+        state = open_ro(self.state_path)
+        if not state:
+            raise FileNotFoundError(f"Codex state DB not found: {self.state_path}")
+        history = open_ro(self.history_path)
+        sessions: dict[str, Session] = {}
+        stats = {"state_threads": 0, "history_items_scanned": 0,
+                 "history_available": history is not None, "warnings": []}
+        if history is None:
+            stats["warnings"].append("History DB missing: activity-based matching unavailable")
+        try:
+            if q.repo and q.repo.startswith("/") and os.path.isdir(q.repo):
+                self._requested_repo_remote = canonical_remote(git_value(q.repo, "remote", "get-url", "origin"))
+            if q.repo and ("://" in q.repo or "@" in q.repo):
+                self._build_repo_remote_lookup(state)
+            for row in state.execute("""SELECT id, title, cwd, git_branch, git_origin_url,
+                                    git_sha, created_at, first_user_message, preview
+                                    FROM threads"""):
+                s = Session(id=row["id"], title=row["title"] or "", cwd=row["cwd"],
+                            git_branch=row["git_branch"], git_origin_url=row["git_origin_url"],
+                            created_at=row["created_at"])
+                sessions[s.id] = s
+                stats["state_threads"] += 1
+                if q.repo:
+                    if row["git_origin_url"] and self._repo_matches(None, row["git_origin_url"], q.repo):
+                        s.add("repo", "threads.git_origin_url", "git remote at session start", 58, row["git_origin_url"])
+                    if row["cwd"] and self._repo_matches(row["cwd"], None, q.repo):
+                        s.add("repo", "threads.cwd", "session start directory", 35, row["cwd"])
+                if q.branch and row["git_branch"] == q.branch:
+                    s.add("branch", "threads.git_branch", "branch at session start", 57, q.branch)
+                if q.worktree and path_inside(row["cwd"], q.worktree):
+                    s.add("worktree", "threads.cwd", "session start directory", 40, row["cwd"])
+                if q.commit and row["git_sha"] and row["git_sha"].lower().startswith(q.commit):
+                    s.add("commit", "threads.git_sha", "head SHA at session start", 65, row["git_sha"])
+                for name, value in (("title", row["title"]), ("first_user_message", row["first_user_message"]),
+                                    ("preview", row["preview"])):
+                    for field_name, needle in (("branch", q.branch), ("jira", q.jira), ("commit", q.commit)):
+                        if needle and self._text_has(value, needle, jira=field_name == "jira"):
+                            s.add(field_name, f"threads.{name}", "session text mention", 22, f"Mention in {name}")
+                    if q.pr and self._text_has(value, q.pr.split("/", 1)[1]):
+                        # Merely mentioning a repo or PR number is insufficient;
+                        # require a recognizable exact PR URL.
+                        if self._text_contains_pr(value, q.pr):
+                            s.add("pr", f"threads.{name}", "PR URL mentioned", 28, q.pr)
+            try:
+                for row in state.execute("SELECT thread_id, payload FROM thread_attachments WHERE attachment_type='pull_request'"):
+                    if not q.pr or row["thread_id"] not in sessions:
+                        continue
+                    try:
+                        url = json.loads(row["payload"]).get("url")
+                    except (ValueError, TypeError):
+                        continue
+                    if canonical_pr(url) == q.pr:
+                        sessions[row["thread_id"]].add("pr", "thread_attachments", "direct PR attachment", 100, url)
+            except sqlite3.OperationalError:
+                stats["warnings"].append("thread_attachments table unavailable")
+            try:
+                for row in state.execute("SELECT parent_thread_id, child_thread_id FROM thread_spawn_edges"):
+                    a, b = row
+                    if a in sessions and b in sessions:
+                        sessions[a].child_ids.add(b)
+                        sessions[b].parent_ids.add(a)
+            except sqlite3.OperationalError:
+                stats["warnings"].append("thread_spawn_edges table unavailable")
+
+            if history:
+                # Intentionally limit to structured event types; image payloads
+                # may be multi-megabyte and are irrelevant to this search.
+                item_types = ["fileChange", "commandExecution"]
+                if q.branch or q.commit or q.jira or q.pr:
+                    item_types += ["userMessage", "agentMessage"]
+                marks = ",".join("?" for _ in item_types)
+                rows = history.execute(
+                    f"SELECT thread_id, item_type, item_json FROM thread_items WHERE item_type IN ({marks})",
+                    item_types,
+                )
+                for row in rows:
+                    stats["history_items_scanned"] += 1
+                    s = sessions.get(row["thread_id"])
+                    if not s:
+                        continue
+                    try:
+                        item = json.loads(row["item_json"])
+                    except (ValueError, TypeError):
+                        continue
+                    typ = row["item_type"]
+                    if typ == "fileChange":
+                        for change in item.get("changes", []):
+                            if not isinstance(change, dict):
+                                continue
+                            path = change.get("path")
+                            if not isinstance(path, str):
+                                continue
+                            self._match_path(s, q, path, "fileChange", 90)
+                            if q.jira and self._text_has(path, q.jira, jira=True):
+                                s.add("jira", "fileChange.path", "Jira key in edited file path", 65, path)
+                    elif typ == "commandExecution":
+                        cwd = item.get("cwd")
+                        if isinstance(cwd, str):
+                            self._match_path(s, q, cwd, "commandExecution", 65)
+                        command = item.get("command")
+                        self._match_text(s, q, command, "commandExecution.command", 22)
+                    elif typ == "userMessage":
+                        for part in item.get("content", []):
+                            if isinstance(part, dict):
+                                self._match_text(s, q, part.get("text"), "userMessage", 30)
+                    elif typ == "agentMessage":
+                        self._match_text(s, q, item.get("text"), "agentMessage", 18)
+            selected = q.selected
+            hits = [s.result(selected) for s in sessions.values()
+                    if all(s.evidence.get(f) for f in selected)]
+            # Prefer newer sessions when their Git evidence is equally strong.
+            hits.sort(key=lambda x: (-x["score"], -(x["created_at"] or 0), x["session_id"]))
+            stats["total_matches"] = len(hits)
+            stats["queries_are_conjunctive"] = True
+            return hits[:limit], stats
+        finally:
+            state.close()
+            if history:
+                history.close()
+
+    @staticmethod
+    def _text_contains_pr(value: str | None, target: str) -> bool:
+        if not value:
+            return False
+        for link in re.findall(r"https?://[^\s\"'<>]+", value):
+            if canonical_pr(link.rstrip(".,;:)]}")) == target:
+                return True
+        return False
+
+    def _match_text(self, s: Session, q: SearchQuery, value: str | None,
+                    source: str, strength: int) -> None:
+        if not isinstance(value, str):
+            return
+        for name, needle in (("jira", q.jira), ("branch", q.branch), ("commit", q.commit)):
+            if needle and self._text_has(value, needle, jira=name == "jira"):
+                s.add(name, source, "text mention", strength, f"Matched {name} in {source}")
+        if q.pr and self._text_contains_pr(value, q.pr):
+            s.add("pr", source, "PR URL mentioned", strength, q.pr)
+
+    def _match_path(self, s: Session, q: SearchQuery, path: str,
+                    source: str, strength: int) -> None:
+        if q.worktree and path_inside(path, q.worktree):
+            s.add("worktree", f"{source}.path", "path inside worktree", strength, path)
+        if q.repo and self._repo_matches(path, None, q.repo):
+            s.add("repo", f"{source}.path", "activity in repository", strength, path)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description="Find Codex sessions by Git artifacts (read-only, no new index).")
+    for name, help_text in (
+        ("repo", "Repository name, local checkout path, or Git remote URL"),
+        ("worktree", "Existing or historical absolute worktree path"),
+        ("branch", "Exact branch name"),
+        ("commit", "Git commit SHA prefix (7-40 hexadecimal characters)"),
+        ("pr", "GitHub or Bitbucket pull request URL"),
+        ("jira", "Jira issue ID such as DCP-9712"),
+    ):
+        p.add_argument("--" + name, help=help_text)
+    p.add_argument("--codex-home", type=Path, help="Use another Codex data directory")
+    p.add_argument("--limit", type=int, default=25, help="Maximum results (default: 25)")
+    p.add_argument("--json", action="store_true", help="Machine-readable output")
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        if args.limit < 1:
+            raise ValueError("--limit must be positive")
+        q = SearchQuery.from_args(args)
+        hits, stats = CodexSearcher(args.codex_home).search(q, args.limit)
+    except (ValueError, FileNotFoundError, sqlite3.DatabaseError) as e:
+        print(f"session-find: {e}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps({"query": {k: v for k, v in q.__dict__.items() if v},
+                          "stats": stats, "results": hits}, indent=2, ensure_ascii=False))
+    else:
+        print(f"Found {stats['total_matches']} matching sessions; showing {len(hits)}")
+        for i, hit in enumerate(hits, 1):
+            print(f"\n{i}. {hit['session_id']}  [{hit['evidence_strength']}]  score={hit['score']}")
+            print(f"   {hit['title'] or '(untitled)'}")
+            for evidence in hit["evidence"][:4]:
+                print(f"   {evidence['field']}: {evidence['source']} — {evidence['kind']}")
+            print(f"   {hit['resume_command']}")
+        for warning in stats["warnings"]:
+            print(f"Warning: {warning}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
