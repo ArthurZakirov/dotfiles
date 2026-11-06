@@ -189,3 +189,31 @@ def test_cli_open_context_invokes_search_then_open_without_extra_cli(capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["opening"]["requested"] == 2
     assert len(payload["opening"]["dispatched"]) == 2
+
+
+
+def test_codex_results_survive_safari_timeout():
+    from find_gpt_session.core import FindSessions, ProviderResult, SearchRequest
+
+    class Codex:
+        name = "codex"
+
+        def search(self, request, limit):
+            return ProviderResult([
+                SessionHit("codex", CODEX_ID, "Recovered session", None, 88,
+                           "Codex text", "codex resume " + CODEX_ID),
+            ], complete=True)
+
+    class Safari:
+        name = "safari"
+
+        def search(self, request, limit):
+            raise TimeoutError("background Safari search timed out")
+
+    result = FindSessions([Codex(), Safari()]).search(
+        SearchRequest.create("text", "cleanup"), 10
+    )
+    assert len(result.hits) == 1
+    assert result.hits[0].provider == "codex"
+    assert result.incomplete_providers == ["safari"]
+    assert "timed out" in " ".join(result.warnings)

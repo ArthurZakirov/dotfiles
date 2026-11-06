@@ -98,7 +98,7 @@ class BrowserProvider:
 
     def search(self, request: SearchRequest, limit: int) -> ProviderResult:
         data = run_json([str(self._ready_executable()), self.name, request.ui_term,
-                         str(min(limit, 12))], timeout=90)
+                         str(min(limit, 12))], timeout=18)
         hits = [
             SessionHit("chatgpt", item.get("sessionId"),
                        item.get("title") or "(untitled)", item.get("url"),
