@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+"""Open one verified Codex Desktop thread in a new Warp tab."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+import sqlite3
+import subprocess
+import sys
+import time
+import uuid
+
+
+class LaunchError(Exception):
+    """A new Codex terminal tab could not be requested safely."""
+
+
+def validated_thread_id(value: str) -> str:
+    try:
+        result = str(uuid.UUID(value))
+    except ValueError as exc:
+        raise LaunchError("Invalid Codex thread ID") from exc
+    if value.lower() != result:
+        raise LaunchError("Codex thread ID must be a canonical UUID")
+    return result
+
+
+def session_directory(thread_id: str, home: Path) -> Path:
+    database = home / ".codex/state_5.sqlite"
+    if not database.is_file():
+        raise LaunchError("Codex thread database not found")
+    try:
+        with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) as con:
+            con.execute("PRAGMA query_only=ON")
+            record = con.execute(
+                "SELECT cwd FROM threads WHERE id = ?", (thread_id,)
+            ).fetchone()
+    except sqlite3.Error as exc:
+        raise LaunchError("Codex thread database unavailable") from exc
+    if not record or not isinstance(record[0], str):
+        raise LaunchError("Codex thread ID not found in local history")
+    directory = Path(record[0]).expanduser()
+    if not directory.is_dir():
+        raise LaunchError(f"Original Codex workspace no longer exists: {directory}")
+    return directory.resolve()
+
+
+def launch(thread_id: str, *, home: Path | None = None, runner=subprocess.run) -> Path:
+    thread_id = validated_thread_id(thread_id)
+    home = home or Path.home()
+    directory = session_directory(thread_id, home)
+    folder = home / ".warp/tab_configs"
+    folder.mkdir(parents=True, exist_ok=True)
+    # Reap only our own old one-shot tab configs, never other Warp settings.
+    for item in folder.glob("codex_desktop_resume_*.toml"):
+        try:
+            if item.is_file() and item.stat().st_mtime < time.time() - 3600:
+                item.unlink()
+        except OSError:
+            pass
+
+    name = "codex_desktop_resume_" + uuid.uuid4().hex
+    target = folder / (name + ".toml")
+    contents = (
+        f"name = {json.dumps('Codex ' + thread_id[:8])}\n"
+        f"title = {json.dumps('Codex ' + thread_id[:8])}\n"
+        "[[panes]]\n"
+        'id = "main"\n'
+        'type = "terminal"\n'
+        f"directory = {json.dumps(str(directory), ensure_ascii=False)}\n"
+        f"commands = [{json.dumps('codex resume ' + thread_id)}]\n"
+    )
+    try:
+        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(contents)
+        result = runner(
+            ["/usr/bin/open", f"warp://tab_config/{name}"],
+            text=True, capture_output=True, timeout=15, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise LaunchError("Failed to request Warp tab") from exc
+    if result.returncode != 0:
+        raise LaunchError("Warp rejected the new tab request")
+    return target
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--session-id", required=True)
+    args = parser.parse_args(argv)
+    try:
+        launch(args.session_id)
+    except LaunchError as exc:
+        print(f"codex-resume-warp: {exc}", file=sys.stderr)
+        return 1
+    print("Warp tab dispatched")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

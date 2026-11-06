@@ -14,12 +14,11 @@ local function homebrewPython()
   end
   return nil
 end
-local APP_IDS = { ["com.openai.codex"] = true, ["com.openai.chatgpt"] = true }
 local HOTKEY = "f" -- ctrl + alt + cmd + f, separate from audio-test shortcut.
 
 local card
 local closeTimer
-local pollTimer
+local cancelCapture
 local checkerTask
 local runNumber = 0
 local COLORS = {
@@ -33,7 +32,7 @@ local COLORS = {
 local function stopPrevious()
   M.lastResult = nil
   runNumber = runNumber + 1
-  if pollTimer then pollTimer:stop(); pollTimer = nil end
+  if cancelCapture then cancelCapture(); cancelCapture = nil end
   if closeTimer then closeTimer:stop(); closeTimer = nil end
   if checkerTask and checkerTask:isRunning() then checkerTask:terminate() end
   checkerTask = nil
@@ -156,54 +155,17 @@ local function check(sessionId, run)
 end
 
 local function captureSession(app, run)
-  -- readAllData/writeAllData retain rich formats of the first clipboard item.
-  -- Multi-item clipboard contents cannot safely be round-tripped here.
-  local items = hs.pasteboard.allContentTypes()
-  if items and #items > 1 then
-    check(nil, run)
-    return
-  end
-  local original = hs.pasteboard.readAllData()
-  local originalCount = hs.pasteboard.changeCount()
-  local tries = 0
-  -- Native desktop action. Never types into or submits the composer.
-  hs.eventtap.keyStroke({ "cmd", "alt" }, "l", 0, app)
-
-  local function poll()
+  cancelCapture = HammerspoonConfig.codexDesktopSession.capture(app, function(sessionId)
     if run ~= runNumber then return end
-    tries = tries + 1
-    local now = hs.pasteboard.changeCount()
-    if now ~= originalCount then
-      local contents = hs.pasteboard.getContents() or ""
-      local sid = contents:match("^codex://threads/([0-9a-fA-F]+%-[0-9a-fA-F]+%-[0-9a-fA-F]+%-[0-9a-fA-F]+%-[0-9a-fA-F]+)$")
-      if not sid or #sid ~= 36 then
-        check(nil, run)
-        return
-      end
-      -- Only restore when nobody else has changed the clipboard since the copy.
-      if hs.pasteboard.changeCount() == now then
-        if original and next(original) then
-          hs.pasteboard.writeAllData(original)
-        else
-          hs.pasteboard.clearContents()
-        end
-      end
-      check(sid, run)
-      return
-    end
-    if tries >= 15 then
-      check(nil, run)
-      return
-    end
-    pollTimer = hs.timer.doAfter(0.1, poll)
-  end
-  pollTimer = hs.timer.doAfter(0.1, poll)
+    cancelCapture = nil
+    check(sessionId, run)
+  end)
 end
 
 function M.run()
   local run = stopPrevious()
   local app = hs.application.frontmostApplication()
-  if not app or not APP_IDS[app:bundleID()] then
+  if not HammerspoonConfig.codexDesktopSession.isDesktopApp(app) then
     show(unknownResult("Codex Desktop öffnen"))
     return
   end
