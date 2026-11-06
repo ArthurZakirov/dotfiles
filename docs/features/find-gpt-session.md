@@ -29,6 +29,29 @@ Without `--provider`, the CLI searches Codex plus Safari. Repeat `--provider` to
 
 For PR URLs, browser adapters search the recognizable path fragment (for example `pull/67`) in **ChatGPT's own message and title search**. For free text, they pass your keywords to the same search; it is **not** an embedding-based semantic fuzzy search, and coverage depends on ChatGPT's own search index.
 
+## ⌨️ Open related sessions from the current Git context
+
+Press **Ctrl+Option+Cmd+S** while a GitHub/Bitbucket PR or branch page is active in Chrome, or while a Git worktree is open in VS Code. No search dialog or Raycast command is needed.
+
+1. Hammerspoon obtains the actual GitHub/Bitbucket URL from Chrome (including installed Chrome web apps), or delegates to the global VS Code task to supply the precise workspace path.
+2. The same `find-gpt-session` core resolves a PR, branch or repository and searches Codex plus ChatGPT via Safari.
+3. Every returned **Codex** hit opens a new tab in the active Warp window and runs `codex resume <UUID>`. Warp starts if it is not already running.
+4. Every returned **ChatGPT** hit with a verified `chatgpt.com/c/...` URL opens a new tab in the active Chrome window. Chrome starts if necessary. A hit without a verified URL is skipped with a warning.
+
+The underlying command is still the single CLI; `--open` changes the action from listing to opening:
+
+```sh
+find-gpt-session --open --context-url "https://github.com/ArthurZakirov/dotfiles/pull/67"
+find-gpt-session --open --context-path "$PWD"
+find-gpt-session --open search "worktree cleanup"
+```
+
+Normal listing defaults to eight results; opening defaults to 25, with `--limit` available to override the cap. Search backends can still return fewer results, especially Safari in the background. No additional Raycast extension or separate search engine is installed. Opening is a **dispatched** OS action and is not misrepresented as a confirmed successful Codex login. Partial ChatGPT background coverage still applies.
+
+Warp uses its supported `warp://tab_config/...` deep links and standard per-tab startup commands rather than injecting keystrokes into a potentially busy terminal. Runtime configs containing resume IDs are written mode 0600 under `~/.warp/tab_configs/` and older generated configs are pruned on subsequent launches. No session IDs are stored in public Dotfiles source.
+
+`Option+Cmd+Space` is already assigned to Finder search on macOS; the new shortcut uses the existing Hammerspoon Hyper family to avoid silently overriding that system binding.
+
 ## ⚠️ Limitations and data safety
 
 The browser backends are experimental: UI structure, content availability and macOS background Accessibility can change. Safari was verified to find a chat from the body-text query `pull/67`, open it and retrieve its direct URL, but reopening the search after navigating can fail while Safari is in the background. When Safari is in the background, only the first navigated result is currently reliable; the adapter stops after that result and reports incomplete coverage. A missing verified URL produces an explicit warning; never assume the entire cloud history was searched.
