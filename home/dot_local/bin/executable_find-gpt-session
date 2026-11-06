@@ -11,6 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
 from find_gpt_session.core import FindSessions, SearchRequest
 from find_gpt_session.adapters import AVAILABLE, create_providers
+from find_gpt_session.context import from_workspace, from_browser_url, ContextError
+from find_gpt_session.launch import SessionOpener
 
 
 def parser() -> argparse.ArgumentParser:
@@ -22,20 +24,26 @@ def parser() -> argparse.ArgumentParser:
     selector.add_argument("--worktree", help="Git worktree path")
     selector.add_argument("--commit", help="Git commit SHA")
     selector.add_argument("--jira", help="Jira issue ID")
+    selector.add_argument("--context-path", help="Find sessions for the active VS Code workspace")
+    selector.add_argument("--context-url", help="Find sessions for the active GitHub/Bitbucket page")
     p.add_argument("words", nargs="*", help='Free text: search "worktree cleanup"')
     p.add_argument("--provider", action="append", choices=(*AVAILABLE, "all"),
                    help="Infrastructure source (repeatable). Default: codex + safari")
-    p.add_argument("--limit", type=int, default=8, help="Maximum combined results")
+    p.add_argument("--limit", type=int, help="Maximum combined results (default: 8; --open: 25)")
     p.add_argument("--json", action="store_true", help="Machine-readable results")
+    p.add_argument("--open", action="store_true",
+                   help="Open all returned Codex sessions in Warp and ChatGPT sessions in Chrome")
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
-    if args.limit < 1:
+    if args.limit is not None and args.limit < 1:
         parser().error("--limit must be positive")
+    limit = args.limit if args.limit is not None else (25 if args.open else 8)
     selectors = [(name, getattr(args, name))
-                 for name in ("pr", "repo", "branch", "worktree", "commit", "jira")
+                 for name in ("pr", "repo", "branch", "worktree", "commit",
+                              "jira", "context_path", "context_url")
                  if getattr(args, name)]
     if selectors and args.words:
         parser().error("Use either --pr/--branch/... or search KEYWORDS")
@@ -46,13 +54,22 @@ def main(argv: list[str] | None = None) -> int:
     else:
         parser().error("Provide --pr/--repo/--branch/--jira or search KEYWORDS")
     try:
-        request = SearchRequest.create(kind, raw)
-    except ValueError as exc:
+        if kind == "context_path":
+            request = from_workspace(raw)
+        elif kind == "context_url":
+            request = from_browser_url(raw)
+        else:
+            request = SearchRequest.create(kind, raw)
+    except (ValueError, ContextError) as exc:
         parser().error(str(exc))
     names = args.provider or ["codex", "safari"]
-    response = FindSessions(create_providers(names)).search(request, args.limit)
+    response = FindSessions(create_providers(names)).search(request, limit)
+    opening = SessionOpener().open(response.hits) if args.open and response.hits else None
     if args.json:
-        print(json.dumps(response.asdict(), ensure_ascii=False, indent=2))
+        output = response.asdict()
+        if opening is not None:
+            output["opening"] = opening.asdict()
+        print(json.dumps(output, ensure_ascii=False, indent=2))
     else:
         if not response.hits and response.incomplete_providers:
             print("Search incomplete: no verified sessions returned; matching chats may exist.")
@@ -66,6 +83,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Warning: {warning}", file=sys.stderr)
         if response.incomplete_providers:
             print("Partial coverage: " + ", ".join(response.incomplete_providers), file=sys.stderr)
+        if opening:
+            print(f"Requested {len(opening.dispatched)} new Warp/Chrome tabs.")
+            for issue in opening.skipped + opening.errors:
+                print(f"Open warning: {issue}", file=sys.stderr)
+    if opening is not None and (opening.errors or not opening.dispatched):
+        return 2
     return 0 if response.hits else 2 if response.incomplete_providers else 1
 
 

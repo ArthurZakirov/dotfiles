@@ -99,7 +99,7 @@ def test_codex_adapter_uses_native_readonly_search():
     with patch("find_gpt_session.adapters.run_json", return_value=raw) as runner:
         result = CodexProvider().search(SearchRequest.create("branch", "my-branch"), 5)
     assert runner.call_args.args[0] == [
-        "session-find", "--branch", "my-branch", "--limit", "5", "--json"
+        str(Path.home() / ".local/bin/session-find"), "--branch", "my-branch", "--limit", "5", "--json"
     ]
     assert result.complete
     assert result.hits[0].resume_command == "codex resume abc"
