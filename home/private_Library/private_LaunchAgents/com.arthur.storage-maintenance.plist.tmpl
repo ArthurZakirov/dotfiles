@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.arthur.storage-maintenance</string>
+  <key>ProgramArguments</key>
+  <array>
+    <!-- No credentials inherited from the macOS login session. -->
+    <string>/usr/bin/env</string>
+    <string>-i</string>
+    <string>HOME={{ .chezmoi.homeDir }}</string>
+    <string>PATH=/usr/bin:/bin</string>
+    <string>/usr/bin/python3</string>
+    <string>{{ .chezmoi.homeDir }}/.local/share/storage-maintenance/clean_chrome_clones.py</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>86400</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>{{ .chezmoi.homeDir }}/Library/Logs/com.arthur.storage-maintenance.log</string>
+  <key>StandardErrorPath</key><string>{{ .chezmoi.homeDir }}/Library/Logs/com.arthur.storage-maintenance.err.log</string>
+</dict>
+</plist>
