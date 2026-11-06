@@ -10,6 +10,12 @@ import sys
 from .core import ProviderResult, SearchRequest, SessionHit
 
 
+def session_find_command() -> str:
+    """Locate the managed CLI even when launched from Dock/VS Code with GUI PATH."""
+    adjacent = Path(__file__).resolve().parents[2] / "bin" / "session-find"
+    return str(adjacent if adjacent.is_file() else Path.home() / ".local/bin/session-find")
+
+
 def run_json(argv: list[str], timeout: int = 50) -> dict:
     try:
         result = subprocess.run(argv, capture_output=True, text=True,
@@ -31,7 +37,7 @@ class CodexProvider:
     def search(self, request: SearchRequest, limit: int) -> ProviderResult:
         if request.kind == "text":
             return ProviderResult(warnings=["free-text search not supported by native Codex adapter"])
-        result = run_json(["session-find", f"--{request.kind}", request.value,
+        result = run_json([session_find_command(), f"--{request.kind}", request.value,
                            "--limit", str(limit), "--json"])
         hits = [
             SessionHit("codex", item.get("session_id"),
@@ -51,7 +57,7 @@ class DesktopProvider:
     def search(self, request: SearchRequest, limit: int) -> ProviderResult:
         # Existing desktop AX adapter already lives in session-find;
         # results are suggestions, not verified permalinks.
-        result = run_json(["session-find", "--chatgpt-query", request.ui_term,
+        result = run_json([session_find_command(), "--chatgpt-query", request.ui_term,
                            "--limit", str(limit), "--json"])
         hits = [
             SessionHit("chatgpt", None, item.get("title") or "(untitled)",

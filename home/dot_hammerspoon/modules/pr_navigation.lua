@@ -40,6 +40,23 @@ local function chromeWebAppUrl(app)
   return ok and url or nil
 end
 
+-- Shared, read-only URL accessor used by Git navigation and session lookup.
+HammerspoonConfig.gitBrowserUrl = function(sourceApp)
+  local bundleID = sourceApp and sourceApp:bundleID() or ""
+  if bundleID:match("^com%.google%.Chrome%.app%.") then
+    return chromeWebAppUrl(sourceApp)
+  end
+  if bundleID ~= "com.google.Chrome" then return nil end
+  local ok, url = hs.osascript.applescript([[
+    tell application "Google Chrome"
+      if (count windows) = 0 then return ""
+      return URL of active tab of front window
+    end tell
+  ]])
+  if ok and type(url) == "string" and url ~= "" then return url end
+  return nil
+end
+
 local function openLocalBranch(sourceApp)
   if runningTask then
     hs.alert.show("A worktree navigation request is still running")
