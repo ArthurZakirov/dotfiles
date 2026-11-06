@@ -81,3 +81,13 @@ in approximately 13.6 seconds rather than stalling for about 90 seconds.
 An unavailable Safari search was reported as incomplete; the Codex result was
 still opened. A physical keyboard shortcut press remains user-verification
 work; a synthetic macOS keyboard event was not conclusive.
+
+
+### Optional Codex text-search integration
+
+The Codex transcript-search module is developed independently under AGENT-5.6.
+When its managed `codex_text.py` is installed, `CodexProvider` uses it for
+free-text queries. This opening feature intentionally does not overwrite or
+duplicate the parallel branch's module; a fresh checkout without that module
+reports incomplete Codex keyword coverage rather than silently losing
+existing support on the private Mac.
