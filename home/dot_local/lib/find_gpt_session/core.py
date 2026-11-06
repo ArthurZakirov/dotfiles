@@ -98,6 +98,12 @@ class SearchResponse:
             "query": {"type": self.request.kind, "value": self.request.value,
                       "ui_term": self.request.ui_term},
             "providers": list(self.providers), "total": len(self.hits),
+            "search_status": (
+                "partial" if self.hits and self.incomplete_providers else
+                "matches" if self.hits else
+                "incomplete" if self.incomplete_providers else
+                "no_matches"
+            ),
             "results": [hit.asdict() for hit in self.hits],
             "warnings": self.warnings,
             "incomplete_providers": self.incomplete_providers,

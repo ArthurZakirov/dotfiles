@@ -144,3 +144,41 @@ def test_cli_contract_json():
     payload = json.loads("".join(print_calls))
     assert payload["query"]["ui_term"] == "pull/4"
     assert payload["results"][0]["session_id"] == "abc"
+
+
+def test_incomplete_zero_results_are_not_confirmed_absence():
+    class Unavailable:
+        name = "safari"
+
+        def search(self, request, limit):
+            return ProviderResult([], warnings=["Browser UI not accessible"], complete=False)
+
+    response = FindSessions([Unavailable()]).search(SearchRequest.create("text", "pull/67"))
+    assert not response.hits
+    assert response.asdict()["search_status"] == "incomplete"
+    assert response.incomplete_providers == ["safari"]
+
+
+def test_cli_incomplete_search_returns_error_not_false_zero(capsys):
+    from importlib.machinery import SourceFileLoader
+    import importlib.util
+    script = ROOT / "home/dot_local/bin/executable_find-gpt-session"
+    loader = SourceFileLoader("find_gpt_session_incomplete_cli", str(script))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+
+    class Unavailable:
+        name = "safari"
+
+        def search(self, request, limit):
+            return ProviderResult([], warnings=["UI unavailable"], complete=False)
+
+    with patch.object(module, "create_providers", return_value=[Unavailable()]):
+        rc = module.main(["search", "pull/67", "--provider", "safari"])
+    stdout, stderr = capsys.readouterr()
+    assert rc == 2
+    assert "Search incomplete" in stdout
+    assert "Found 0 sessions" not in stdout
+    assert "UI unavailable" in stderr
