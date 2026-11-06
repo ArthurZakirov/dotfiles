@@ -32,13 +32,26 @@ def git(path, *args, optional=False):
 
 
 def repository_identity(remote):
-    # Remote URLs can contain authentication data. Never include them in errors.
-    scp = re.fullmatch(r"(?:[^@/]+@)?bitbucket\.org:([^/]+)/([^/]+?)(?:\.git)?/?", remote)
+    # Remote URLs may contain credentials. Never include them in errors.
+    # SSH Git traffic moved to ssh.bitbucket.org. All transport hostnames
+    # represent the same Bitbucket Cloud repository and HTTPS web identity.
+    ssh_hosts = ("bitbucket.org", "ssh.bitbucket.org", "altssh.bitbucket.org")
+    scp = re.fullmatch(
+        r"(?:[^@/]+@)?(?:bitbucket\.org|ssh\.bitbucket\.org|altssh\.bitbucket\.org):"
+        r"([^/]+)/([^/]+?)(?:\.git)?/?",
+        remote,
+    )
     if scp:
         return scp.group(1).lower(), scp.group(2).lower()
     try:
         parsed = urlsplit(remote)
-        if parsed.hostname != "bitbucket.org" or parsed.scheme not in ("https", "ssh"):
+        if parsed.scheme == "https":
+            allowed = ("bitbucket.org",)
+        elif parsed.scheme == "ssh":
+            allowed = ssh_hosts
+        else:
+            return None
+        if parsed.hostname not in allowed:
             return None
         parts = parsed.path.strip("/").split("/")
         if len(parts) != 2:
