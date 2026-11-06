@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""Attach the executing Codex CLI session to tasks just written by Backlog.md.
+
+Invoked by the agent-backlog wrapper after a successful task create/edit.
+Never guesses a session from history or the currently focused app.
+"""
+
+from __future__ import annotations
+
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import uuid
+
+
+TASK_RESULT = re.compile(
+    r"^(?:Created task|Updated task|Task)\s+([A-Z][A-Z0-9]*-[0-9]+)(?=\s|$)",
+    re.MULTILINE,
+)
+
+
+def current_session() -> str | None:
+    raw = os.environ.get("CODEX_THREAD_ID", "").strip()
+    try:
+        value = uuid.UUID(raw)
+    except (ValueError, AttributeError):
+        return None
+    return str(value) if str(value) == raw.lower() else None
+
+
+def task_ids_from_output(output: str) -> list[str]:
+    return list(dict.fromkeys(TASK_RESULT.findall(output)))
+
+
+def attach_to_task(task_id: str, session_id: str) -> bool:
+    result = subprocess.run(
+        ["backlog", "task", "view", task_id, "--json"],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode:
+        print(f"agent-backlog: cannot inspect {task_id}: {result.stderr.strip()}", file=sys.stderr)
+        return False
+    try:
+        task = json.loads(result.stdout)["task"]
+    except (ValueError, KeyError, TypeError):
+        print(f"agent-backlog: invalid task-view JSON for {task_id}", file=sys.stderr)
+        return False
+    if task.get("id") != task_id:
+        print(f"agent-backlog: task ID mismatch for {task_id}", file=sys.stderr)
+        return False
+
+    bt = chr(96)
+    marker = f"Codex session: {bt}{session_id}{bt}"
+    if any(marker in comment.get("body", "") for comment in task.get("comments", [])):
+        return True
+
+    comment = (
+        f"{marker}\n\n"
+        "Resume this conversation in Codex CLI:\n\n"
+        f"{bt * 3}bash\ncodex resume {session_id}\n{bt * 3}"
+    )
+    update = subprocess.run(
+        [
+            "backlog", "task", "edit", task_id,
+            "--comment", comment,
+            "--comment-author", "@codex",
+        ],
+        capture_output=True, text=True, check=False,
+    )
+    if update.returncode:
+        print(f"agent-backlog: cannot link session to {task_id}: {update.stderr.strip()}", file=sys.stderr)
+        return False
+    print(f"agent-backlog: linked Codex session to {task_id}", file=sys.stderr)
+    return True
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        print("usage: agent-backlog-codex-session CAPTURED_OUTPUT", file=sys.stderr)
+        return 2
+    session_id = current_session()
+    if not session_id:
+        print("agent-backlog: no verified CODEX_THREAD_ID; not linking a session", file=sys.stderr)
+        return 1
+    try:
+        output = Path(sys.argv[1]).read_text(errors="replace")
+    except OSError as error:
+        print(f"agent-backlog: cannot read task result: {error}", file=sys.stderr)
+        return 1
+    task_ids = task_ids_from_output(output)
+    if not task_ids:
+        print("agent-backlog: successful task change had no recognizable task ID", file=sys.stderr)
+        return 1
+    # Serialize read/check/write across concurrent Codex agents updating the
+    # same Mac-wide board, so one session gets at most one comment per task.
+    with (Path.cwd() / ".agent-backlog-codex-session.lock").open("a+") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        results = [attach_to_task(task_id, session_id) for task_id in task_ids]
+    return 0 if all(results) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
