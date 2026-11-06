@@ -194,26 +194,84 @@ func selectChromeTab() -> (window: String, original: String, selected: String)? 
     return (parts[0], parts[1], parts[2])
 }
 
-func verifiedTabTitle(provider: String) -> String? {
-    if provider == "safari" {
-        return osascript("tell application \"Safari\" to return name of current tab of front window")
-    }
-    if provider == "chrome" {
-        return osascript("tell application \"Google Chrome\" to return title of active tab of front window")
-    }
-    return nil
+struct BrowserTabState {
+    let url: String
+    let title: String
 }
 
-func verifiedTabUrl(provider: String, root: AXUIElement) -> String? {
-    // Safari does not always expose AXWebArea while in the background;
-    // AppleScript reads the tab address without focusing or navigating the browser.
-    if provider == "safari" {
-        return osascript("tell application \"Safari\" to return URL of current tab of front window")
+func browserTabState(provider: String) -> BrowserTabState? {
+    // Read URL and title in a single AppleScript roundtrip. Two independent
+    // processes could observe different navigation states and consume the
+    // entire 4-second timeout before ChatGPT finished updating its title.
+    let script: String
+    switch provider {
+    case "safari":
+        script = """
+        tell application "Safari"
+            set t to current tab of front window
+            return (URL of t as string) & (ASCII character 10) & (name of t as string)
+        end tell
+        """
+    case "chrome":
+        script = """
+        tell application "Google Chrome"
+            set t to active tab of front window
+            return (URL of t as string) & (ASCII character 10) & (title of t as string)
+        end tell
+        """
+    default:
+        return nil
     }
-    if provider == "chrome" {
-        return osascript("tell application \"Google Chrome\" to return URL of active tab of front window")
-    }
-    return currentChatUrl(root)
+    guard let response = osascript(script),
+          let breakIndex = response.firstIndex(of: "\n") else { return nil }
+    return BrowserTabState(
+        url: String(response[..<breakIndex]),
+        title: String(response[response.index(after: breakIndex)...])
+    )
+}
+
+func isMatchingResult(heading: String, state: BrowserTabState) -> String? {
+    guard let url = canonicalUrl(state.url) else { return nil }
+    let pageTitle = state.title.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !pageTitle.isEmpty, pageTitle != "ChatGPT",
+          heading.lowercased().hasPrefix(pageTitle.lowercased()) else { return nil }
+    return url
+}
+
+func awaitResultNavigation(
+    heading: String, previousUrl: String?, seconds: Double,
+    observe: () -> BrowserTabState?,
+    pause: () -> Void = { Thread.sleep(forTimeInterval: 0.20) }
+) -> String? {
+    let deadline = Date().addingTimeInterval(seconds)
+    var changedUrl: String?
+    var changedSamples = 0
+    repeat {
+        if let state = observe() {
+            // Prefer both URL and title when available, including a search
+            // result that links to the already-open conversation.
+            if let url = isMatchingResult(heading: heading, state: state) {
+                return url
+            }
+            // ChatGPT sometimes updates its route *before* the Safari tab
+            // title and never exposes the latter while in the background.
+            // A new, stable conversation URL after an explicit AXPress is
+            // sufficient navigation evidence; unlike a lone URL sample, it
+            // cannot accidentally reuse the previously open conversation.
+            if let previousUrl, let url = canonicalUrl(state.url), url != previousUrl {
+                if changedUrl == url {
+                    changedSamples += 1
+                } else {
+                    changedUrl = url
+                    changedSamples = 1
+                }
+                if changedSamples >= 2 { return url }
+            }
+        }
+        if Date() >= deadline { break }
+        pause()
+    } while true
+    return nil
 }
 
 func restoreChromeTab(_ selection: (window: String, original: String, selected: String)) {
@@ -254,8 +312,11 @@ func search(provider: String, term: String, limit: Int) -> Output {
     if selection != nil { Thread.sleep(forTimeInterval: 0.30) }
 
     guard setSearchTerm(root, term) else {
+        let message = provider == "safari"
+            ? "Safari search UI unavailable (possibly background Accessibility); results unverified"
+            : "Could not open or set ChatGPT Search"
         return Output(provider: provider, query: term, results: [],
-                      completeHistory: false, warnings: ["Could not open or set ChatGPT Search"])
+                      completeHistory: false, warnings: [message])
     }
     let initial = availableResults(root)
     trace("initial results count: \(initial.count)")
@@ -279,29 +340,22 @@ func search(provider: String, term: String, limit: Int) -> Output {
         }
         let row = rows[index]
         let heading = title(row)
+        let previousUrl = browserTabState(provider: provider).flatMap { canonicalUrl($0.url) }
         trace("opening index \(index) title: \(heading.prefix(65))")
         guard AXUIElementPerformAction(row, kAXPressAction as CFString) == .success else {
             warnings.append("Could not open result at position \(index + 1)")
             continue
         }
-        let deadline = Date().addingTimeInterval(4.0)
-        var resolved: String?
-        repeat {
-            if let raw = verifiedTabUrl(provider: provider, root: root), let url = canonicalUrl(raw) {
-                let pageTitle = verifiedTabTitle(provider: provider) ?? ""
-                // Never treat the previous tab URL as the newly opened result.
-                // A live search row starts with the exact chat title; only use
-                // a URL whose current page title identifies that row.
-                if !pageTitle.isEmpty && heading.lowercased().hasPrefix(pageTitle.lowercased()) {
-                    resolved = url
-                    break
-                }
-            }
-            Thread.sleep(forTimeInterval: 0.12)
-        } while Date() < deadline
+        // AXPress may return before Safari has navigated and rendered the title.
+        // Poll a coherent (URL, title) pair with a bounded, generous deadline;
+        // a timeout is *incomplete*, not evidence that the chat was not found.
+        let resolved = awaitResultNavigation(heading: heading,
+            previousUrl: previousUrl, seconds: 12) {
+            browserTabState(provider: provider)
+        }
         trace("after click resolved: \(resolved ?? "nil")")
         guard let url = resolved, let id = conversationId(url) else {
-            warnings.append("No verified chat URL for result \(index + 1)")
+            warnings.append("Search result \(index + 1) was visible, but Safari did not confirm its URL and title within 12 seconds; coverage incomplete")
             continue
         }
         if seen.insert(id).inserted {
@@ -330,6 +384,35 @@ if args.contains("--self-test") {
     precondition(conversationId(sample) != nil)
     precondition(conversationId("https://example.org/c/" + fakeId) == nil)
     precondition(canonicalUrl(sample + "?src=history_search") == sample)
+    let title = "Example Chat …git pull/67"
+    let previousId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    let oldState = BrowserTabState(url: "https://chatgpt.com/c/" + previousId,
+                                    title: "Different Chat")
+    let newState = BrowserTabState(url: sample + "?src=history_search",
+                                    title: "Example Chat")
+    var pollCount = 0
+    let resolved = awaitResultNavigation(heading: title, previousUrl: oldState.url,
+        seconds: 1, observe: {
+            pollCount += 1
+            if pollCount < 3 { return oldState }
+            if pollCount == 3 {
+                return BrowserTabState(url: newState.url, title: "Different Chat")
+            }
+            return newState
+        }, pause: {})
+    precondition(resolved == sample && pollCount == 4)
+    precondition(isMatchingResult(heading: title, state: oldState) == nil)
+    var delayedTitlePoll = 0
+    let changedButTitleStale = awaitResultNavigation(heading: title,
+        previousUrl: oldState.url, seconds: 1, observe: {
+            delayedTitlePoll += 1
+            if delayedTitlePoll == 1 { return oldState }
+            return BrowserTabState(url: newState.url, title: "ChatGPT")
+        }, pause: {})
+    precondition(changedButTitleStale == sample && delayedTitlePoll == 3)
+    let oldOnly = awaitResultNavigation(heading: title, previousUrl: oldState.url,
+        seconds: 0, observe: { oldState }, pause: {})
+    precondition(oldOnly == nil)
     print("{\"self_test\":true}")
     exit(0)
 }
