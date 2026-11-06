@@ -16,6 +16,8 @@ import tempfile
 TASK_LABEL = "Git: Open Current Pull Request in Chrome"
 BRANCH_LABEL = "Git: Open Current Branch in Chrome"
 REVIEW_CLEANUP_LABEL = "Git: Unreview All"
+SESSIONS_LABEL = "GPT: Open Related Sessions"
+SESSIONS_KEY = "ctrl+alt+cmd+shift+s"
 OLD_PR_LABEL = "Bitbucket: Open Current Pull Request in Chrome"
 OLD_BRANCH_LABEL = "Bitbucket: Open Current Branch in Chrome"
 
@@ -128,7 +130,8 @@ def array_entries(source: str, key: str | None):
 def merge_source(source: str, updated, is_tasks: bool) -> str:
     if not source:
         return json.dumps(updated, indent=2, ensure_ascii=False) + "\n"
-    labels = (TASK_LABEL, BRANCH_LABEL, REVIEW_CLEANUP_LABEL) if is_tasks else (TASK_LABEL,)
+    labels = ((TASK_LABEL, BRANCH_LABEL, REVIEW_CLEANUP_LABEL, SESSIONS_LABEL)
+              if is_tasks else (TASK_LABEL, SESSIONS_LABEL))
     for label in labels:
         key = "tasks" if is_tasks else None
         opening, closing, entries = array_entries(source, key)
@@ -139,12 +142,18 @@ def merge_source(source: str, updated, is_tasks: bool) -> str:
             matches = [(a, b) for a, b, item in entries
                        if item.get("label") in (label, old)]
         else:
-            value = next(item for item in updated if item.get("args") == TASK_LABEL
-                         and item.get("key") == "ctrl+p ctrl+r")
-            matches = [(a, b) for a, b, item in entries if
-                       item.get("key") == "ctrl+p ctrl+r"
-                       and item.get("command") == "workbench.action.tasks.runTask"
-                       and item.get("args") in (TASK_LABEL, OLD_PR_LABEL)]
+            if label == SESSIONS_LABEL:
+                value = next(item for item in updated if item.get("args") == SESSIONS_LABEL
+                             and item.get("key") == SESSIONS_KEY)
+                matches = [(a, b) for a, b, item in entries
+                           if item.get("key") == SESSIONS_KEY]
+            else:
+                value = next(item for item in updated if item.get("args") == TASK_LABEL
+                             and item.get("key") == "ctrl+p ctrl+r")
+                matches = [(a, b) for a, b, item in entries if
+                           item.get("key") == "ctrl+p ctrl+r"
+                           and item.get("command") == "workbench.action.tasks.runTask"
+                           and item.get("args") in (TASK_LABEL, OLD_PR_LABEL)]
         if len(matches) > 1:
             raise ValueError(f"Duplicate VS Code PR integration: {label}")
         if matches:
@@ -207,6 +216,18 @@ def task(label: str, action: str) -> dict:
     }
 
 
+def session_open_task() -> dict:
+    return {
+        "label": SESSIONS_LABEL,
+        "type": "process",
+        "command": "${userHome}/.local/bin/find-gpt-session",
+        "args": ["--open", "--context-path", "${workspaceFolder}"],
+        "problemMatcher": [],
+        "presentation": {"reveal": "silent", "panel": "dedicated",
+                         "showReuseMessage": False, "close": True},
+    }
+
+
 def review_cleanup_task() -> dict:
     return {
         "label": REVIEW_CLEANUP_LABEL,
@@ -243,6 +264,13 @@ def update_tasks(existing: dict) -> bool:
         review_tasks[0].update(review_cleanup_task())
     else:
         tasks.append(review_cleanup_task())
+    matches = [entry for entry in tasks if entry.get("label") == SESSIONS_LABEL]
+    if len(matches) > 1:
+        raise ValueError(f"Duplicate VS Code tasks for {SESSIONS_LABEL}")
+    if matches:
+        matches[0].update(session_open_task())
+    else:
+        tasks.append(session_open_task())
     existing.setdefault("version", "2.0.0")
     return before != json.dumps(tasks, sort_keys=True)
 
@@ -264,6 +292,23 @@ def update_bindings(existing: list) -> bool:
         legacy[0].update(binding)
     else:
         existing.append(binding)
+    sessions = [item for item in existing if item.get("key") == SESSIONS_KEY]
+    if len(sessions) > 1:
+        raise ValueError(f"Duplicate VS Code shortcut {SESSIONS_KEY}")
+    session_binding = {
+        "key": SESSIONS_KEY,
+        "command": "workbench.action.tasks.runTask",
+        "args": SESSIONS_LABEL,
+        "when": "workspaceFolderCount > 0",
+    }
+    if sessions:
+        if sessions[0].get("command") != session_binding["command"] or (
+            sessions[0].get("args") != SESSIONS_LABEL
+        ):
+            raise ValueError(f"VS Code shortcut {SESSIONS_KEY} is owned by another command")
+        sessions[0].update(session_binding)
+    else:
+        existing.append(session_binding)
     return before != json.dumps(existing, sort_keys=True)
 
 
