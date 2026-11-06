@@ -27,6 +27,11 @@ import sys
 db = Path(os.environ["TEST_TASK_DB"])
 tasks = json.loads(db.read_text()) if db.exists() else {}
 args = sys.argv[1:]
+if args[:2] == ["task", "create"] and os.environ.get("TEST_TTY_RESULT"):
+    Path(os.environ["TEST_TTY_RESULT"]).write_text(json.dumps({
+        "stdin": sys.stdin.isatty(), "stdout": sys.stdout.isatty(),
+        "stderr": sys.stderr.isatty()
+    }))
 if args[:2] == ["task", "create"]:
     task_id = "AGENT-" + str(len(tasks) + 1)
     tasks[task_id] = {"id": task_id, "comments": []}
@@ -176,3 +181,46 @@ def test_readonly_operations_do_not_create_session_links(
 
     assert result.returncode == 0
     assert comments(db, "AGENT-1") == []
+
+
+def test_write_preserves_terminal_tty_for_backlog(
+    environment: tuple[dict[str, str], Path], tmp_path: Path,
+) -> None:
+    # The Codex session integration must not pipe Backlog.md through tee:
+    # interactive CLI calls need their original terminal stdin/stdout/stderr.
+    env, db = environment
+    env["CODEX_THREAD_ID"] = SESSION_A
+    tty_result = tmp_path / "tty.json"
+    env["TEST_TTY_RESULT"] = str(tty_result)
+    master, slave = os.openpty()
+    try:
+        call = subprocess.run(
+            ["bash", str(WRAPPER), "task", "create", "Sample task"],
+            env=env, stdin=slave, stdout=slave, stderr=slave,
+            check=False, timeout=12,
+        )
+    finally:
+        os.close(slave)
+        os.close(master)
+
+    assert call.returncode == 0
+    assert json.loads(tty_result.read_text()) == {
+        "stdin": True, "stdout": True, "stderr": True,
+    }
+    assert len(comments(db, "AGENT-1")) == 1
+
+
+def test_edit_does_not_misidentify_task_ids_inside_options(
+    environment: tuple[dict[str, str], Path],
+) -> None:
+    env, db = environment
+    assert invoke(env, "task", "create", "Sample task").returncode == 0
+    env["CODEX_THREAD_ID"] = SESSION_A
+    # A task ID in an option value must not be interpreted as an edited ID.
+    result = invoke(
+        env, "task", "edit", "AGENT-1",
+        "--comment", "AGENT-2", "--status", "Pushed",
+    )
+    assert result.returncode == 0
+    assert len(comments(db, "AGENT-1")) == 2
+    assert sum("codex resume " + SESSION_A in c for c in comments(db, "AGENT-1")) == 1

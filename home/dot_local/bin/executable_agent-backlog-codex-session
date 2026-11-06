@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Attach the executing Codex CLI session to tasks just written by Backlog.md.
+"""Run a Backlog task write with untouched stdio and link the current Codex UUID.
 
-Invoked by the agent-backlog wrapper after a successful task create/edit.
-Never guesses a session from history or the currently focused app.
+The executing Codex shell supplies CODEX_THREAD_ID. There is no history
+lookup or focused-window inference. Task association comes only from a
+successful create/edit command issued through this wrapper.
 """
 
 from __future__ import annotations
@@ -17,10 +18,25 @@ import sys
 import uuid
 
 
-TASK_RESULT = re.compile(
-    r"^(?:Created task|Updated task|Task)\s+([A-Z][A-Z0-9]*-[0-9]+)(?=\s|$)",
-    re.MULTILINE,
-)
+TASK_ID = re.compile(r"[A-Z][A-Z0-9]*-[0-9]+")
+
+# Backlog.md task-edit CLI options that consume the next argv token.
+VALUE_FLAGS = {
+    "-t", "--title", "-d", "--description", "--desc", "-a", "--assignee",
+    "-s", "--status", "-l", "--label", "--add-label", "--remove-label",
+    "--priority", "--type", "--project", "--due-date", "--ordinal",
+    "-m", "--milestone", "--ac", "--dod", "--remove-ac", "--remove-dod",
+    "--check-ac", "--check-dod", "--uncheck-ac", "--uncheck-dod",
+    "--acceptance-criteria", "--plan", "--notes", "--comment",
+    "--comment-author", "--final-summary", "--append-plan", "--append-notes",
+    "--append-final-summary", "--depends-on", "--dep", "--ref", "--add-ref",
+    "--remove-ref", "--modified-file", "--doc", "--add-doc", "--remove-doc",
+}
+NO_VALUE_FLAGS = {
+    "--plain", "--clear-due-date", "--clear-milestone", "--clear-labels",
+    "--clear-deps", "--clear-refs", "--clear-docs", "--clear-ac",
+    "--clear-final-summary",
+}
 
 
 def current_session() -> str | None:
@@ -32,8 +48,47 @@ def current_session() -> str | None:
     return str(value) if str(value) == raw.lower() else None
 
 
-def task_ids_from_output(output: str) -> list[str]:
-    return list(dict.fromkeys(TASK_RESULT.findall(output)))
+def warn(message: str) -> None:
+    print("agent-backlog: " + message, file=sys.stderr)
+
+
+def read_tasks() -> dict[str, dict] | None:
+    result = subprocess.run(
+        ["backlog", "task", "list", "--json"],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode:
+        return None
+    try:
+        tasks = json.loads(result.stdout)["tasks"]
+        return {task["id"]: task for task in tasks if isinstance(task, dict)}
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
+def edited_ids(arguments: list[str]) -> list[str]:
+    """Extract *positional* task IDs, not incidental IDs in option values."""
+    ids: list[str] = []
+    iterator = iter(arguments)
+    for token in iterator:
+        if token == "--":
+            ids.extend(value for value in iterator if TASK_ID.fullmatch(value))
+            break
+        flag = token.split("=", 1)[0]
+        if flag in VALUE_FLAGS:
+            if "=" not in token:
+                next(iterator, None)
+        elif flag in NO_VALUE_FLAGS:
+            continue
+        elif token.startswith("-"):
+            # Unknown future CLI option: never guess whether it has a value.
+            return []
+        elif TASK_ID.fullmatch(token):
+            ids.append(token)
+        else:
+            # Unrecognized positional value could be an unsupported option.
+            return []
+    return list(dict.fromkeys(ids))
 
 
 def attach_to_task(task_id: str, session_id: str) -> bool:
@@ -42,66 +97,85 @@ def attach_to_task(task_id: str, session_id: str) -> bool:
         capture_output=True, text=True, check=False,
     )
     if result.returncode:
-        print(f"agent-backlog: cannot inspect {task_id}: {result.stderr.strip()}", file=sys.stderr)
+        warn(f"cannot inspect {task_id}: {result.stderr.strip()}")
         return False
     try:
         task = json.loads(result.stdout)["task"]
     except (ValueError, KeyError, TypeError):
-        print(f"agent-backlog: invalid task-view JSON for {task_id}", file=sys.stderr)
+        warn(f"invalid task-view JSON for {task_id}")
         return False
     if task.get("id") != task_id:
-        print(f"agent-backlog: task ID mismatch for {task_id}", file=sys.stderr)
+        warn(f"task ID mismatch for {task_id}")
         return False
-
-    bt = chr(96)
-    marker = f"Codex session: {bt}{session_id}{bt}"
+    tick = chr(96)
+    marker = f"Codex session: {tick}{session_id}{tick}"
     if any(marker in comment.get("body", "") for comment in task.get("comments", [])):
         return True
 
     comment = (
         f"{marker}\n\n"
         "Resume this conversation in Codex CLI:\n\n"
-        f"{bt * 3}bash\ncodex resume {session_id}\n{bt * 3}"
+        f"{tick * 3}bash\ncodex resume {session_id}\n{tick * 3}"
     )
     update = subprocess.run(
-        [
-            "backlog", "task", "edit", task_id,
-            "--comment", comment,
-            "--comment-author", "@codex",
-        ],
+        ["backlog", "task", "edit", task_id, "--comment", comment,
+         "--comment-author", "@codex"],
         capture_output=True, text=True, check=False,
     )
     if update.returncode:
-        print(f"agent-backlog: cannot link session to {task_id}: {update.stderr.strip()}", file=sys.stderr)
+        warn(f"cannot link session to {task_id}: {update.stderr.strip()}")
         return False
-    print(f"agent-backlog: linked Codex session to {task_id}", file=sys.stderr)
+    warn(f"linked Codex session to {task_id}")
     return True
 
 
-def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: agent-backlog-codex-session CAPTURED_OUTPUT", file=sys.stderr)
+def run_task(arguments: list[str]) -> int:
+    if len(arguments) < 2 or arguments[:2] not in (
+        ["task", "create"], ["task", "edit"]
+    ):
+        warn("expected task create/edit")
         return 2
+
     session_id = current_session()
     if not session_id:
-        print("agent-backlog: no verified CODEX_THREAD_ID; not linking a session", file=sys.stderr)
-        return 1
-    try:
-        output = Path(sys.argv[1]).read_text(errors="replace")
-    except OSError as error:
-        print(f"agent-backlog: cannot read task result: {error}", file=sys.stderr)
-        return 1
-    task_ids = task_ids_from_output(output)
-    if not task_ids:
-        print("agent-backlog: successful task change had no recognizable task ID", file=sys.stderr)
-        return 1
-    # Serialize read/check/write across concurrent Codex agents updating the
-    # same Mac-wide board, so one session gets at most one comment per task.
+        warn("no verified CODEX_THREAD_ID; executing task without linking")
+        return subprocess.call(["backlog", *arguments])
+
+    operation = arguments[1]
+    # Lock the read/write/associate sequence, including parallel Codex writers
+    # using this wrapper. The actual Backlog command inherits stdout/stderr/stdin
+    # unchanged; a terminal stays a terminal, rather than becoming a tee pipe.
     with (Path.cwd() / ".agent-backlog-codex-session.lock").open("a+") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-        results = [attach_to_task(task_id, session_id) for task_id in task_ids]
-    return 0 if all(results) else 1
+        before = read_tasks() if operation == "create" else None
+        status = subprocess.call(["backlog", *arguments])
+        if status != 0:
+            return status
+        task_ids: list[str]
+        if operation == "create":
+            after = read_tasks()
+            if before is None or after is None:
+                warn("task saved but could not inspect before/after IDs")
+                return 0
+            created = sorted(set(after) - set(before))
+            # Do not attach another agent's session to an ambiguous write.
+            if len(created) != 1:
+                warn(f"task saved but created task ID is ambiguous ({len(created)})")
+                return 0
+            task_ids = created
+        else:
+            task_ids = edited_ids(arguments[2:])
+            if not task_ids:
+                warn("task saved but cannot unambiguously identify edited task ID")
+                return 0
+
+        if not all(attach_to_task(task_id, session_id) for task_id in task_ids):
+            warn("task saved, but Codex session linking failed")
+        return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    if len(sys.argv) < 4 or sys.argv[1] != "--run":
+        warn("usage: agent-backlog-codex-session --run task create/edit ...")
+        sys.exit(2)
+    sys.exit(run_task(sys.argv[2:]))

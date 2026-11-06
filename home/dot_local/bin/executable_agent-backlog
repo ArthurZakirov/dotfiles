@@ -20,29 +20,20 @@ fi
 
 cd "$root"
 
-# Codex supplies its *own* thread UUID to shell tools. Capture the successful
-# result of a task write and attach a single resume command to each affected
-# task. Do not guess IDs by searching history, and never link ChatGPT sessions.
+# Codex supplies its *own* thread UUID to shell tools. Run successful task
+# writes with their original terminal stdio and attach one resume command per
+# affected task. Never infer IDs from history or link ChatGPT sessions.
 if [[ $# -ge 2 && "$1" == "task" && ( "$2" == "create" || "$2" == "edit" ) ]]; then
   session_id="${CODEX_THREAD_ID:-}"
   if [[ "$session_id" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]]; then
-    capture=$(mktemp "${TMPDIR:-/tmp}/agent-backlog-session.XXXXXX")
-    trap 'rm -f "$capture"' EXIT
-    if backlog "$@" | tee "$capture"; then
-      linker="$HOME/.local/bin/agent-backlog-codex-session"
-      if [[ -f "$linker" ]]; then
-        if ! /usr/bin/python3 "$linker" "$capture"; then
-          printf 'agent-backlog: task saved, but Codex session linking failed; see warning above.\n' >&2
-        fi
-      else
-        printf 'agent-backlog: task saved, but session linker is not installed.\n' >&2
-      fi
-      exit 0
-    else
-      exit $?
+    linker="$HOME/.local/bin/agent-backlog-codex-session"
+    if [[ -f "$linker" ]]; then
+      # The link helper executes Backlog.md with its original stdin/out/err.
+      # Never turn a terminal invocation into a pipe via tee.
+      exec /usr/bin/python3 "$linker" --run "$@"
     fi
-  fi
-  if [[ -n "$session_id" ]]; then
+    printf 'agent-backlog: session linker not installed; running task normally.\n' >&2
+  elif [[ -n "$session_id" ]]; then
     printf 'agent-backlog: ignoring malformed CODEX_THREAD_ID (task still runs).\n' >&2
   fi
 fi
