@@ -182,3 +182,31 @@ def test_cli_incomplete_search_returns_error_not_false_zero(capsys):
     assert "Search incomplete" in stdout
     assert "Found 0 sessions" not in stdout
     assert "UI unavailable" in stderr
+
+
+
+def test_codex_text_adapter_optional_peer_integration():
+    import types
+    from unittest.mock import MagicMock
+
+    expected = ProviderResult(
+        hits=[SessionHit("codex", "abc", "From transcript", None, 90,
+                         "User message", "codex resume abc")], complete=True
+    )
+    cls = MagicMock()
+    cls.return_value.search.return_value = expected
+    with patch.dict(sys.modules, {
+        "find_gpt_session.codex_text":
+            types.SimpleNamespace(CodexTranscriptSearcher=cls)
+    }):
+        result = CodexProvider().search(SearchRequest.create("text", "worktree"), 3)
+    assert result == expected
+    cls.return_value.search.assert_called_once_with("worktree", 3)
+
+
+def test_codex_text_adapter_missing_peer_warns_instead_of_crashing():
+    # Other tests may import the optional module from the installed CLI.
+    with patch.dict(sys.modules, {"find_gpt_session.codex_text": None}):
+        result = CodexProvider().search(SearchRequest.create("text", "worktree"), 3)
+    assert not result.hits
+    assert "not installed" in " ".join(result.warnings)

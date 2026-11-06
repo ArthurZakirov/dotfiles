@@ -36,7 +36,13 @@ class CodexProvider:
 
     def search(self, request: SearchRequest, limit: int) -> ProviderResult:
         if request.kind == "text":
-            return ProviderResult(warnings=["free-text search not supported by native Codex adapter"])
+            # Optional peer adapter may already be installed from the parallel
+            # global-search feature. Preserve it without editing that worktree.
+            try:
+                from .codex_text import CodexTranscriptSearcher
+            except ImportError:
+                return ProviderResult(warnings=["Codex transcript search adapter not installed"])
+            return CodexTranscriptSearcher().search(request.value, limit)
         result = run_json([session_find_command(), f"--{request.kind}", request.value,
                            "--limit", str(limit), "--json"])
         hits = [
