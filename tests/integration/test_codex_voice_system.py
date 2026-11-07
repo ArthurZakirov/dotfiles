@@ -113,6 +113,9 @@ def test_chezmoi_launcher_forwards_flags_and_sets_verbatim_speech(
     output = command(str(home / LAUNCHER), "--no-daemon", env=env)
 
     assert output.strip() == "1:--no-daemon"
+    assert command(str(home / LAUNCHER), env=env).strip() == "1:--no-daemon"
+    assert command(str(home / LAUNCHER), "resume", "--last", env=env).strip() == "1:--no-daemon resume --last"
+    assert command(str(home / LAUNCHER), "--", "--no-daemon", env=env).strip() == "1:--no-daemon -- --no-daemon"
     binary.write_text(
         '#!/bin/sh\nprintf "%s\\n" "$CODEX_STATUS_LINE_COMMANDS"\n'
     )
@@ -228,6 +231,15 @@ def test_chezmoi_installs_pinned_release_and_launches_real_cli(
     launcher = str(home / LAUNCHER)
     assert "codex-cli 0.166.0" in command(launcher, "--version", env=env)
     assert "Usage:" in command(launcher, "--no-daemon", "--help", env=env)
+    for relative in (
+        "bin/codex-code-mode-host", "bin/codex-exec-server", "codex-path/rg",
+        "codex-resources/voice/bin/codex-voice-speech-helper",
+    ):
+        assert relative in manifest["sha256"]
+        assert os.access(home / PACKAGE / relative, os.X_OK)
+    for name in ("codex-code-mode-host", "codex-exec-server"):
+        assert "Usage:" in command(str(home / PACKAGE / "bin" / name), "--help", env=env)
+    command("codesign", "--verify", str(voice / "bin/codex-voice-speech-helper"), env=env)
     helper = voice / "bin/codex-voice-host"
     assert command(str(helper), "--build-commit", env=env).strip() == receipt["build_commit"]
     command("codesign", "--verify", str(helper), env=env)

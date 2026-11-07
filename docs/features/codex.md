@@ -326,7 +326,9 @@ and the separate development builds in `~/.local/share/codex-voice-experiment/`.
 The release tarball is SHA-256 checked against the release's
 `SHA256SUMS`, inspected for unsafe paths, validated against the embedded
 voice package manifest, and installed with a rollback of the preceding
-package. Reapplying the same tag skips the download.
+package. Verification includes the CLI, code-mode host, exec server, bundled
+ripgrep and native word-position speech helper; a missing or damaged tool
+causes reinstallation. Reapplying the same intact tag skips the download.
 
 To verify the actual release with Chezmoi in an isolated HOME on macOS
 (without changing the current Codex installation), run:
@@ -342,8 +344,20 @@ selection still require a manual voice session.
 After applying the pinned release:
 
 ```sh
-codex-voice --no-daemon
+codex-voice
 ```
+
+The launcher supplies `--no-daemon` automatically. This keeps the session on
+the installed Voice package's embedded server instead of a separately managed
+background server that may run another build. Passing `--no-daemon` explicitly
+also works; the launcher avoids adding it twice. Commands, file editing and
+skills remain available in this mode.
+
+A fresh Mac still needs Codex account login and macOS microphone permission.
+Speech uses installed macOS voices, preferring a German Premium voice when
+available; install that voice in macOS to reproduce its quality on another Mac.
+These per-device permissions and voice downloads are separate from the release
+archive.
 
 Use `/model` to verify the model list. Then test microphone permissions,
 live speech capture, audio playback and voice controls. Use

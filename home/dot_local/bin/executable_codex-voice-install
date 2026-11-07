@@ -106,11 +106,24 @@ def verify_package(path: Path, target: str, tag: str) -> dict:
         raise ValueError("Native voice runtime does not match the Codex package")
     for relative in (
         "bin/codex",
+        "bin/codex-code-mode-host",
+        "bin/codex-exec-server",
+        "codex-path/rg",
+        "codex-resources/voice/bin/codex-voice-speech-helper",
         "codex-resources/voice/bin/codex-voice-host",
         "codex-resources/voice/lib/libgstreamer-1.0.0.dylib",
     ):
         if not (path / relative).is_file():
             raise ValueError(f"Required release file missing: {relative}")
+    for relative in (
+        "bin/codex", "bin/codex-code-mode-host", "bin/codex-exec-server",
+        "codex-path/rg", "codex-resources/voice/bin/codex-voice-host",
+        "codex-resources/voice/bin/codex-voice-speech-helper",
+    ):
+        if not os.access(path / relative, os.X_OK):
+            raise ValueError(f"Required release executable is not runnable: {relative}")
+        if relative not in manifest["sha256"]:
+            raise ValueError(f"Required release executable is not checksummed: {relative}")
     for relative, expected in manifest["sha256"].items():
         components = PurePosixPath(relative)
         if (components.is_absolute() or not components.parts
