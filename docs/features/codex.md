@@ -350,7 +350,8 @@ codex-voice
 The launcher supplies `--no-daemon` automatically. This keeps the session on
 the installed Voice package's embedded server instead of a separately managed
 background server that may run another build. Passing `--no-daemon` explicitly
-also works; the launcher avoids adding it twice. Commands, file editing and
+also works; the launcher avoids adding it twice. An explicit `--remote`
+connection is forwarded without adding `--no-daemon`. Commands, file editing and
 skills remain available in this mode.
 
 A fresh Mac still needs Codex account login and macOS microphone permission.

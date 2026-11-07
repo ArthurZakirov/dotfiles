@@ -116,6 +116,8 @@ def test_chezmoi_launcher_forwards_flags_and_sets_verbatim_speech(
     assert command(str(home / LAUNCHER), env=env).strip() == "1:--no-daemon"
     assert command(str(home / LAUNCHER), "resume", "--last", env=env).strip() == "1:--no-daemon resume --last"
     assert command(str(home / LAUNCHER), "--", "--no-daemon", env=env).strip() == "1:--no-daemon -- --no-daemon"
+    assert command(str(home / LAUNCHER), "--remote", "ws://localhost:9999", env=env).strip() == "1:--remote ws://localhost:9999"
+    assert command(str(home / LAUNCHER), "--remote=ws://localhost:9999", env=env).strip() == "1:--remote=ws://localhost:9999"
     binary.write_text(
         '#!/bin/sh\nprintf "%s\\n" "$CODEX_STATUS_LINE_COMMANDS"\n'
     )

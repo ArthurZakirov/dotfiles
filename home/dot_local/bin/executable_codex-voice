@@ -12,7 +12,7 @@ export CODEX_STATUS_LINE_COMMANDS='[{"label":"AGENTS","command":"codex-agents-st
 binary="$HOME/.local/share/codex-voice/bin/codex"
 for arg in "$@"; do
   [[ "$arg" != -- ]] || break
-  if [[ "$arg" == --no-daemon ]]; then
+  if [[ "$arg" == --no-daemon || "$arg" == --remote || "$arg" == --remote=* ]]; then
     exec "$binary" "$@"
   fi
 done
