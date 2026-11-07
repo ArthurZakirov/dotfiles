@@ -91,3 +91,19 @@ free-text queries. This opening feature intentionally does not overwrite or
 duplicate the parallel branch's module; a fresh checkout without that module
 reports incomplete Codex keyword coverage rather than silently losing
 existing support on the private Mac.
+
+
+### Hotkey feedback when a PR has no verified session
+
+The global `Ctrl+Option+Cmd+S` shortcut is separate from session discovery.
+A GitHub/Bitbucket PR can have **zero indexed local Codex sessions** even if
+the PR exists. Safari can also be unavailable in the background, making the
+ChatGPT side incomplete. In that situation the Hammerspoon UI explicitly says
+**"Keine Codex-Session gefunden; ChatGPT-Suche derzeit nicht verfügbar."**
+instead of calling it a failed shortcut. The adapter consumes the same
+structured JSON output as the CLI and distinguishes confirmed no matches,
+partial coverage, unopenable hits, and sessions that actually opened. No
+conversation URLs, message content, or search text are stored in diagnostics.
+
+This is a feedback correctness fix, not a replacement for the incomplete
+background ChatGPT provider (tracked separately in AGENT-5.7).
