@@ -25,8 +25,12 @@ local function feedback(result, exitCode)
 
   if opened > 0 then
     local plural = opened == 1 and " Session" or " Sessions"
-    if exitCode ~= 0 or #incomplete > 0 then
-      return tostring(opened) .. plural .. " geöffnet; Suche teilweise nicht verfügbar.",
+    -- ChatGPT cloud-history coverage is inherently partial even when the
+    -- browser found and opened a verified hit. That is not an open failure.
+    local openingErrors = type(result.opening) == "table" and
+        type(result.opening.errors) == "table" and result.opening.errors or {}
+    if exitCode ~= 0 or #openingErrors > 0 then
+      return tostring(opened) .. plural .. " geöffnet; weitere Treffer nicht verfügbar.",
         opened, "partial-open"
     end
     return tostring(opened) .. plural .. " geöffnet.", opened, "opened"
