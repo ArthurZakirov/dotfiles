@@ -23,7 +23,9 @@ dofile(hs.configdir .. "/modules/layout.lua")
 hs.hotkey.bind(HammerspoonConfig.hyper, "r", hs.reload)
 hs.autoLaunch(true)
 dofile(hs.configdir .. "/modules/audio_check.lua")
+HammerspoonConfig.codexDesktopSession = dofile(hs.configdir .. "/modules/codex_desktop_session.lua")
 dofile(hs.configdir .. "/modules/agents_freshness.lua")
+dofile(hs.configdir .. "/modules/codex_resume.lua")
 
 hs.alert.show("Hammerspoon config loaded")
 

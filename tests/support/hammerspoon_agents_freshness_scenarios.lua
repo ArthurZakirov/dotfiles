@@ -124,6 +124,7 @@ _G.hs = {
   },
 }
 _G.HammerspoonConfig = {hyper={"ctrl","alt","cmd"}}
+HammerspoonConfig.codexDesktopSession = dofile(config .. "/modules/codex_desktop_session.lua")
 dofile(config .. "/modules/agents_freshness.lua")
 assert(HammerspoonConfig.agentsFreshness.run == trigger)
 
