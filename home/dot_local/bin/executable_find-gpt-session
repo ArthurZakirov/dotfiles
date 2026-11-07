@@ -10,7 +10,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
 from find_gpt_session.core import FindSessions, SearchRequest
-from find_gpt_session.adapters import AVAILABLE, create_providers
+from find_gpt_session.adapters import AVAILABLE, BrowserProvider, create_providers
 from find_gpt_session.context import from_workspace, from_browser_url, ContextError
 from find_gpt_session.launch import SessionOpener
 
@@ -33,11 +33,32 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true", help="Machine-readable results")
     p.add_argument("--open", action="store_true",
                    help="Open all returned Codex sessions in Warp and ChatGPT sessions in Chrome")
+    p.add_argument("--prepare-safari", action="store_true",
+                   help="Prime the existing Safari ChatGPT search overlay for the next shortcut")
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
+    if args.prepare_safari:
+        selectors = ("pr", "repo", "branch", "worktree", "commit", "jira",
+                     "context_path", "context_url")
+        if args.words or args.open or args.provider or any(getattr(args, key) for key in selectors):
+            parser().error("--prepare-safari cannot be combined with search/open selectors")
+        warning = None
+        try:
+            ready = BrowserProvider("safari").prepare()
+        except (OSError, RuntimeError, TimeoutError) as exc:
+            ready = False
+            warning = str(exc)[:250]
+        if args.json:
+            print(json.dumps({"prepared": ready, "warning": warning}))
+        elif ready:
+            print("Safari ChatGPT search is prepared.")
+        else:
+            print("Safari ChatGPT search could not be prepared.", file=sys.stderr)
+        return 0 if ready else 2
+
     if args.limit is not None and args.limit < 1:
         parser().error("--limit must be positive")
     limit = args.limit if args.limit is not None else (25 if args.open else 8)
