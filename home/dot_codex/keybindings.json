@@ -4,6 +4,10 @@
     "key": "Tab Tab"
   },
   {
+    "command": "composer.startVoiceMode",
+    "key": null
+  },
+  {
     "command": "composer.toggleFastMode",
     "key": "Alt+Tab"
   },
@@ -20,16 +24,76 @@
     "key": null
   },
   {
+    "command": "focusTab1",
+    "key": null
+  },
+  {
+    "command": "focusTab2",
+    "key": null
+  },
+  {
+    "command": "focusTab3",
+    "key": null
+  },
+  {
+    "command": "focusTab4",
+    "key": null
+  },
+  {
+    "command": "focusTab5",
+    "key": null
+  },
+  {
+    "command": "focusTab6",
+    "key": null
+  },
+  {
+    "command": "focusTab7",
+    "key": null
+  },
+  {
+    "command": "focusTab8",
+    "key": null
+  },
+  {
+    "command": "focusTab9",
+    "key": null
+  },
+  {
     "command": "forkThread",
     "key": "Command+Shift+F"
   },
   {
     "command": "globalDictationHold",
-    "key": "Alt+Shift+H"
+    "key": "Alt+3"
   },
   {
     "command": "globalDictationSingleTap",
     "key": null
+  },
+  {
+    "command": "goToLine",
+    "key": null
+  },
+  {
+    "command": "keyboardShortcuts",
+    "key": "Command+S"
+  },
+  {
+    "command": "navigateBack",
+    "key": "Command+Left"
+  },
+  {
+    "command": "navigateBrowserBack",
+    "key": null
+  },
+  {
+    "command": "navigateBrowserForward",
+    "key": null
+  },
+  {
+    "command": "navigateForward",
+    "key": "Command+Right"
   },
   {
     "command": "nextRecentThread",
@@ -38,6 +102,14 @@
   {
     "command": "nextThread",
     "key": "Ctrl+Tab"
+  },
+  {
+    "command": "openAvatarOverlay",
+    "key": null
+  },
+  {
+    "command": "openControlWindow",
+    "key": null
   },
   {
     "command": "openSideChat",
@@ -57,10 +129,62 @@
   },
   {
     "command": "searchChats",
-    "key": "Ctrl+Q"
+    "key": null
   },
   {
-    "command": "toggleMaximizeSidePanel",
+    "command": "showWorkspaceTabView",
     "key": "Command+Shift+M"
+  },
+  {
+    "command": "switchToMode1",
+    "key": "Ctrl+C"
+  },
+  {
+    "command": "switchToMode2",
+    "key": "Ctrl+W"
+  },
+  {
+    "command": "switchToMode3",
+    "key": "Ctrl+X"
+  },
+  {
+    "command": "thread1",
+    "key": null
+  },
+  {
+    "command": "thread2",
+    "key": null
+  },
+  {
+    "command": "thread3",
+    "key": null
+  },
+  {
+    "command": "thread4",
+    "key": null
+  },
+  {
+    "command": "thread5",
+    "key": null
+  },
+  {
+    "command": "thread6",
+    "key": null
+  },
+  {
+    "command": "thread7",
+    "key": null
+  },
+  {
+    "command": "thread8",
+    "key": null
+  },
+  {
+    "command": "thread9",
+    "key": null
+  },
+  {
+    "command": "togglePinnedSummary",
+    "key": "Command+Shift+L"
   }
 ]
