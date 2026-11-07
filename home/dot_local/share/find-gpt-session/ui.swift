@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Foundation
+import Darwin
 
 // Browser-specific infrastructure. Outputs only verified conversation URLs.
 // The shared query semantics, scoring and JSON schema belong to the Python core.
@@ -159,15 +160,26 @@ func observedTitle(_ root: AXUIElement, fallback: String) -> String {
     return String(fallback.prefix(120))
 }
 
-func osascript(_ source: String) -> String? {
+func osascript(_ source: String, timeout: Double = 2.5) -> String? {
+    // Safari can indefinitely block Apple Events while a background tab changes.
+    // Bound the subprocess, and terminate only this AppleScript child on timeout.
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
     process.arguments = ["-e", source]
     let pipe = Pipe()
     process.standardOutput = pipe
     process.standardError = Pipe()
+    let finished = DispatchSemaphore(value: 0)
+    process.terminationHandler = { _ in finished.signal() }
     do { try process.run() } catch { return nil }
-    process.waitUntilExit()
+    if finished.wait(timeout: .now() + timeout) == .timedOut {
+        if process.isRunning { process.terminate() }
+        if finished.wait(timeout: .now() + 0.3) == .timedOut {
+            if process.isRunning { _ = kill(process.processIdentifier, SIGKILL) }
+            _ = finished.wait(timeout: .now() + 0.5)
+        }
+        return nil
+    }
     guard process.terminationStatus == 0 else { return nil }
     return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
         .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -413,6 +425,8 @@ if args.contains("--self-test") {
     let oldOnly = awaitResultNavigation(heading: title, previousUrl: oldState.url,
         seconds: 0, observe: { oldState }, pause: {})
     precondition(oldOnly == nil)
+    // Never let an AppleScript subprocess outlive the bounded UI search.
+    precondition(osascript("delay 3", timeout: 0.1) == nil)
     print("{\"self_test\":true}")
     exit(0)
 }

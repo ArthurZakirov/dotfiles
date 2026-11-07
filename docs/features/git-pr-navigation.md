@@ -11,6 +11,7 @@ determines which host is used; no separate GitHub/Bitbucket hotkeys are needed.
 | --- | --- | --- |
 | VS Code, inside a Git worktree | `Ctrl+P`, `Ctrl+R` | Find its open PR and open it in Chrome |
 | Chrome or an installed Chrome web app, on a GitHub/Bitbucket PR or branch page | `Ctrl+Option+Cmd+V` | Open/create the source branch's linked worktree in VS Code |
+| VS Code or Chrome on a GitHub/Bitbucket page | `Ctrl+Option+Cmd+S` | [Find and open matching Codex/ChatGPT sessions](find-gpt-session.md) in existing Warp/Chrome windows |
 
 For a normal Chrome tab, Hammerspoon reads the front Chrome window through
 AppleScript (Automation permission). For installed Chrome web apps such as
