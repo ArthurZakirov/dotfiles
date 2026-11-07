@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""find-gpt-session: one CLI for Codex, ChatGPT Desktop and browser sessions."""
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+
+from find_gpt_session.core import FindSessions, SearchRequest
+from find_gpt_session.adapters import AVAILABLE, create_providers
+
+
+def parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description="Find OpenAI conversations by Git artifact or remembered keywords.")
+    selector = p.add_mutually_exclusive_group()
+    selector.add_argument("--pr", help="GitHub/Bitbucket PR URL")
+    selector.add_argument("--repo", help="Git repository name/path/remote")
+    selector.add_argument("--branch", help="Git branch")
+    selector.add_argument("--worktree", help="Git worktree path")
+    selector.add_argument("--commit", help="Git commit SHA")
+    selector.add_argument("--jira", help="Jira issue ID")
+    p.add_argument("words", nargs="*", help='Free text: search "worktree cleanup"')
+    p.add_argument("--provider", action="append", choices=(*AVAILABLE, "all"),
+                   help="Infrastructure source (repeatable). Default: codex + safari")
+    p.add_argument("--limit", type=int, default=8, help="Maximum combined results")
+    p.add_argument("--json", action="store_true", help="Machine-readable results")
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parser().parse_args(argv)
+    if args.limit < 1:
+        parser().error("--limit must be positive")
+    selectors = [(name, getattr(args, name))
+                 for name in ("pr", "repo", "branch", "worktree", "commit", "jira")
+                 if getattr(args, name)]
+    if selectors and args.words:
+        parser().error("Use either --pr/--branch/... or search KEYWORDS")
+    if selectors:
+        kind, raw = selectors[0]
+    elif args.words:
+        kind, raw = "text", " ".join(args.words[1:] if args.words[0] == "search" else args.words)
+    else:
+        parser().error("Provide --pr/--repo/--branch/--jira or search KEYWORDS")
+    try:
+        request = SearchRequest.create(kind, raw)
+    except ValueError as exc:
+        parser().error(str(exc))
+    names = args.provider or ["codex", "safari"]
+    response = FindSessions(create_providers(names)).search(request, args.limit)
+    if args.json:
+        print(json.dumps(response.asdict(), ensure_ascii=False, indent=2))
+    else:
+        if not response.hits and response.incomplete_providers:
+            print("Search incomplete: no verified sessions returned; matching chats may exist.")
+        else:
+            print(f"Found {len(response.hits)} sessions via {', '.join(response.providers)}")
+        for hit in response.hits:
+            print(f"  [{hit.provider}] {hit.title}")
+            print(f"    {hit.url or hit.resume_command or '(no verified link)'}")
+            print(f"    Evidence: {hit.evidence}")
+        for warning in response.warnings:
+            print(f"Warning: {warning}", file=sys.stderr)
+        if response.incomplete_providers:
+            print("Partial coverage: " + ", ".join(response.incomplete_providers), file=sys.stderr)
+    return 0 if response.hits else 2 if response.incomplete_providers else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
