@@ -7,9 +7,25 @@ local old = { ["public.utf8-plain-text"] = original }
 local counter, writes, copies = 4, 0, 0
 local queued = {}
 local launchArgs, task, message
-local app = { bundleID = function()
-  return scenario == "wrong_app" and "com.apple.Terminal" or "com.openai.codex"
-end }
+local appRunning, quitCount, exitPolls = true, 0, 0
+local app = {
+  bundleID = function()
+    return scenario == "wrong_app" and "com.apple.Terminal" or "com.openai.codex"
+  end,
+  isRunning = function()
+    if scenario == "quit_delayed" and quitCount > 0 then
+      exitPolls = exitPolls + 1
+      if exitPolls >= 3 then appRunning = false end
+    end
+    return appRunning
+  end,
+  kill = function()
+    quitCount = quitCount + 1
+    if scenario ~= "quit_refused" and scenario ~= "quit_delayed" then
+      appRunning = false
+    end
+  end,
+}
 
 local function pump()
   local event = table.remove(queued, 1)
@@ -109,11 +125,23 @@ else
     if scenario == "task_fails_start" then
       assert(message == "Codex Warp launcher konnte nicht starten")
     else
+      -- Parent task returns success only once the Warp tab signals readiness.
+      if scenario == "already_closed" then appRunning = false end
       task.callback(scenario == "task_returns_error" and 1 or 0, "", "failed")
       if scenario == "task_returns_error" then
-        assert(message == "Warp-Tab konnte nicht geöffnet werden")
+        assert(message == "Warp-Tab konnte nicht geöffnet werden" and quitCount == 0)
       else
-        assert(message == "Codex-Session in Warp angefordert")
+        if scenario == "quit_delayed" then
+          pump(); pump()
+        elseif scenario == "quit_refused" then
+          for i=1,59 do pump() end
+        end
+        if scenario == "quit_refused" then
+          assert(message == "Desktop noch geöffnet: Codex-Session wartet in Warp")
+        else
+          assert(message == "Desktop beendet; Codex setzt in Warp fort")
+        end
+        assert(quitCount == (scenario == "already_closed" and 0 or 1))
       end
     end
   end

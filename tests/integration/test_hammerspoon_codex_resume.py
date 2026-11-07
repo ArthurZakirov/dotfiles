@@ -15,6 +15,7 @@ HOMEDIR = ROOT / "home/dot_hammerspoon"
 @pytest.mark.parametrize("scenario", (
     "success", "wrong_app", "multi_clipboard", "no_link", "invalid_link",
     "missing_launcher", "task_fails_start", "task_returns_error", "overlap",
+    "already_closed", "quit_delayed", "quit_refused",
 ))
 def test_codex_desktop_resume_hotkey(scenario):
     result = subprocess.run(

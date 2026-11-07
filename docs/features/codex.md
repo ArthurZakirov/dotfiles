@@ -207,16 +207,28 @@ checks that the UUID exists in `~/.codex/state_5.sqlite` and that its
 original working directory still exists. It writes a private, unique
 `~/.warp/tab_configs/codex_desktop_resume_*.toml` and dispatches
 `warp://tab_config/<name>`; Warp opens a new tab in its existing window.
-That tab executes `codex resume <UUID>` from the session's original
-working directory. The operation does **not** search for other sessions
-by Git branch/PR, edit the Desktop conversation, or create a new
-Codex session.
+Warp launches a short-lived wrapper from the original working directory.
+It first acknowledges that the new tab's startup command is running.
+**Only after that acknowledgment**, Hammerspoon gracefully quits the exact
+Codex/ChatGPT Desktop app instance from which the session was copied
+(`hs.application:kill()`, not a synthetic Command-Q keystroke). The wrapper
+waits for the per-session writer lock in `~/.codex/thread-writer-locks/`
+to be released, then replaces itself with `codex resume <UUID>`.
+No manual `R` retry should be necessary in the normal case.
+
+**Intentional side effect:** the entire Desktop app closes, including
+any other open chats. Other Warp tabs remain open. Reopening Desktop
+later does not deliberately take the CLI's lock back. The operation
+does **not** search for other sessions by Git branch/PR, edit the Desktop
+conversation, or create a new Codex session.
 
 If the app isn't a Codex conversation, the clipboard has multiple items,
-the native link isn't available, or the session directory has been removed,
-the action fails without starting a different session. The hotkey dispatch
-is asynchronous; actual Warp UI execution still requires an interactive
-smoke test on the target Mac.
+the native link isn't available, the session directory has been removed,
+or Warp does not confirm that the tab's startup command is running, the
+action fails **without quitting Desktop**. If quitting is blocked or the
+session lock remains held for 45 seconds, the tab reports an actionable
+error. A real end-to-end Desktop/Warp smoke test is required before
+claiming the quit/lock handoff works on a particular Mac.
 
 ## AGENTS.md freshness warnings
 

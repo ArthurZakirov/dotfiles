@@ -12,7 +12,38 @@ local function finish(message)
   if message then hs.alert.show(message, 4) end
 end
 
-local function openInWarp(sessionId)
+-- Quit only the originally captured Desktop process, never whichever app is now
+-- frontmost (which will normally be Warp by the time its tab has started).
+local function quitDesktopAfterWarpReady(app)
+  if not HammerspoonConfig.codexDesktopSession.isDesktopApp(app) then
+    finish("Codex Desktop konnte nicht zugeordnet werden")
+    return
+  end
+  if app:isRunning() then
+    local ok, err = pcall(function() app:kill() end)
+    if not ok then
+      hs.printf("Codex Desktop graceful quit failed: %s", tostring(err))
+      finish("Codex Desktop konnte nicht beendet werden")
+      return
+    end
+  end
+  local checks = 0
+  local function verifyExit()
+    if not app:isRunning() then
+      finish("Desktop beendet; Codex setzt in Warp fort")
+      return
+    end
+    checks = checks + 1
+    if checks >= 60 then
+      finish("Desktop noch geöffnet: Codex-Session wartet in Warp")
+      return
+    end
+    hs.timer.doAfter(0.25, verifyExit)
+  end
+  verifyExit()
+end
+
+local function openInWarp(sessionId, desktopApp)
   if not hs.fs.attributes(SCRIPT, "mode") then
     finish("Codex Warp launcher fehlt")
     return
@@ -22,7 +53,7 @@ local function openInWarp(sessionId)
       hs.printf("Codex Warp launch failed: %s", stderr or "")
       finish("Warp-Tab konnte nicht geöffnet werden")
     else
-      finish("Codex-Session in Warp angefordert")
+      quitDesktopAfterWarpReady(desktopApp)
     end
   end, { "--session-id", sessionId })
   if not task then
@@ -56,7 +87,7 @@ function M.run()
         finish("Keine Codex-Session-ID: " .. (problem or "unbekannt"))
         return
       end
-      openInWarp(sessionId)
+      openInWarp(sessionId, app)
     end)
   end)
 end

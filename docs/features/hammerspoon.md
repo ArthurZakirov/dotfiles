@@ -39,7 +39,7 @@ left-to-right screen order (then top-to-bottom).
 | --- | --- | --- |
 | Chrome | `Hyper+B` / `Hyper+T` / `Hyper+G` | Search bookmarks / tabs / history |
 | Chrome (GitHub/Bitbucket branch or PR) | `Hyper+V` | [Open the matching Git worktree in VS Code](git-pr-navigation.md) |
-| Codex desktop (visible chat) | `Hyper+W` | [Resume this Codex thread in a new Warp tab](codex.md#resume-desktop-session-in-warp) |
+| Codex desktop (visible chat) | `Hyper+W` | [Transfer this Codex thread to Warp (quits Desktop after tab is ready)](codex.md#resume-desktop-session-in-warp) |
 | ChatGPT (German keyboard) | `Cmd+Shift+7` | Open native Keyboard Shortcuts menu |
 | Claude | `Ctrl+Alt+R` | Close / restore right pane |
 | Claude | `Ctrl+Alt+M` | Expand / collapse pane |
