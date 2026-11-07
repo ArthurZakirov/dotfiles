@@ -4,6 +4,60 @@ local runningTask
 -- Runtime-only diagnostics; never store conversation text, IDs or URLs.
 HammerspoonConfig.lastRelatedSessionOpen = { phase = "idle" }
 
+-- The search and the hotkey are independent. An inaccessible Safari provider
+-- must not make "no verified match" look like a broken keyboard shortcut.
+local function feedback(result, exitCode)
+  if type(result) ~= "table" then
+    return "Session-Suche fehlgeschlagen (Exit " .. tostring(exitCode) .. ").", 0, "invalid-output"
+  end
+
+  local hits = tonumber(result.total) or 0
+  local opened = type(result.opening) == "table" and
+      type(result.opening.dispatched) == "table" and #result.opening.dispatched or 0
+  local incomplete = type(result.incomplete_providers) == "table" and
+      result.incomplete_providers or {}
+  local safariIncomplete = false
+  local codexIncomplete = false
+  for _, provider in ipairs(incomplete) do
+    if provider == "safari" then safariIncomplete = true end
+    if provider == "codex" then codexIncomplete = true end
+  end
+
+  if opened > 0 then
+    local plural = opened == 1 and " Session" or " Sessions"
+    -- ChatGPT cloud-history coverage is inherently partial even when the
+    -- browser found and opened a verified hit. That is not an open failure.
+    local openingErrors = type(result.opening) == "table" and
+        type(result.opening.errors) == "table" and result.opening.errors or {}
+    if exitCode ~= 0 or #openingErrors > 0 then
+      return tostring(opened) .. plural .. " geöffnet; weitere Treffer nicht verfügbar.",
+        opened, "partial-open"
+    end
+    return tostring(opened) .. plural .. " geöffnet.", opened, "opened"
+  end
+  if hits > 0 then
+    return "Treffer gefunden, aber keine verifizierte Session geöffnet.", 0, "unopenable"
+  end
+  if safariIncomplete and codexIncomplete then
+    return "Codex- und ChatGPT-Suche derzeit nicht verfügbar.", 0, "provider-incomplete"
+  end
+  if safariIncomplete then
+    return "Keine Codex-Session gefunden; ChatGPT-Suche derzeit nicht verfügbar.",
+      0, "provider-incomplete"
+  end
+  if #incomplete > 0 then
+    return "Keine Session bestätigt: mindestens eine Suche ist unvollständig.",
+      0, "provider-incomplete"
+  end
+  if exitCode == 1 or exitCode == 0 then
+    return "Keine passende Session gefunden.", 0, "no-matches"
+  end
+  return "Session-Suche fehlgeschlagen (Exit " .. tostring(exitCode) .. ").", 0, "failed"
+end
+
+-- Separate pure diagnostic entry point for automated Hammerspoon/Lua tests.
+HammerspoonConfig.relatedSessionFeedback = feedback
+
 local function openFromContext(sourceApp)
   if runningTask then
     HammerspoonConfig.lastRelatedSessionOpen = { phase = "busy" }
@@ -28,25 +82,20 @@ local function openFromContext(sourceApp)
   local helper = os.getenv("HOME") .. "/.local/bin/find-gpt-session"
   runningTask = hs.task.new(helper, function(exitCode, stdout, stderr)
     runningTask = nil
+    local parsed, result = pcall(hs.json.decode, stdout or "")
+    if not parsed then result = nil end
+    local message, opened, status = feedback(result, exitCode)
     HammerspoonConfig.lastRelatedSessionOpen = {
       phase = "finished",
       exitCode = exitCode,
-      found = tonumber((stdout or ""):match("Found (%d+) sessions")) or 0,
-      opened = tonumber((stdout or ""):match("Requested (%d+) new Warp/Chrome tabs")) or 0,
-      error = ((stderr or ""):find("safari:", 1, true) and "safari-incomplete")
-        or (((stderr or "") ~= "") and "other-warning" or ""),
+      found = type(result) == "table" and (tonumber(result.total) or 0) or 0,
+      opened = opened,
+      status = status,
+      error = type(result) ~= "table" and "invalid-output"
+        or (status == "provider-incomplete" and "search-incomplete" or ""),
     }
-    if exitCode ~= 0 then
-      hs.alert.show("Session search/open incomplete; inspect find-gpt-session logs", 5)
-      return
-    end
-    local count = tonumber(stdout:match("Requested (%d+) new Warp/Chrome tabs"))
-    if count and count > 0 then
-      hs.alert.show("Opening " .. tostring(count) .. " session tabs")
-    else
-      hs.alert.show("No verified sessions to open")
-    end
-  end, { "--open", "--context-url", url })
+    hs.alert.show(message, opened > 0 and 3 or 6)
+  end, { "--json", "--open", "--context-url", url })
   if not runningTask then
     HammerspoonConfig.lastRelatedSessionOpen = { phase = "construct_failed" }
     hs.alert.show("Cannot start find-gpt-session")
