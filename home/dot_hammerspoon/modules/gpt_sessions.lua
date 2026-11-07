@@ -67,8 +67,11 @@ local function openFromContext(sourceApp, requestedUrl)
     -- finishes. Never silently search a different PR after that switch.
     pendingSourceApp = sourceApp
     local bundle = sourceApp and sourceApp:bundleID() or ""
-    pendingContextUrl = bundle:match("^com%.microsoft%.VSCode") and nil
-      or requestedUrl or HammerspoonConfig.gitBrowserUrl(sourceApp)
+    if bundle:match("^com%.microsoft%.VSCode") then
+      pendingContextUrl = nil
+    else
+      pendingContextUrl = requestedUrl or HammerspoonConfig.gitBrowserUrl(sourceApp)
+    end
     HammerspoonConfig.lastRelatedSessionOpen = { phase = "preparing" }
     hs.alert.show("Bereite ChatGPT-Suche vor …", 1)
     return
