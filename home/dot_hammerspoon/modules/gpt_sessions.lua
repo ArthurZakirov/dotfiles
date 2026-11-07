@@ -1,6 +1,8 @@
 -- One context-aware shortcut from VS Code or a GitHub/Bitbucket browser page.
 -- Search remains in find-gpt-session; the launcher never copies search logic.
 local runningTask
+local warmupTask
+local pendingSourceApp
 -- Runtime-only diagnostics; never store conversation text, IDs or URLs.
 HammerspoonConfig.lastRelatedSessionOpen = { phase = "idle" }
 
@@ -59,6 +61,14 @@ end
 HammerspoonConfig.relatedSessionFeedback = feedback
 
 local function openFromContext(sourceApp)
+  if warmupTask then
+    -- A first hotkey can arrive before startup prewarming has finished.
+    -- Queue that context rather than typing into an overlay being prepared.
+    pendingSourceApp = sourceApp
+    HammerspoonConfig.lastRelatedSessionOpen = { phase = "preparing" }
+    hs.alert.show("Bereite ChatGPT-Suche vor …", 1)
+    return
+  end
   if runningTask then
     HammerspoonConfig.lastRelatedSessionOpen = { phase = "busy" }
     hs.alert.show("Session search already running")
@@ -123,3 +133,48 @@ hs.hotkey.bind(HammerspoonConfig.hyper, "s", function()
     openFromContext(source)
   end)
 end)
+
+
+// Hammerspoon already runs at login, so no second LaunchAgent or browser
+// process is needed. Warm the existing Safari ChatGPT overlay once shortly
+// after loading, and again if Safari starts later in the same login session.
+// Re-priming after navigation is handled by the native Safari adapter.
+local function prepareSafariSearch()
+  if warmupTask or runningTask or not hs.application.get("com.apple.Safari") then
+    return
+  end
+  local helper = os.getenv("HOME") .. "/.local/bin/find-gpt-session"
+  warmupTask = hs.task.new(helper, function(exitCode, _, _)
+    warmupTask = nil
+    HammerspoonConfig.safariSearchPrepared = exitCode == 0
+    local pending = pendingSourceApp
+    pendingSourceApp = nil
+    if pending then openFromContext(pending) end
+  end, { "--prepare-safari", "--json" })
+  if not warmupTask then return end
+
+  local environment = warmupTask:environment()
+  environment.PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:"
+    .. (environment.PATH or "")
+  warmupTask:setEnvironment(environment)
+  if not warmupTask:start() then
+    warmupTask = nil
+  end
+end
+
+HammerspoonConfig.prepareSafariSearch = prepareSafariSearch
+
+if hs.timer and hs.application.watcher then
+  -- A one-shot warmup avoids repeatedly stealing focus or racing with
+  -- normal browser work. Launches after startup are handled once by the
+  -- app watcher; no permanent polling or timer loop is installed.
+  hs.timer.doAfter(4, prepareSafariSearch)
+  local watcher = hs.application.watcher.new(function(_, event, app)
+    if event == hs.application.watcher.launched and app and
+       app:bundleID() == "com.apple.Safari" then
+      hs.timer.doAfter(2, prepareSafariSearch)
+    end
+  end)
+  watcher:start()
+  HammerspoonConfig.safariSearchWatcher = watcher
+end
