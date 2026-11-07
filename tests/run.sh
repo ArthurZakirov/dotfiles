@@ -18,7 +18,7 @@ run_unit_tests() {
   bash "$repo_root/tests/unit/test_apps.sh"
   bash "$repo_root/tests/unit/test_agent_browser_runtime.sh"
   bash "$repo_root/tests/unit/test_agent_skills.sh"
-  PYTHONDONTWRITEBYTECODE=1 "$repo_root/.venv/bin/pytest" -q "$repo_root/tests/unit/test_pysetup.py" "$repo_root/tests/unit/test_pr_navigation.py" "$repo_root/tests/unit/test_local_skills_mcp.py" "$repo_root/tests/unit/test_dotfiles_secrets.py" "$repo_root/tests/unit/test_feature_documentation.py" "$repo_root/tests/unit/test_macos_shortcuts.py" "$repo_root/tests/unit/test_provisioning_log_grouping.py" "$repo_root/tests/unit/test_dependency_architecture.py" "$repo_root/tests/unit/test_codex_agents_md_freshness.py" "$repo_root/tests/unit/test_codex_voice_install.py" "$repo_root/tests/unit/test_storage_maintenance.py"
+  PYTHONDONTWRITEBYTECODE=1 "$repo_root/.venv/bin/pytest" -q "$repo_root/tests/unit/test_pysetup.py" "$repo_root/tests/unit/test_pr_navigation.py" "$repo_root/tests/unit/test_local_skills_mcp.py" "$repo_root/tests/unit/test_dotfiles_secrets.py" "$repo_root/tests/unit/test_feature_documentation.py" "$repo_root/tests/unit/test_macos_shortcuts.py" "$repo_root/tests/unit/test_provisioning_log_grouping.py" "$repo_root/tests/unit/test_dependency_architecture.py" "$repo_root/tests/unit/test_codex_agents_md_freshness.py" "$repo_root/tests/unit/test_codex_voice_install.py" "$repo_root/tests/unit/test_storage_maintenance.py" "$repo_root/tests/unit/test_find_gpt_session.py" "$repo_root/tests/unit/test_session_open.py" "$repo_root/tests/unit/test_hammerspoon_gpt_sessions.py"
   bash "$repo_root/tests/integration/test_vscode_cli.sh"
 }
 
@@ -29,6 +29,11 @@ run_integration_tests() {
 
 run_quality_checks() {
   git -C "$repo_root" diff --check
+  # The native ChatGPT browser adapter uses AppKit/Accessibility. Compile its
+  # type declarations on the existing macOS CI runner, not only the Python CLI.
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    swiftc -typecheck "$repo_root/home/dot_local/share/find-gpt-session/ui.swift"
+  fi
 }
 
 main() {
