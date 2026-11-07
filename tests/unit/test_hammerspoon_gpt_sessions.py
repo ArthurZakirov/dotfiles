@@ -57,7 +57,7 @@ def lua_run(source: str) -> str:
         ),
         pytest.param(
             {"total": 2, "opening": {"dispatched": [{}]}, "incomplete_providers": ["safari"]},
-            2, 1, "partial-open", "1 Session geöffnet",
+            2, 1, "partial-open", "1 Session geöffnet; weitere Treffer nicht verfügbar",
             id="opened-one-with-partial-failure",
         ),
         pytest.param(
@@ -67,7 +67,7 @@ def lua_run(source: str) -> str:
         ),
         pytest.param(
             {"total": 1, "opening": {"dispatched": [{}]}, "incomplete_providers": ["safari"]},
-            0, 1, "partial-open", "1 Session geöffnet; Suche teilweise nicht verfügbar",
+            0, 1, "opened", "1 Session geöffnet.",
             id="opened-codex-with-safari-unavailable",
         ),
     ],
