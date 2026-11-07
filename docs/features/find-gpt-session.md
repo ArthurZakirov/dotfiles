@@ -131,3 +131,43 @@ The full `find-gpt-session --open --context-url <PR URL>` command subsequently
 opened that verified conversation in a new tab **in the existing Chrome
 window**, from one tab to two. Regression checks also exercise the live
 Hammerspoon callback and native Swift self-test.
+
+
+### Prepared Safari search for fast repeated hotkeys
+
+The existing Hammerspoon instance prewarms ChatGPT search in the already-running,
+signed-in Safari tab once after its configuration loads, and also when Safari
+starts later. No LaunchAgent, additional browser window, recurring foreground
+polling, credentials access or unofficial ChatGPT API is required.
+
+```sh
+find-gpt-session --prepare-safari --json
+# {"prepared": true, "warning": null} when the search field is ready
+```
+
+The native Swift adapter checks whether the Accessibility `AXComboBox Search`
+already exists. If ready, the next search enters its query **without first
+pressing ChatGPT's Search button**, and without foregrounding Safari when
+background AX input is supported by the OS. Otherwise, it waits for the actual
+Search button and field using bounded state polling, rather than typing during
+an animation or relying on a fixed sleep. A foreground fallback remains for
+macOS builds which conceal the browser's web Accessibility tree in the background.
+
+The adapter reopens the search dialog after navigation, *before* restoring
+focus to Chrome/VS Code. If a hotkey arrives while the startup prewarming
+process is still active, Hammerspoon queues the request and sends it after
+that process finishes instead of racing two concurrent AX actions.
+
+**Limitations:** Initial prewarming can briefly activate Safari, then restore
+the original foreground application. This is an opportunistic optimization,
+not a guarantee of background AX access or zero-latency network search.
+A browser restart, a user-closing the search overlay, or a login/loading
+screen can invalidate readiness; the ordinary on-demand path remains.
+The background multi-result URL resolution is still tracked separately
+under AGENT-5.7.
+
+**Validation status:** Source implementation and provider/CLI/LuaJIT regression
+tests were prepared via the GitHub connector while Mac Remote Desktop
+Commander was quota-blocked. The physical shortcut, Safari UI readiness and
+Chrome-tab outcome **must be tested on the actual Mac before this feature is
+called working or the PR is merged**.
