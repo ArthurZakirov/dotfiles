@@ -135,10 +135,10 @@ hs.hotkey.bind(HammerspoonConfig.hyper, "s", function()
 end)
 
 
-// Hammerspoon already runs at login, so no second LaunchAgent or browser
-// process is needed. Warm the existing Safari ChatGPT overlay once shortly
-// after loading, and again if Safari starts later in the same login session.
-// Re-priming after navigation is handled by the native Safari adapter.
+-- Hammerspoon already runs at login, so no second LaunchAgent or browser
+-- process is needed. Warm the existing Safari ChatGPT overlay once shortly
+-- after loading, and again if Safari starts later in the same login session.
+-- Re-priming after navigation is handled by the native Safari adapter.
 local function prepareSafariSearch()
   if warmupTask or runningTask or not hs.application.get("com.apple.Safari") then
     return
