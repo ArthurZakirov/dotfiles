@@ -543,3 +543,88 @@ def test_bitbucket_pr_comment_opens_vscode_at_requested_file(
     elif len(expected_suffix) == 1:
         expected.append(str(target / "src/service.py"))
     assert vscode_calls == [expected]
+
+
+@pytest.mark.parametrize(
+    "remote",
+    [
+        "git@ssh.bitbucket.org:Company/Backend.git",
+        "ssh://git@ssh.bitbucket.org/Company/Backend.git",
+        "ssh://git@ssh.bitbucket.org:22/Company/Backend.git",
+        "git@bitbucket.org:Company/Backend.git",
+        "ssh://git@bitbucket.org/Company/Backend.git",
+        "ssh://git@altssh.bitbucket.org:443/Company/Backend.git",
+        "https://bitbucket.org/Company/Backend.git",
+    ],
+    ids=[
+        "new-scp", "new-ssh-url", "new-ssh-port", "legacy-scp",
+        "legacy-ssh-url", "alternative-ssh-port-443", "unchanged-https",
+    ],
+)
+def test_bitbucket_git_transport_urls_share_repository_identity(nav, remote):
+    expected = ("bitbucket.org", "company", "backend")
+
+    assert nav.remote_identity(remote) == expected
+    assert nav.bitbucket.repository_identity(remote) == expected[1:]
+
+
+@pytest.mark.parametrize(
+    "remote",
+    [
+        "git@ssh.bitbucket.com:company/backend.git",
+        "ssh://git@evil.bitbucket.org/company/backend.git",
+        "https://ssh.bitbucket.org/company/backend.git",
+        "https://altssh.bitbucket.org/company/backend.git",
+        "git@github.com:company/backend.git",
+    ],
+)
+def test_bitbucket_remote_identity_rejects_untrusted_or_other_hosts(nav, remote):
+    assert nav.bitbucket.repository_identity(remote) is None
+    if "github.com" not in remote:
+        assert nav.remote_identity(remote) is None
+
+
+def test_git_pr_generates_new_bitbucket_ssh_url_without_changing_browser_urls(nav):
+    identity = ("bitbucket.org", "company", "backend")
+
+    assert nav.remote_url(*identity) == "git@ssh.bitbucket.org:company/backend.git"
+    assert nav.remote_url("github.com", "owner", "repo") == "git@github.com:owner/repo.git"
+    assert nav.branch_page(identity, "feat/test") == (
+        "https://bitbucket.org/company/backend/branch/feat%2Ftest"
+    )
+
+
+def test_new_bitbucket_ssh_remote_reuses_existing_primary_checkout(
+    nav, tmp_path, monkeypatch,
+):
+    root = tmp_path / "Repos"
+    repo = root / "backend"
+    root.mkdir()
+    execute("git", "init", "-b", "feat/review", str(repo))
+    execute(
+        "git", "remote", "add", "origin",
+        "git@ssh.bitbucket.org:company/backend.git", cwd=repo,
+    )
+    identity = ("bitbucket.org", "company", "backend")
+
+    assert nav.find_repo(root, identity) == (repo, "origin")
+    assert nav.ensure_repo(root, identity, config("professional")) == (repo, "origin")
+    assert nav.current_branch(repo) == ("feat/review", identity, "origin")
+    assert nav.bitbucket.remotes(repo) == {"origin": ("company", "backend")}
+    assert nav.bitbucket.branch_url(repo) == (
+        "https://bitbucket.org/company/backend/branch/feat%2Freview"
+    )
+
+    monkeypatch.setattr(nav.bitbucket, "source_branch_url", lambda url: (
+        "https://bitbucket.org/company/backend/branch/feat%2Freview"
+    ))
+    monkeypatch.setattr(nav, "ensure_worktree", lambda *args: repo)
+    result = nav.open_local(
+        "https://bitbucket.org/company/backend/pull-requests/42",
+        config("professional"), root, print_only=True,
+    )
+
+    assert result == repo
+    assert execute(
+        "git", "config", "--get", "branch.feat/review.prDestination", cwd=repo,
+    ) == "git@ssh.bitbucket.org:company/backend.git"

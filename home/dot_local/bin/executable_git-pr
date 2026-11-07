@@ -65,14 +65,27 @@ def repos_root(config: dict, override: Path | None = None) -> Path:
 
 
 def remote_identity(url: str) -> tuple[str, str, str] | None:
-    """Parse only GitHub.com and Bitbucket Cloud identities, never credentials."""
-    scp = re.fullmatch(r"(?:[^@/]+@)?(github\.com|bitbucket\.org):([^/]+)/([^/]+?)(?:\.git)?/?", url)
+    """Normalize GitHub and Bitbucket Cloud Git transport URLs to web identities."""
+    # SSH traffic now uses ssh.bitbucket.org; HTTPS and PR URLs stay on
+    # bitbucket.org. Legacy SSH and the port-443 alternative remain recognizable.
+    bitbucket_ssh = ("bitbucket.org", "ssh.bitbucket.org", "altssh.bitbucket.org")
+    scp = re.fullmatch(
+        r"(?:[^@/]+@)?(github\.com|bitbucket\.org|ssh\.bitbucket\.org|altssh\.bitbucket\.org):"
+        r"([^/]+)/([^/]+?)(?:\.git)?/?",
+        url,
+    )
     if scp:
         host, owner, repo = scp.groups()
     else:
         try:
             p = urlsplit(url)
-            if p.hostname not in ("github.com", "bitbucket.org") or p.scheme not in ("https", "ssh"):
+            if p.scheme == "https":
+                allowed = ("github.com", "bitbucket.org")
+            elif p.scheme == "ssh":
+                allowed = ("github.com", *bitbucket_ssh)
+            else:
+                return None
+            if p.hostname not in allowed:
                 return None
             parts = p.path.strip("/").split("/")
             if len(parts) != 2:
@@ -81,6 +94,8 @@ def remote_identity(url: str) -> tuple[str, str, str] | None:
             repo = repo.removesuffix(".git")
         except ValueError:
             return None
+    if host in bitbucket_ssh:
+        host = "bitbucket.org"
     return host.lower(), owner.lower(), repo.lower()
 
 
@@ -89,7 +104,8 @@ def remote_url(host: str, owner: str, repo: str) -> str:
         raise NavigationError("Unsupported Git host.")
     if not all(re.fullmatch(r"[A-Za-z0-9_.-]+", part) for part in (owner, repo)):
         raise NavigationError("Unsupported repository owner or name.")
-    return f"git@{host}:{owner}/{repo}.git"
+    ssh_host = "ssh.bitbucket.org" if host == "bitbucket.org" else host
+    return f"git@{ssh_host}:{owner}/{repo}.git"
 
 
 def verify_branch(branch: str) -> str:

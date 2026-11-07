@@ -78,6 +78,35 @@ worktree. GitHub branch-tree URLs with a file-path suffix resolve the longest
 matching remote branch. A missing/deleted PR source repository fails rather
 than guessing a substitute.
 
+## 🔑 Bitbucket Cloud SSH hostname migration
+
+Atlassian is moving Git-over-SSH from `bitbucket.org` to **`ssh.bitbucket.org`**.
+Controlled brownouts of the old SSH endpoint begin on November 12, 2026;
+the final retirement is scheduled for December 10, 2026. Browser and API
+URLs remain under `https://bitbucket.org/`.
+
+The Git PR navigator and standalone Bitbucket helper treat all these Git
+remotes as the **same repository**:
+
+- Legacy: `git@bitbucket.org:workspace/repo.git`
+- New: `git@ssh.bitbucket.org:workspace/repo.git`
+- New SSH URI: `ssh://git@ssh.bitbucket.org/workspace/repo.git`
+- Port 443 alternative: `ssh://git@altssh.bitbucket.org:443/workspace/repo.git`
+- HTTPS: `https://bitbucket.org/workspace/repo.git`
+
+New Bitbucket clones and saved PR destination remote URLs use the new SSH
+hostname. **Existing Git remotes are not rewritten automatically.**
+On the work Mac, inspect `git remote -v` and update an affected SSH remote
+explicitly if it still uses the deprecated host:
+
+```bash
+git remote set-url origin git@ssh.bitbucket.org:<workspace>/<repo>.git
+```
+
+Keep the actual workspace, repository name and remote name from your existing
+configuration. HTTPS remotes need no change. See the
+[Atlassian SSH migration announcement](https://community.atlassian.com/forums/discussion/3234032/upcoming-change-to-bitbucket-cloud-ssh-access-move-from-bitbucket-org-to-ssh-bitbucket-org).
+
 ## 🔐 Write permissions by machine profile
 
 Chezmoi renders `~/.config/pr-navigation/config.json` from
