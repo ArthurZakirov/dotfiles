@@ -359,7 +359,10 @@ func search(provider: String, term: String, limit: Int) -> Output {
     // restore the previously active app. Do not steal focus again if the
     // user switches to a different app while this search is running.
     let priorApp = NSWorkspace.shared.frontmostApplication
-    let restoreSafariFocus = provider == "safari" &&
+    // Fast path: if the prewarmed dialog is accessible in the background,
+    // set its value immediately without moving the user's window focus.
+    let readyInBackground = provider == "safari" && searchField(root) != nil
+    var restoreSafariFocus = provider == "safari" && !readyInBackground &&
         priorApp?.bundleIdentifier != "com.apple.Safari"
     if restoreSafariFocus {
         guard let safari = NSRunningApplication
@@ -405,18 +408,32 @@ func search(provider: String, term: String, limit: Int) -> Output {
     // the overlay; reopen it BEFORE the focus-restoration defer executes.
     // Do not re-prime Chrome, whose tabs belong to the user's regular work.
     defer {
-        if provider == "safari",
-           NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.Safari" {
-            let ready = showSearch(root, seconds: 4.0) != nil
-            trace("Safari search re-primed: \(ready)")
+        if provider == "safari" {
+            let current = NSWorkspace.shared.frontmostApplication
+            // Respect a user-initiated switch to a third application.
+            if current?.processIdentifier == priorApp?.processIdentifier ||
+               current?.bundleIdentifier == "com.apple.Safari" {
+                let ready = prepareSafariSearch()
+                trace("Safari search re-primed: \(ready)")
+            }
         }
     }
 
     var searchReady = setSearchTerm(root, term)
     if !searchReady && provider == "safari" {
-        // After activating an inactive Safari window its AX web area may
-        // take another frame to become available.
-        Thread.sleep(forTimeInterval: 0.60)
+        // Some macOS builds expose the prewarmed field in the background but
+        // refuse AXValue writes until Safari is active. Recover once.
+        if let safari = NSRunningApplication
+            .runningApplications(withBundleIdentifier: "com.apple.Safari").first,
+           NSWorkspace.shared.frontmostApplication?.processIdentifier != safari.processIdentifier {
+            _ = safari.activate(options: [])
+            restoreSafariFocus = priorApp?.processIdentifier != safari.processIdentifier
+            let deadline = Date().addingTimeInterval(1.5)
+            while NSWorkspace.shared.frontmostApplication?.processIdentifier != safari.processIdentifier
+                    && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.10)
+            }
+        }
         searchReady = setSearchTerm(root, term)
     }
     guard searchReady else {
