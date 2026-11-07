@@ -24,6 +24,8 @@ LAUNCHER = Path(".local/bin/codex-voice")
 INSTALLER = Path(".local/bin/codex-voice-install")
 HOOK = Path("run_after_45-install-codex-voice.sh.tmpl")
 PACKAGE = Path(".local/share/codex-voice")
+VOICE_CONFIG = Path(".config/codex-voice/config.json")
+VOICE_CONFIG_SOURCE = Path("dot_config/codex-voice/create_config.json")
 
 
 def command(*args: str, env: dict[str, str], timeout: int = 45) -> str:
@@ -60,6 +62,12 @@ def isolated_voice(tmp_path: Path) -> tuple[Path, dict[str, str], str, str]:
         if relative in (LAUNCHER, INSTALLER):
             target = target.with_name("executable_" + target.name)
         shutil.copy2(original, target)
+
+    # Chezmoi's create_ prefix provisions an initial default without overwriting
+    # the user's chosen speed on later applies.
+    config_source = source / VOICE_CONFIG_SOURCE
+    config_source.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(SOURCE / VOICE_CONFIG_SOURCE, config_source)
 
     metadata = (SOURCE / ".chezmoidata.toml").read_text()
     # The committed defaults must provision a valid, pinned release on a
@@ -181,12 +189,16 @@ if not executable.is_file():
         str(home / LAUNCHER), "--version", env=env
     )
     assert (home / ".local/share/codex-voice-install-calls").read_text() == "installed\n"
+    voice_config = home / VOICE_CONFIG
+    assert json.loads(voice_config.read_text()) == {"speech_rate": 1.8}
+    voice_config.write_text('{"speech_rate": 1.4}\n')
 
     # Subsequent applies execute the same hook but do not reinstall the binary.
     command(*base, "apply", "--force", env=env)
     assert (home / ".local/share/codex-voice-install-calls").read_text() == (
         "installed\nreused\n"
     )
+    assert json.loads(voice_config.read_text()) == {"speech_rate": 1.4}
     assert python_log.read_text().splitlines().count(str(home / INSTALLER)) == 2
     assert (home / ".local/share/codex-voice-experiment/keep-me.txt").read_text() == (
         "previous-build"
