@@ -22,7 +22,7 @@ def installer():
     return runpy.run_path(str(SCRIPT))["install"]
 
 
-def release_fixture(tmp_path: Path, *, tamper=False, traversal=False) -> Path:
+def release_fixture(tmp_path: Path, *, tamper=False, traversal=False, missing=None) -> Path:
     package = tmp_path / "package"
     voice = package / "codex-resources/voice"
     (package / "bin").mkdir(parents=True)
@@ -33,6 +33,12 @@ def release_fixture(tmp_path: Path, *, tamper=False, traversal=False) -> Path:
     executable.chmod(0o755)
     helper = voice / "bin/codex-voice-host"
     helper.write_bytes(b"test helper")
+    helper.chmod(0o755)
+    for relative in ("bin/codex-code-mode-host", "bin/codex-exec-server", "codex-path/rg", "codex-resources/voice/bin/codex-voice-speech-helper"):
+        program = package / relative
+        program.parent.mkdir(parents=True, exist_ok=True)
+        program.write_text("#!/bin/sh\nexit 0\n")
+        program.chmod(0o755)
     lib = voice / "lib/libgstreamer-1.0.0.dylib"
     lib.write_bytes(b"test library")
     (package / "codex-package.json").write_text(json.dumps({
@@ -43,6 +49,10 @@ def release_fixture(tmp_path: Path, *, tamper=False, traversal=False) -> Path:
         path: hashlib.sha256((package / path).read_bytes()).hexdigest()
         for path in (
             "bin/codex",
+            "bin/codex-code-mode-host",
+            "bin/codex-exec-server",
+            "codex-path/rg",
+            "codex-resources/voice/bin/codex-voice-speech-helper",
             "codex-resources/voice/bin/codex-voice-host",
             "codex-resources/voice/lib/libgstreamer-1.0.0.dylib",
         )
@@ -52,6 +62,8 @@ def release_fixture(tmp_path: Path, *, tamper=False, traversal=False) -> Path:
         "voiceTarget": TARGET, "appVersion": "0.166.0",
         "sha256": files,
     }))
+    if missing:
+        (package / missing).unlink()
     release = tmp_path / "release"
     release.mkdir()
     archive = release / f"codex-voice-{TARGET}.tar.gz"
@@ -178,3 +190,32 @@ def test_tampered_installed_binary_is_repaired(tmp_path, installer):
     assert changed is True
     assert (destination / "bin/codex").read_text().startswith("#!/bin/sh")
     assert list(tmp_path.glob("installation.backup-*"))
+
+
+@pytest.mark.parametrize("relative", [
+    "bin/codex-code-mode-host", "bin/codex-exec-server", "codex-path/rg",
+    "codex-resources/voice/bin/codex-voice-speech-helper",
+])
+def test_missing_installed_tool_triggers_repair(tmp_path, installer, relative):
+    release = release_fixture(tmp_path)
+    destination = tmp_path / "installation"
+    installer(TAG, destination, base_url=release.as_uri(), target=TARGET)
+    (destination / relative).unlink()
+
+    changed = installer(TAG, destination, base_url=release.as_uri(), target=TARGET)
+
+    assert changed is True
+    assert (destination / relative).is_file()
+
+
+def test_incomplete_release_preserves_existing_installation(tmp_path, installer):
+    release = release_fixture(tmp_path, missing="bin/codex-exec-server")
+    destination = tmp_path / "installation"
+    destination.mkdir()
+    (destination / "keep.txt").write_text("old working installation")
+
+    with pytest.raises(ValueError, match="Required release file missing"):
+        installer(TAG, destination, base_url=release.as_uri(), target=TARGET)
+
+    assert (destination / "keep.txt").read_text() == "old working installation"
+    assert not (destination / "bin/codex").exists()

@@ -7,4 +7,13 @@ export CODEX_REALTIME_VERBATIM_SPEECH=1
 # exists, without passing unsupported -c keys to previous binaries.
 export PATH="$HOME/.local/bin:$PATH"
 export CODEX_STATUS_LINE_COMMANDS='[{"label":"AGENTS","command":"codex-agents-status"}]'
-exec "$HOME/.local/share/codex-voice/bin/codex" "$@"
+# Keep the Voice session on this package's embedded server, rather than a
+# separately installed shared daemon that may run a different build.
+binary="$HOME/.local/share/codex-voice/bin/codex"
+for arg in "$@"; do
+  [[ "$arg" != -- ]] || break
+  if [[ "$arg" == --no-daemon || "$arg" == --remote || "$arg" == --remote=* ]]; then
+    exec "$binary" "$@"
+  fi
+done
+exec "$binary" --no-daemon "$@"
