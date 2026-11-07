@@ -92,25 +92,26 @@ func searchField(_ root: AXUIElement) -> AXUIElement? {
     find(root) { role($0) == "AXComboBox" && title($0) == "Search" }
 }
 
-func waitForField(_ root: AXUIElement, seconds: Double = 2.5) -> AXUIElement? {
+func showSearch(_ root: AXUIElement, seconds: Double = 4.5) -> AXUIElement? {
+    // If the search is already primed, return immediately without opening UI.
+    // Otherwise wait for the *actual AX control*, not a fixed animation delay:
+    // Safari may expose the ChatGPT web area before its Search button is ready.
     let deadline = Date().addingTimeInterval(seconds)
+    var lastPress = Date.distantPast
     repeat {
         if let field = searchField(root) { return field }
-        Thread.sleep(forTimeInterval: 0.10)
-    } while Date() < deadline
-    return nil
-}
-
-func showSearch(_ root: AXUIElement) -> AXUIElement? {
-    if let field = searchField(root) { return field }
-    guard let button = find(root, {
-        (role($0) == "AXPopUpButton" || role($0) == "AXButton")
-            && title($0) == "Search"
-    }) else { return nil }
-    guard AXUIElementPerformAction(button, kAXPressAction as CFString) == .success else {
-        return nil
-    }
-    return waitForField(root)
+        if Date().timeIntervalSince(lastPress) >= 1.5,
+           let button = find(root, {
+               (role($0) == "AXPopUpButton" || role($0) == "AXButton")
+                   && title($0) == "Search"
+           }) {
+            lastPress = Date()
+            _ = AXUIElementPerformAction(button, kAXPressAction as CFString)
+        }
+        if Date() >= deadline { break }
+        Thread.sleep(forTimeInterval: 0.12)
+    } while true
+    return searchField(root)
 }
 
 func resultElements(_ root: AXUIElement) -> [AXUIElement] {
@@ -308,6 +309,43 @@ func trace(_ text: String) {
     }
 }
 
+// Prepare the dedicated, already-authenticated Safari ChatGPT search tab
+// once on Hammerspoon startup. No extra browser, cookies, login or web API.
+// Safari may need a brief foreground activation to expose its AX web area.
+func prepareSafariSearch() -> Bool {
+    guard let root = application("safari"),
+          let safari = NSRunningApplication
+            .runningApplications(withBundleIdentifier: "com.apple.Safari").first else {
+        return false
+    }
+    let priorApp = NSWorkspace.shared.frontmostApplication
+    // Fast path: an existing search field is ready even while Safari is hidden.
+    if searchField(root) != nil { return true }
+
+    let shouldRestore = priorApp?.processIdentifier != safari.processIdentifier
+    if shouldRestore {
+        _ = safari.activate(options: [])
+        let deadline = Date().addingTimeInterval(1.5)
+        while NSWorkspace.shared.frontmostApplication?.processIdentifier != safari.processIdentifier
+                && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.10)
+        }
+    }
+    defer {
+        if shouldRestore,
+           NSWorkspace.shared.frontmostApplication?.processIdentifier == safari.processIdentifier,
+           let priorApp {
+            _ = priorApp.activate(options: [])
+            let deadline = Date().addingTimeInterval(1.5)
+            while NSWorkspace.shared.frontmostApplication?.processIdentifier != priorApp.processIdentifier
+                    && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+        }
+    }
+    return showSearch(root, seconds: 5.0) != nil
+}
+
 func search(provider: String, term: String, limit: Int) -> Output {
     var warnings: [String] = []
     guard let root = application(provider) else {
@@ -362,6 +400,17 @@ func search(provider: String, term: String, limit: Int) -> Output {
     }
     defer { if let selection { restoreChromeTab(selection) } }
     if selection != nil { Thread.sleep(forTimeInterval: 0.30) }
+
+    // Keep Safari primed for the next hotkey. A result click navigates out of
+    // the overlay; reopen it BEFORE the focus-restoration defer executes.
+    // Do not re-prime Chrome, whose tabs belong to the user's regular work.
+    defer {
+        if provider == "safari",
+           NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.Safari" {
+            let ready = showSearch(root, seconds: 4.0) != nil
+            trace("Safari search re-primed: \(ready)")
+        }
+    }
 
     var searchReady = setSearchTerm(root, term)
     if !searchReady && provider == "safari" {
@@ -435,6 +484,11 @@ func search(provider: String, term: String, limit: Int) -> Output {
 }
 
 let args = Array(CommandLine.arguments.dropFirst())
+if args == ["--prepare-safari"] {
+    let prepared = prepareSafariSearch()
+    print(prepared ? "{\"prepared\":true}" : "{\"prepared\":false}")
+    exit(prepared ? 0 : 2)
+}
 if args.contains("--self-test") {
     let fakeId = "11111111-2222-4333-8444-555555555555"
     let sample = "https://chatgpt.com/c/" + fakeId
