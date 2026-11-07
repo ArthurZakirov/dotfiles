@@ -3,6 +3,7 @@
 local runningTask
 local warmupTask
 local pendingSourceApp
+local pendingContextUrl
 -- Runtime-only diagnostics; never store conversation text, IDs or URLs.
 HammerspoonConfig.lastRelatedSessionOpen = { phase = "idle" }
 
@@ -60,11 +61,14 @@ end
 -- Separate pure diagnostic entry point for automated Hammerspoon/Lua tests.
 HammerspoonConfig.relatedSessionFeedback = feedback
 
-local function openFromContext(sourceApp)
+local function openFromContext(sourceApp, requestedUrl)
   if warmupTask then
-    -- A first hotkey can arrive before startup prewarming has finished.
-    -- Queue that context rather than typing into an overlay being prepared.
+    -- Capture the PR *now*: the user may switch Chrome tabs while warmup
+    -- finishes. Never silently search a different PR after that switch.
     pendingSourceApp = sourceApp
+    local bundle = sourceApp and sourceApp:bundleID() or ""
+    pendingContextUrl = bundle:match("^com%.microsoft%.VSCode") and nil
+      or requestedUrl or HammerspoonConfig.gitBrowserUrl(sourceApp)
     HammerspoonConfig.lastRelatedSessionOpen = { phase = "preparing" }
     hs.alert.show("Bereite ChatGPT-Suche vor …", 1)
     return
@@ -83,7 +87,7 @@ local function openFromContext(sourceApp)
     return
   end
 
-  local url = HammerspoonConfig.gitBrowserUrl(sourceApp)
+  local url = requestedUrl or HammerspoonConfig.gitBrowserUrl(sourceApp)
   if type(url) ~= "string" or url == "" then
     hs.alert.show("Open a GitHub/Bitbucket PR or branch in Chrome, or a Git worktree in VS Code")
     return
@@ -148,8 +152,10 @@ local function prepareSafariSearch()
     warmupTask = nil
     HammerspoonConfig.safariSearchPrepared = exitCode == 0
     local pending = pendingSourceApp
+    local pendingUrl = pendingContextUrl
     pendingSourceApp = nil
-    if pending then openFromContext(pending) end
+    pendingContextUrl = nil
+    if pending then openFromContext(pending, pendingUrl) end
   end, { "--prepare-safari", "--json" })
   if not warmupTask then return end
 
@@ -158,7 +164,13 @@ local function prepareSafariSearch()
     .. (environment.PATH or "")
   warmupTask:setEnvironment(environment)
   if not warmupTask:start() then
+    -- A failed warmup must not strand a hotkey that arrived meanwhile.
     warmupTask = nil
+    local pending = pendingSourceApp
+    local pendingUrl = pendingContextUrl
+    pendingSourceApp = nil
+    pendingContextUrl = nil
+    if pending then openFromContext(pending, pendingUrl) end
   end
 end
 
