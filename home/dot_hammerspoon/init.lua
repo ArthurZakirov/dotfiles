@@ -18,6 +18,7 @@ dofile(hs.configdir .. "/modules/codex_voice.lua")
 dofile(hs.configdir .. "/modules/agent_backlog.lua")
 dofile(hs.configdir .. "/modules/claude.lua")
 dofile(hs.configdir .. "/modules/chatgpt.lua")
+dofile(hs.configdir .. "/modules/chatgpt_voice.lua")
 dofile(hs.configdir .. "/modules/layout.lua")
 
 hs.hotkey.bind(HammerspoonConfig.hyper, "r", hs.reload)
