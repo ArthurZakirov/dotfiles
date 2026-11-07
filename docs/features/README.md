@@ -24,6 +24,7 @@ For ChatGPT, the [personalization instructions](chatgpt-personalization.md) tell
 
 | Capability | Detailed feature documentation |
 | --- | --- |
+| Find Codex sessions by Git repo, branch, worktree, PR, commit or Jira key | [Codex session search](codex-session-search.md) |
 | Inspect changes in isolated, editable VS Code review workspaces | [Git review](git-review.md) |
 | Prepare Python environments for review checkouts | [Python environments](pysetup.md) |
 | Refresh permanent repositories and rebase feature branches | [Automatic repository refresh](repo-refresh.md) |

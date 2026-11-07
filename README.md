@@ -37,6 +37,7 @@ An agent can finish a change before you've even opened the first diff. When gett
 
 | Capability | Detailed feature documentation |
 | --- | --- |
+| 🔎 Find past Codex sessions from Git context, including cross-repository work | [Codex session search](docs/features/codex-session-search.md) |
 | 🔴🟢 Review committed changes in VS Code diff tabs, with code navigation where supported | [Git review](docs/features/git-review.md) |
 | 🔀 Jump between GitHub/Bitbucket PRs in Chrome and the matching VS Code worktree | [PR ↔ Worktree navigation](docs/features/git-pr-navigation.md) |
 | 🐍 Set up Python environments for review checkouts with a single command | [Python environments](docs/features/pysetup.md) |
