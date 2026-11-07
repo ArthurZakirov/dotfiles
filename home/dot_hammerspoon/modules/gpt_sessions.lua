@@ -1,6 +1,9 @@
 -- One context-aware shortcut from VS Code or a GitHub/Bitbucket browser page.
 -- Search remains in find-gpt-session; the launcher never copies search logic.
 local runningTask
+local warmupTask
+local pendingSourceApp
+local pendingContextUrl
 -- Runtime-only diagnostics; never store conversation text, IDs or URLs.
 HammerspoonConfig.lastRelatedSessionOpen = { phase = "idle" }
 
@@ -58,7 +61,21 @@ end
 -- Separate pure diagnostic entry point for automated Hammerspoon/Lua tests.
 HammerspoonConfig.relatedSessionFeedback = feedback
 
-local function openFromContext(sourceApp)
+local function openFromContext(sourceApp, requestedUrl)
+  if warmupTask then
+    -- Capture the PR *now*: the user may switch Chrome tabs while warmup
+    -- finishes. Never silently search a different PR after that switch.
+    pendingSourceApp = sourceApp
+    local bundle = sourceApp and sourceApp:bundleID() or ""
+    if bundle:match("^com%.microsoft%.VSCode") then
+      pendingContextUrl = nil
+    else
+      pendingContextUrl = requestedUrl or HammerspoonConfig.gitBrowserUrl(sourceApp)
+    end
+    HammerspoonConfig.lastRelatedSessionOpen = { phase = "preparing" }
+    hs.alert.show("Bereite ChatGPT-Suche vor …", 1)
+    return
+  end
   if runningTask then
     HammerspoonConfig.lastRelatedSessionOpen = { phase = "busy" }
     hs.alert.show("Session search already running")
@@ -73,7 +90,7 @@ local function openFromContext(sourceApp)
     return
   end
 
-  local url = HammerspoonConfig.gitBrowserUrl(sourceApp)
+  local url = requestedUrl or HammerspoonConfig.gitBrowserUrl(sourceApp)
   if type(url) ~= "string" or url == "" then
     hs.alert.show("Open a GitHub/Bitbucket PR or branch in Chrome, or a Git worktree in VS Code")
     return
@@ -123,3 +140,56 @@ hs.hotkey.bind(HammerspoonConfig.hyper, "s", function()
     openFromContext(source)
   end)
 end)
+
+
+-- Hammerspoon already runs at login, so no second LaunchAgent or browser
+-- process is needed. Warm the existing Safari ChatGPT overlay once shortly
+-- after loading, and again if Safari starts later in the same login session.
+-- Re-priming after navigation is handled by the native Safari adapter.
+local function prepareSafariSearch()
+  if warmupTask or runningTask or not hs.application.get("com.apple.Safari") then
+    return
+  end
+  local helper = os.getenv("HOME") .. "/.local/bin/find-gpt-session"
+  warmupTask = hs.task.new(helper, function(exitCode, _, _)
+    warmupTask = nil
+    HammerspoonConfig.safariSearchPrepared = exitCode == 0
+    local pending = pendingSourceApp
+    local pendingUrl = pendingContextUrl
+    pendingSourceApp = nil
+    pendingContextUrl = nil
+    if pending then openFromContext(pending, pendingUrl) end
+  end, { "--prepare-safari", "--json" })
+  if not warmupTask then return end
+
+  local environment = warmupTask:environment()
+  environment.PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:"
+    .. (environment.PATH or "")
+  warmupTask:setEnvironment(environment)
+  if not warmupTask:start() then
+    -- A failed warmup must not strand a hotkey that arrived meanwhile.
+    warmupTask = nil
+    local pending = pendingSourceApp
+    local pendingUrl = pendingContextUrl
+    pendingSourceApp = nil
+    pendingContextUrl = nil
+    if pending then openFromContext(pending, pendingUrl) end
+  end
+end
+
+HammerspoonConfig.prepareSafariSearch = prepareSafariSearch
+
+if hs.timer and hs.application.watcher then
+  -- A one-shot warmup avoids repeatedly stealing focus or racing with
+  -- normal browser work. Launches after startup are handled once by the
+  -- app watcher; no permanent polling or timer loop is installed.
+  HammerspoonConfig.safariWarmTimer = hs.timer.doAfter(4, prepareSafariSearch)
+  local watcher = hs.application.watcher.new(function(_, event, app)
+    if event == hs.application.watcher.launched and app and
+       app:bundleID() == "com.apple.Safari" then
+      HammerspoonConfig.safariLaunchWarmTimer = hs.timer.doAfter(2, prepareSafariSearch)
+    end
+  end)
+  watcher:start()
+  HammerspoonConfig.safariSearchWatcher = watcher
+end
