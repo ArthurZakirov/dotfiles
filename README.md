@@ -39,6 +39,7 @@ An agent can finish a change before you've even opened the first diff. When gett
 | --- | --- |
 | 🔴🟢 Review committed changes in VS Code diff tabs, with code navigation where supported | [Git review](docs/features/git-review.md) |
 | 🔀 Jump between GitHub/Bitbucket PRs in Chrome and the matching VS Code worktree | [PR ↔ Worktree navigation](docs/features/git-pr-navigation.md) |
+| 🔎 Find historical Codex sessions by repository, worktree, branch, commit, PR or Jira key | [Codex session search](docs/features/session-find.md) |
 | 🐍 Set up Python environments for review checkouts with a single command | [Python environments](docs/features/pysetup.md) |
 | 🔄 Refresh permanent checkouts and rebase feature branches, preserving unfinished work | [Automatic repository refresh](docs/features/repo-refresh.md) |
 | 📁 Find Git repositories and frequently used config files, then open them in VS Code | [Raycast navigation](docs/features/raycast.md) (one-time Raycast setup) |
