@@ -27,12 +27,38 @@ stored in this public Dotfiles Git repository.
   `repo:dotfiles`, `area:personal`, `area:professional`,
   `ticket:ABC-123`. The browser Kanban supports label filters; task
   status stays independent of the label taxonomy.
-- Agent sessions belong in concise task comments or references. Record the
-  actual agent, session identifier, and exact resume command/permalink when
-  one is available. There is no universal cross-agent one-click resume API.
+- Codex session IDs are attached automatically to task comments when a
+  Codex shell process exposes `CODEX_THREAD_ID` and invokes the managed
+  `agent-backlog` CLI. See [Resume Codex sessions](#resume-codex-sessions)
+  for the precise limits. No generic cross-provider one-click resume exists.
 - Global AGENTS.md guidance requests task creation, deduplication and
   updates from agents with command access. It is **best-effort**; without
   runtime enforcement/hooks it does not guarantee that every turn is recorded.
+
+## Resume Codex sessions
+
+When a **local Codex shell tool** exposes `CODEX_THREAD_ID`, any successful
+`agent-backlog task create` or `agent-backlog task edit` automatically records
+the current Codex session on the affected task. No additional agent command is
+required, and subsequent edits from the same session do not duplicate it.
+Different Codex sessions can be attached to the same task independently.
+
+Open the ticket with **Option-K** and copy the `codex resume` command from its
+**Comments** section into a terminal. For example, a verified ticket comment
+has this format (the UUID below is illustrative only):
+
+```bash
+codex resume 123e4567-e89b-42d3-a456-426614174000
+```
+
+The session is tied to the **Codex process that wrote the task**, not inferred
+from repository, commit, PR, the focused app, or `session-find` suggestions.
+`session-find` remains useful for retrospective discovery but is not the
+source of identity for this feature. Without a valid `CODEX_THREAD_ID`, the
+task write still succeeds but no session link is added. A failed task write
+does not add a comment. A failed secondary session-link operation is reported
+on stderr without falsely failing the already-saved task. Neither ChatGPT nor
+Work session URLs are automatically linked in this version.
 
 ## Kanban columns
 

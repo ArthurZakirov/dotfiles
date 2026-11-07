@@ -19,4 +19,23 @@ if [[ ! -f "$root/backlog/config.yml" && ! -f "$root/.backlog/config.yml" && ! -
 fi
 
 cd "$root"
+
+# Codex supplies its *own* thread UUID to shell tools. Run successful task
+# writes with their original terminal stdio and attach one resume command per
+# affected task. Never infer IDs from history or link ChatGPT sessions.
+if [[ $# -ge 2 && "$1" == "task" && ( "$2" == "create" || "$2" == "edit" ) ]]; then
+  session_id="${CODEX_THREAD_ID:-}"
+  if [[ "$session_id" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]]; then
+    linker="$HOME/.local/bin/agent-backlog-codex-session"
+    if [[ -f "$linker" ]]; then
+      # The link helper executes Backlog.md with its original stdin/out/err.
+      # Never turn a terminal invocation into a pipe via tee.
+      exec /usr/bin/python3 "$linker" --run "$@"
+    fi
+    printf 'agent-backlog: session linker not installed; running task normally.\n' >&2
+  elif [[ -n "$session_id" ]]; then
+    printf 'agent-backlog: ignoring malformed CODEX_THREAD_ID (task still runs).\n' >&2
+  fi
+fi
+
 exec backlog "$@"

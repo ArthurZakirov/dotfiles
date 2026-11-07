@@ -24,10 +24,19 @@ project-local board.
 - Add `--ref` URLs to commits, PRs or issues when available, and comments
   with exact evidence (what changed, which tests passed or failed). The board
   is a tracking view, not a substitute for Git review or CI verification.
-- Record an exact session reference when exposed by the current harness,
-  e.g. `Codex CLI session: <actual-id>; resume: codex resume <actual-id>`,
-  or an actual ChatGPT/Claude chat permalink. Do not fabricate IDs or
-  imply a chat can be reopened with one click when the tool does not support it.
+- For Codex sessions with a local shell tool, always create or update tasks
+  through `agent-backlog`, not the underlying `backlog` CLI. When Codex exposes
+  `CODEX_THREAD_ID` to that shell process, the wrapper automatically attaches
+  the **actual executing session** as a task comment with a copyable
+  `codex resume <UUID>` command. Each different Codex session touching a task
+  gets its own comment; repeated edits by the same session do not duplicate it.
+- If `CODEX_THREAD_ID` is missing or invalid, a task write still succeeds but
+  **no session is associated**. Never assume the most recent Codex session is
+  this agent, or use a `session-find` search suggestion as proof of identity.
+  A session resume command requires the exact ID, not a guessed match.
+- ChatGPT/Work automatic session linking is not implemented here. Store only
+  independently verified direct links supplied through a supported interface;
+  never invent a ChatGPT URL from a conversation title or search result.
 - Do not put secrets or unnecessary employer/customer data in public Git
   sources; the task store itself is deliberately local and not committed.
 - No tool-specific hooks are part of this integration. Since text guidance
