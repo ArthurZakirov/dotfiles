@@ -183,11 +183,11 @@ if hs.timer and hs.application.watcher then
   -- A one-shot warmup avoids repeatedly stealing focus or racing with
   -- normal browser work. Launches after startup are handled once by the
   -- app watcher; no permanent polling or timer loop is installed.
-  hs.timer.doAfter(4, prepareSafariSearch)
+  HammerspoonConfig.safariWarmTimer = hs.timer.doAfter(4, prepareSafariSearch)
   local watcher = hs.application.watcher.new(function(_, event, app)
     if event == hs.application.watcher.launched and app and
        app:bundleID() == "com.apple.Safari" then
-      hs.timer.doAfter(2, prepareSafariSearch)
+      HammerspoonConfig.safariLaunchWarmTimer = hs.timer.doAfter(2, prepareSafariSearch)
     end
   end)
   watcher:start()
