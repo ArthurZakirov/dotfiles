@@ -14,12 +14,13 @@ MODULE = ROOT / "home/dot_hammerspoon/modules/gpt_sessions.lua"
 LUAJIT = shutil.which("luajit")
 
 
-def lua_run(source: str) -> str:
+def lua_run(source: str, *, before_load: str = "") -> str:
     assert LUAJIT
     setup = (
         "HammerspoonConfig = {hyper = {'ctrl', 'alt', 'cmd'}}\n"
         "hs = {hotkey = {bind = function() end}}\n"
-        f"dofile({json.dumps(str(MODULE))})\n"
+        + before_load + "\n"
+        + f"dofile({json.dumps(str(MODULE))})\n"
     )
     completed = subprocess.run(
         [LUAJIT, "-e", setup + source],
@@ -136,3 +137,93 @@ def test_hotkey_invokes_json_cli_and_displays_precise_message():
     assert args.startswith("--json,--open,--context-url,")
     assert "ChatGPT-Suche derzeit nicht verfügbar" in message
     assert status == "provider-incomplete"
+
+
+
+@pytest.mark.skipif(LUAJIT is None, reason="LuaJIT unavailable on this runner")
+def test_hammerspoon_startup_primes_safari_and_queues_early_hotkeys():
+    # Exercise the real Lua module: its timer and warmup task are the SUT.
+    output = lua_run(
+        """
+        print('scheduled|' .. tostring(#scheduled))
+        scheduled[1]()
+        print('warm|' .. table.concat(taskArgs[1], ','))
+        HammerspoonConfig.gitBrowserUrl=function(_)
+            return 'https://github.com/example/demo/pull/65'
+        end
+        HammerspoonConfig.openRelatedSessionsFromApp({
+            bundleID=function() return 'com.google.Chrome' end
+        })
+        print('early|' .. HammerspoonConfig.lastRelatedSessionOpen.phase)
+        warmupDone(0, '{"prepared":true}', '')
+        print('ready|' .. tostring(HammerspoonConfig.safariSearchPrepared))
+        print('search|' .. table.concat(taskArgs[2], ','))
+        print('phase|' .. HammerspoonConfig.lastRelatedSessionOpen.phase)
+        """,
+        before_load="""
+        scheduled = {}
+        taskArgs = {}
+        warmupDone = nil
+        hs.timer = {
+            doAfter = function(_,fn) table.insert(scheduled,fn) end
+        }
+        hs.application = {
+            get = function(_) return {} end,
+            watcher = {
+                launched = 1,
+                new = function(_) return {start=function() end} end,
+            },
+        }
+        hs.alert = {show = function() end}
+        hs.task = {
+            new = function(_,fn,args)
+                table.insert(taskArgs,args)
+                if args[1]=='--prepare-safari' then warmupDone=fn end
+                local task = {}
+                function task:environment() return {} end
+                function task:setEnvironment(_) end
+                function task:start() return true end
+                return task
+            end,
+        }
+        """,
+    )
+    lines = output.splitlines()
+    assert lines[0] == "scheduled|1"
+    assert lines[1] == "warm|--prepare-safari,--json"
+    assert lines[2] == "early|preparing"
+    assert lines[3] == "ready|true"
+    assert lines[4].startswith("search|--json,--open,--context-url,")
+    assert lines[5] == "phase|starting"
+
+
+@pytest.mark.skipif(LUAJIT is None, reason="LuaJIT unavailable on this runner")
+def test_startup_warmup_does_not_launch_a_missing_safari():
+    output = lua_run(
+        """
+        scheduled[1]()
+        print('tasks|' .. tostring(taskCount))
+        print('state|' .. tostring(HammerspoonConfig.safariSearchPrepared))
+        """,
+        before_load="""
+        scheduled = {}
+        taskCount = 0
+        hs.timer = {
+            doAfter = function(_,fn) table.insert(scheduled,fn) end
+        }
+        hs.application = {
+            get = function(_) return nil end,
+            watcher = {
+                launched = 1,
+                new = function(_) return {start=function() end} end,
+            },
+        }
+        hs.task = {
+            new = function(_,_,_)
+                taskCount = taskCount + 1
+                error('No Safari process: warmup must not start')
+            end,
+        }
+        """,
+    )
+    assert output.splitlines() == ["tasks|0", "state|nil"]
