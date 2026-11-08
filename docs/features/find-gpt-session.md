@@ -73,7 +73,7 @@ Preparation is opportunistic: login/loading screens, closing the overlay, browse
 
 Browser results are partial. In the background, Safari may expose only the first navigated result; missing controls or unverified URLs are reported as incomplete rather than confirmed absence. ChatGPT's own search index can also omit messages.
 
-Each AppleScript child is bounded to 2.5 seconds. The browser process allowance scales with the capped result count: 20 seconds of setup plus 20 per result, up to 12 results. This permits the 12-second navigation verification and per-result UI polling to finish without discarding all collected hits at an arbitrary 18-second cutoff.
+Each AppleScript child is bounded to 2.5 seconds. The browser process allowance scales with the capped result count: 30 seconds of setup plus 30 per result, up to 12 results. This permits the 12-second navigation verification per-result UI polling and URL roundtrips to finish without discarding all collected hits at an arbitrary 18-second cutoff.
 
 Codex readers capture private temporary SQLite snapshots, including committed WAL data. SQLite creates any working sidecars only in scratch storage; the source history remains untouched. No persistent search database is added. Browser adapters use Accessibility and tab URLs without extracting cookies/passwords, enabling JavaScript from Apple Events, calling undocumented ChatGPT APIs or uploading conversations.
 

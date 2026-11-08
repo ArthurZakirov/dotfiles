@@ -109,8 +109,12 @@ class BrowserProvider:
         return data.get("prepared") is True
 
     def search(self, request: SearchRequest, limit: int) -> ProviderResult:
+        result_limit = min(limit, 12)
+        # Each row can use 4.5s for the field, 3s for results, 2.5s for
+        # the previous URL and 12s for navigation (plus a final 2.5s poll).
+        # Reserve startup/re-priming separately so collected hits reach JSON.
         data = run_json([str(self._ready_executable()), self.name, request.ui_term,
-                         str(min(limit, 12))], timeout=20 + 20 * min(limit, 12))
+                         str(result_limit)], timeout=30 + 30 * result_limit)
         hits = [
             SessionHit("chatgpt", item.get("sessionId"),
                        item.get("title") or "(untitled)", item.get("url"),
