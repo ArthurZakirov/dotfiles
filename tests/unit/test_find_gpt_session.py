@@ -184,6 +184,78 @@ def test_cli_incomplete_search_returns_error_not_false_zero(capsys):
     assert "UI unavailable" in stderr
 
 
+
+def test_codex_text_adapter_uses_bundled_transcript_search():
+    expected = ProviderResult(hits=[SessionHit("codex", "abc", "From transcript", None,
+        90, "User message", "codex resume abc")], complete=True)
+    with patch("find_gpt_session.adapters.CodexTranscriptSearcher") as searcher:
+        searcher.return_value.search.return_value = expected
+
+        result = CodexProvider().search(SearchRequest.create("text", "worktree"), 3)
+
+    assert result == expected
+
+
+def test_missing_codex_history_is_reported_as_incomplete(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+
+    result = FindSessions([CodexProvider()]).search(SearchRequest.create("text", "worktree"), 3)
+
+    assert not result.hits
+    assert result.incomplete_providers == ["codex"]
+    assert "metadata not found" in " ".join(result.warnings)
+
+
+def test_browser_adapter_prepares_already_running_safari_search():
+    browser = BrowserProvider("safari", source=Path("/tmp/fake.swift"),
+                              executable=Path("/tmp/fake-ax"))
+    with patch.object(browser, "_ready_executable", return_value=Path("/tmp/fake-ax")), \
+         patch("find_gpt_session.adapters.run_json", return_value={"prepared": True}) as runner:
+        assert browser.prepare() is True
+    runner.assert_called_once_with(["/tmp/fake-ax", "--prepare-safari"], timeout=18)
+
+
+def test_browser_adapter_safari_preparation_can_report_unavailable():
+    browser = BrowserProvider("safari", source=Path("/tmp/fake.swift"),
+                              executable=Path("/tmp/fake-ax"))
+    with patch.object(browser, "_ready_executable", return_value=Path("/tmp/fake-ax")), \
+         patch("find_gpt_session.adapters.run_json", return_value={"prepared": False}):
+        assert browser.prepare() is False
+
+
+def test_cli_prepare_safari_runs_without_search_query(capsys):
+    from importlib.machinery import SourceFileLoader
+    script = ROOT / "home/dot_local/bin/executable_find-gpt-session"
+    loader = SourceFileLoader("find_gpt_session_preparation_cli", str(script))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    with patch.object(module, "BrowserProvider") as browser:
+        browser.return_value.prepare.return_value = True
+        assert module.main(["--prepare-safari", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"prepared": True, "warning": None}
+    browser.assert_called_once_with("safari")
+
+
+def test_cli_prepare_safari_reports_unavailable_and_does_not_search(capsys):
+    from importlib.machinery import SourceFileLoader
+    script = ROOT / "home/dot_local/bin/executable_find-gpt-session"
+    loader = SourceFileLoader("find_gpt_session_preparation_failure_cli", str(script))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    with patch.object(module, "BrowserProvider") as browser, \
+         patch.object(module, "create_providers") as searchers:
+        browser.return_value.prepare.side_effect = TimeoutError("Safari did not respond")
+        assert module.main(["--prepare-safari", "--json"]) == 2
+    assert json.loads(capsys.readouterr().out) == {
+        "prepared": False, "warning": "Safari did not respond"
+    }
+    searchers.assert_not_called()
+
+
 def test_browser_timeout_covers_each_requested_navigation():
     browser = BrowserProvider("safari", source=Path("/tmp/fake.swift"), executable=Path("/tmp/fake-ax"))
     with patch.object(browser, "_ready_executable", return_value=Path("/tmp/fake-ax")), patch("find_gpt_session.adapters.run_json", return_value={}) as runner:

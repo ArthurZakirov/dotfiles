@@ -96,6 +96,18 @@ class BrowserProvider:
                 temp.unlink(missing_ok=True)
         return self.executable
 
+    def prepare(self) -> bool:
+        """Prime an already-running Safari ChatGPT tab without searching.
+
+        Uses the same compiled Accessibility adapter as normal search.
+        Hammerspoon calls this opportunistically when its configuration loads;
+        a failed warmup never disables normal on-demand search.
+        """
+        if self.name != "safari":
+            raise ValueError("Only the dedicated Safari adapter can be primed")
+        data = run_json([str(self._ready_executable()), "--prepare-safari"], timeout=18)
+        return data.get("prepared") is True
+
     def search(self, request: SearchRequest, limit: int) -> ProviderResult:
         data = run_json([str(self._ready_executable()), self.name, request.ui_term,
                          str(min(limit, 12))], timeout=20 + 20 * min(limit, 12))

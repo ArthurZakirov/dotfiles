@@ -92,25 +92,26 @@ func searchField(_ root: AXUIElement) -> AXUIElement? {
     find(root) { role($0) == "AXComboBox" && title($0) == "Search" }
 }
 
-func waitForField(_ root: AXUIElement, seconds: Double = 2.5) -> AXUIElement? {
+func showSearch(_ root: AXUIElement, seconds: Double = 4.5) -> AXUIElement? {
+    // If the search is already primed, return immediately without opening UI.
+    // Otherwise wait for the *actual AX control*, not a fixed animation delay:
+    // Safari may expose the ChatGPT web area before its Search button is ready.
     let deadline = Date().addingTimeInterval(seconds)
+    var lastPress = Date.distantPast
     repeat {
         if let field = searchField(root) { return field }
-        Thread.sleep(forTimeInterval: 0.10)
-    } while Date() < deadline
-    return nil
-}
-
-func showSearch(_ root: AXUIElement) -> AXUIElement? {
-    if let field = searchField(root) { return field }
-    guard let button = find(root, {
-        (role($0) == "AXPopUpButton" || role($0) == "AXButton")
-            && title($0) == "Search"
-    }) else { return nil }
-    guard AXUIElementPerformAction(button, kAXPressAction as CFString) == .success else {
-        return nil
-    }
-    return waitForField(root)
+        if Date().timeIntervalSince(lastPress) >= 1.5,
+           let button = find(root, {
+               (role($0) == "AXPopUpButton" || role($0) == "AXButton")
+                   && title($0) == "Search"
+           }) {
+            lastPress = Date()
+            _ = AXUIElementPerformAction(button, kAXPressAction as CFString)
+        }
+        if Date() >= deadline { break }
+        Thread.sleep(forTimeInterval: 0.12)
+    } while true
+    return searchField(root)
 }
 
 func resultElements(_ root: AXUIElement) -> [AXUIElement] {
@@ -286,6 +287,62 @@ func awaitResultNavigation(
     return nil
 }
 
+struct SafariSelection {
+    let previousWindow: Int
+    let window: Int
+    let originalTab: Int
+    let selectedTab: Int
+}
+
+func selectSafariTab() -> SafariSelection? {
+    let script = """
+    tell application "Safari"
+        if (count of windows) is 0 then return ""
+        set previousWindow to id of front window
+        repeat with w in windows
+            repeat with i from 1 to count of tabs of w
+                set address to URL of tab i of w
+                if address is not missing value then
+                if address is "https://chatgpt.com" or address starts with "https://chatgpt.com/" then
+                    set originalTab to index of current tab of w
+                    set current tab of w to tab i of w
+                    set index of w to 1
+                    return (previousWindow as string) & "|" & (id of w as string) & "|" & (originalTab as string) & "|" & (i as string)
+                end if
+                end if
+            end repeat
+        end repeat
+        return ""
+    end tell
+    """
+    guard let response = osascript(script) else { return nil }
+    let parts = response.split(separator: "|").compactMap { Int($0) }
+    guard parts.count == 4 else { return nil }
+    return SafariSelection(previousWindow: parts[0], window: parts[1],
+                           originalTab: parts[2], selectedTab: parts[3])
+}
+
+func restoreSafariTab(_ selection: SafariSelection) {
+    // Do not overwrite a tab/window switch made by the user during search.
+    _ = osascript("""
+    tell application "Safari"
+        if (count of windows) is 0 then return
+        if id of front window is not \(selection.window) then return
+        set w to front window
+        if index of current tab of w is not \(selection.selectedTab) then return
+        if (count of tabs of w) >= \(selection.originalTab) then
+            set current tab of w to tab \(selection.originalTab) of w
+        end if
+        repeat with previousWindow in windows
+            if id of previousWindow is \(selection.previousWindow) then
+                set index of previousWindow to 1
+                exit repeat
+            end if
+        end repeat
+    end tell
+    """)
+}
+
 func restoreChromeTab(_ selection: (window: String, original: String, selected: String)) {
     let script = """
     tell application "Google Chrome"
@@ -308,6 +365,45 @@ func trace(_ text: String) {
     }
 }
 
+// Prepare the dedicated, already-authenticated Safari ChatGPT search tab
+// once on Hammerspoon startup. No extra browser, cookies, login or web API.
+// Safari may need a brief foreground activation to expose its AX web area.
+func prepareSafariSearch() -> Bool {
+    guard let root = application("safari"),
+          let safari = NSRunningApplication
+            .runningApplications(withBundleIdentifier: "com.apple.Safari").first else {
+        return false
+    }
+    let priorApp = NSWorkspace.shared.frontmostApplication
+    guard let selection = selectSafariTab() else { return false }
+    defer { restoreSafariTab(selection) }
+    // Fast path: an existing search field is ready even while Safari is hidden.
+    if searchField(root) != nil { return true }
+
+    let shouldRestore = priorApp?.processIdentifier != safari.processIdentifier
+    if shouldRestore {
+        _ = safari.activate(options: [])
+        let deadline = Date().addingTimeInterval(1.5)
+        while NSWorkspace.shared.frontmostApplication?.processIdentifier != safari.processIdentifier
+                && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.10)
+        }
+    }
+    defer {
+        if shouldRestore,
+           NSWorkspace.shared.frontmostApplication?.processIdentifier == safari.processIdentifier,
+           let priorApp {
+            _ = priorApp.activate(options: [])
+            let deadline = Date().addingTimeInterval(1.5)
+            while NSWorkspace.shared.frontmostApplication?.processIdentifier != priorApp.processIdentifier
+                    && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+        }
+    }
+    return showSearch(root, seconds: 5.0) != nil
+}
+
 func search(provider: String, term: String, limit: Int) -> Output {
     var warnings: [String] = []
     guard let root = application(provider) else {
@@ -321,7 +417,15 @@ func search(provider: String, term: String, limit: Int) -> Output {
     // restore the previously active app. Do not steal focus again if the
     // user switches to a different app while this search is running.
     let priorApp = NSWorkspace.shared.frontmostApplication
-    let restoreSafariFocus = provider == "safari" &&
+    let safariSelection = provider == "safari" ? selectSafariTab() : nil
+    if provider == "safari" && safariSelection == nil {
+        return Output(provider: provider, query: term, results: [],
+                      completeHistory: false, warnings: ["No ChatGPT tab in Safari"])
+    }
+    // Fast path: if the prewarmed dialog is accessible in the background,
+    // set its value immediately without moving the user's window focus.
+    let readyInBackground = provider == "safari" && searchField(root) != nil
+    var restoreSafariFocus = provider == "safari" && !readyInBackground &&
         priorApp?.bundleIdentifier != "com.apple.Safari"
     if restoreSafariFocus {
         guard let safari = NSRunningApplication
@@ -354,6 +458,7 @@ func search(provider: String, term: String, limit: Int) -> Output {
             trace("foreground restored to previous application")
         }
     }
+    defer { if let safariSelection { restoreSafariTab(safariSelection) } }
     let selection = provider == "chrome" ? selectChromeTab() : nil
     if provider == "chrome" && selection == nil {
         return Output(provider: provider, query: term, results: [],
@@ -363,11 +468,36 @@ func search(provider: String, term: String, limit: Int) -> Output {
     defer { if let selection { restoreChromeTab(selection) } }
     if selection != nil { Thread.sleep(forTimeInterval: 0.30) }
 
+    // Keep Safari primed for the next hotkey. A result click navigates out of
+    // the overlay; reopen it BEFORE the focus-restoration defer executes.
+    // Do not re-prime Chrome, whose tabs belong to the user's regular work.
+    defer {
+        if provider == "safari" {
+            let current = NSWorkspace.shared.frontmostApplication
+            // Respect a user-initiated switch to a third application.
+            if current?.processIdentifier == priorApp?.processIdentifier ||
+               current?.bundleIdentifier == "com.apple.Safari" {
+                let ready = prepareSafariSearch()
+                trace("Safari search re-primed: \(ready)")
+            }
+        }
+    }
+
     var searchReady = setSearchTerm(root, term)
     if !searchReady && provider == "safari" {
-        // After activating an inactive Safari window its AX web area may
-        // take another frame to become available.
-        Thread.sleep(forTimeInterval: 0.60)
+        // Some macOS builds expose the prewarmed field in the background but
+        // refuse AXValue writes until Safari is active. Recover once.
+        if let safari = NSRunningApplication
+            .runningApplications(withBundleIdentifier: "com.apple.Safari").first,
+           NSWorkspace.shared.frontmostApplication?.processIdentifier != safari.processIdentifier {
+            _ = safari.activate(options: [])
+            restoreSafariFocus = priorApp?.processIdentifier != safari.processIdentifier
+            let deadline = Date().addingTimeInterval(1.5)
+            while NSWorkspace.shared.frontmostApplication?.processIdentifier != safari.processIdentifier
+                    && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.10)
+            }
+        }
         searchReady = setSearchTerm(root, term)
     }
     guard searchReady else {
@@ -435,6 +565,11 @@ func search(provider: String, term: String, limit: Int) -> Output {
 }
 
 let args = Array(CommandLine.arguments.dropFirst())
+if args == ["--prepare-safari"] {
+    let prepared = prepareSafariSearch()
+    print(prepared ? "{\"prepared\":true}" : "{\"prepared\":false}")
+    exit(prepared ? 0 : 2)
+}
 if args.contains("--self-test") {
     let fakeId = "11111111-2222-4333-8444-555555555555"
     let sample = "https://chatgpt.com/c/" + fakeId
