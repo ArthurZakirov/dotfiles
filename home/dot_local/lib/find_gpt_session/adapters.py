@@ -8,12 +8,12 @@ import subprocess
 import sys
 
 from .core import ProviderResult, SearchRequest, SessionHit
+from .codex_text import CodexTranscriptSearcher
 
 
 def session_find_command() -> str:
-    """Locate the managed CLI even when launched from Dock/VS Code with GUI PATH."""
-    adjacent = Path(__file__).resolve().parents[2] / "bin" / "session-find"
-    return str(adjacent if adjacent.is_file() else Path.home() / ".local/bin/session-find")
+    """Use the backend installed alongside this package, including GUI PATHs."""
+    return str(Path(__file__).resolve().parents[2] / "bin/session-find")
 
 
 def run_json(argv: list[str], timeout: int = 50) -> dict:
@@ -36,12 +36,6 @@ class CodexProvider:
 
     def search(self, request: SearchRequest, limit: int) -> ProviderResult:
         if request.kind == "text":
-            # Optional peer adapter may already be installed from the parallel
-            # global-search feature. Preserve it without editing that worktree.
-            try:
-                from .codex_text import CodexTranscriptSearcher
-            except ImportError:
-                return ProviderResult(warnings=["Codex transcript search adapter not installed"])
             return CodexTranscriptSearcher().search(request.value, limit)
         result = run_json([session_find_command(), f"--{request.kind}", request.value,
                            "--limit", str(limit), "--json"])
@@ -116,7 +110,7 @@ class BrowserProvider:
 
     def search(self, request: SearchRequest, limit: int) -> ProviderResult:
         data = run_json([str(self._ready_executable()), self.name, request.ui_term,
-                         str(min(limit, 12))], timeout=18)
+                         str(min(limit, 12))], timeout=20 + 20 * min(limit, 12))
         hits = [
             SessionHit("chatgpt", item.get("sessionId"),
                        item.get("title") or "(untitled)", item.get("url"),

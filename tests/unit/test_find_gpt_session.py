@@ -99,7 +99,7 @@ def test_codex_adapter_uses_native_readonly_search():
     with patch("find_gpt_session.adapters.run_json", return_value=raw) as runner:
         result = CodexProvider().search(SearchRequest.create("branch", "my-branch"), 5)
     assert runner.call_args.args[0] == [
-        str(Path.home() / ".local/bin/session-find"), "--branch", "my-branch", "--limit", "5", "--json"
+        str(ROOT / "home/dot_local/bin/session-find"), "--branch", "my-branch", "--limit", "5", "--json"
     ]
     assert result.complete
     assert result.hits[0].resume_command == "codex resume abc"
@@ -261,3 +261,11 @@ def test_cli_prepare_safari_reports_unavailable_and_does_not_search(capsys):
         "prepared": False, "warning": "Safari did not respond"
     }
     searchers.assert_not_called()
+
+
+def test_browser_timeout_covers_each_requested_navigation():
+    browser = BrowserProvider("safari", source=Path("/tmp/fake.swift"), executable=Path("/tmp/fake-ax"))
+    with patch.object(browser, "_ready_executable", return_value=Path("/tmp/fake-ax")), patch("find_gpt_session.adapters.run_json", return_value={}) as runner:
+        browser.search(SearchRequest.create("text", "cleanup"), 12)
+
+    assert runner.call_args.kwargs["timeout"] >= 12 * (12 + 3)

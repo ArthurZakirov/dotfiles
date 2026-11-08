@@ -5,6 +5,8 @@ The fake editor validates all diff arguments, not a hardcoded file inventory.
 """
 from pathlib import Path
 import os
+import json
+import sqlite3
 import subprocess
 
 import pytest
@@ -71,6 +73,32 @@ def test_full_managed_tree_diff_apply_and_upgrade(profile, tmp_path, profile_fac
         assert installed.exists(), path
         if path.startswith('.local/bin/'):
             assert installed.is_file() and os.access(installed, os.X_OK), (path, 'CLI is not executable')
+    # Execute installed entry points in this disposable HOME. A developer's
+    # existing ~/.local/bin/session-find or codex_text.py cannot satisfy this.
+    codex = home / ".codex"
+    codex.mkdir(exist_ok=True)
+    with sqlite3.connect(codex / "state_5.sqlite") as db:
+        db.execute("CREATE TABLE threads(id TEXT, title TEXT, cwd TEXT, git_branch TEXT, "
+                   "git_origin_url TEXT, git_sha TEXT, created_at INTEGER, "
+                   "first_user_message TEXT, preview TEXT)")
+        db.execute("INSERT INTO threads VALUES(?,?,?,?,?,?,?,?,?)", (
+            "11111111-2222-4333-8444-555555555555", "Fresh integration search",
+            str(home / "Repos/demo"), "feat/fresh", None, None, 1, "", ""))
+    with sqlite3.connect(codex / "thread_history_1.sqlite") as db:
+        db.execute("CREATE TABLE thread_items(thread_id TEXT, item_type TEXT, item_json TEXT)")
+    for query in [["--branch", "feat/fresh"], ["search", "fresh integration"]]:
+        result = subprocess.run([
+            str(home / ".local/bin/find-gpt-session"), "--provider", "codex", "--json", *query,
+        ], env={**env, "CODEX_HOME": str(codex), "PYTHONPATH": ""},
+            capture_output=True, text=True, timeout=20)
+        assert result.returncode == 0, result.stderr
+        payload = json.loads(result.stdout)
+        assert payload["total"] == 1, payload
+        assert payload["results"][0]["session_id"] == "11111111-2222-4333-8444-555555555555"
+    backend = subprocess.run([str(home / ".local/bin/session-find"), "--help"],
+                             env=env, capture_output=True, text=True, timeout=10)
+    assert backend.returncode == 0 and "--chatgpt-query" in backend.stdout
+
     command("diff", "--exclude", "scripts")
     assert recorded_editor_calls() == initial_calls
     command("apply", "--exclude", "scripts", "--force")
