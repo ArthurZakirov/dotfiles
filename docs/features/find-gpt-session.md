@@ -1,51 +1,42 @@
-# 🔎 find-gpt-session — unified session search
+# 🔎 find-gpt-session — find and open related conversations
 
-`find-gpt-session` is one CLI for finding Codex and ChatGPT conversations by Git artifact or remembered text.
+`find-gpt-session` searches Codex and ChatGPT conversations by Git context or remembered keywords. **Ctrl+Option+Cmd+S** opens the matching conversations from a GitHub/Bitbucket page in Chrome or a Git worktree in VS Code.
 
-## 🧩 Architecture
+## 🧩 Components and installation
 
-The Python application core owns query normalization, common session identity, evidence, ranking, provider errors, deduplication and JSON output. Infrastructure adapters implement the same `SessionProvider.search(request, limit)` port:
+Chezmoi manages every required source component in this repository:
 
-| Adapter | Source | Current capabilities |
+| Component | Responsibility | Managed source |
 | --- | --- | --- |
-| `codex` | Local Codex state and transcript SQLite (read-only); existing `session-find` for Git context | Git activity and keyword matches in titles, prompts, user/assistant messages; `codex resume` |
-| `safari` | Native macOS Accessibility with Safari's authenticated ChatGPT search | ChatGPT message-text search; opens visible results to verify URLs |
-| `chrome` | Same native macOS Accessibility adapter | Opt-in Chrome UI search; may briefly switch the active tab |
-| `desktop` | Existing ChatGPT Desktop Accessibility search | Text search suggestions; URLs not yet guaranteed |
+| `find-gpt-session` | User CLI, provider selection, JSON and opening | [CLI](../../home/dot_local/bin/executable_find-gpt-session) |
+| `find_gpt_session` | Query normalization, ranking, adapters and launchers | [Package](../../home/dot_local/lib/find_gpt_session/) |
+| `session-find` | Independently usable Codex Git-history backend and optional Desktop suggestions | [Backend CLI](../../home/dot_local/bin/executable_session-find) |
+| `codex_history` | Private SQLite snapshots shared by the readers | [SQLite reader](../../home/dot_local/lib/codex_history/sqlite.py) |
+| Native browser adapter | Accessibility search and verified chat URLs | [Swift source](../../home/dot_local/share/find-gpt-session/ui.swift) |
+| Hammerspoon integration | Global shortcut and one-time Safari preparation | [Hotkey module](../../home/dot_hammerspoon/modules/gpt_sessions.lua) |
 
-These are infrastructure differences, not separate CLI/domain logic. For Codex, Git-artifact queries delegate to the existing `session-find` backend, while keyword searches read native Codex messages and metadata directly. The ChatGPT Desktop adapter also reuses the existing `session-find` UI integration.
+Git-artifact queries delegate to the adjacent managed `session-find` executable, independently of the GUI shell's `PATH`. Codex keyword queries use the bundled [transcript adapter](../../home/dot_local/lib/find_gpt_session/codex_text.py). Neither component depends on an uncommitted local installation.
 
-## Usage
+The browser adapter compiles with Apple's command-line developer tools on first use and caches its executable under `~/.cache/find-gpt-session/`. Browser search requires an authenticated ChatGPT tab and macOS Accessibility access. Opening Codex sessions requires Warp and the configured Codex CLI. The optional Desktop provider requires Peekaboo. These applications, account sessions and OS permissions remain setup prerequisites; the feature does not copy credentials or grant permissions.
 
-**Global search is the default.** No need to know whether a conversation was in Codex or ChatGPT:
+## 🔍 Search
+
+Use the shared CLI for combined results or select a provider explicitly:
 
 ```sh
 find-gpt-session search "worktree cleanup"
-find-gpt-session --pr "https://github.com/ArthurZakirov/dotfiles/pull/67"
-find-gpt-session search "worktree cleanup" --json
-
-# Optionally restrict the infrastructure:
-find-gpt-session --pr "https://github.com/ArthurZakirov/dotfiles/pull/67" --provider safari
+find-gpt-session --pr "https://github.com/ArthurZakirov/dotfiles/pull/67" --json
 find-gpt-session --branch "feat/my-branch" --provider codex
 find-gpt-session search "worktree cleanup" --provider safari --json
-find-gpt-session --jira DCP-123 --provider desktop
-find-gpt-session --pr "https://github.com/ArthurZakirov/dotfiles/pull/2" --provider all
 ```
 
-Without `--provider`, the CLI searches **Codex and ChatGPT via Safari** and combines the results. Repeat `--provider` to select more. The browser is never inferred from the Git query; only the provider selection determines infrastructure. If both products have matches, the ranking reserves a result from each when the result limit allows it.
+The default providers are `codex` and `safari`. Repeat `--provider` to combine sources or use `--provider all` to include the opt-in Chrome and Desktop adapters. Ranking retains a result from each product when the limit permits.
 
-For PR URLs, browser adapters search the recognizable path fragment (for example `pull/67`) in **ChatGPT's own message and title search**. For free text, they pass your keywords to the same search. Codex searches local titles, previews, user and assistant messages; multiple keywords can match across turns of the same conversation. Neither side is an embedding-based semantic fuzzy search. Codex is limited to locally recorded sessions; ChatGPT coverage depends on its own search index and Safari's background accessibility.
+Codex searches local Git metadata, file activity and text mentions, or titles and user/assistant messages for keyword queries. ChatGPT uses its own title/message search; a PR query becomes a path fragment such as `pull/67`. These are evidence-based searches rather than semantic similarity searches. Common default-branch pages such as `/tree/main` use repository context to avoid opening unrelated `main` sessions.
 
-## ⌨️ Open related sessions from the current Git context
+## ⌨️ Open results
 
-Press **Ctrl+Option+Cmd+S** while a GitHub/Bitbucket PR or branch page is active in Chrome, or while a Git worktree is open in VS Code. No search dialog or Raycast command is needed.
-
-1. Hammerspoon obtains the actual GitHub/Bitbucket URL from Chrome (including installed Chrome web apps), or delegates to the global VS Code task to supply the precise workspace path.
-2. The same `find-gpt-session` core resolves a PR, branch or repository and searches Codex plus ChatGPT via Safari.
-3. Every returned **Codex** hit opens a new tab in the active Warp window and runs `codex resume <UUID>`. Warp starts if it is not already running.
-4. Every returned **ChatGPT** hit with a verified `chatgpt.com/c/...` URL opens a new tab in the active Chrome window. Chrome starts if necessary. A hit without a verified URL is skipped with a warning.
-
-The underlying command is still the single CLI; `--open` changes the action from listing to opening:
+Press **Ctrl+Option+Cmd+S**, or run one of these equivalent commands:
 
 ```sh
 find-gpt-session --open --context-url "https://github.com/ArthurZakirov/dotfiles/pull/67"
@@ -53,128 +44,45 @@ find-gpt-session --open --context-path "$PWD"
 find-gpt-session --open search "worktree cleanup"
 ```
 
-Normal listing defaults to eight results; opening defaults to 25, with `--limit` available to override the cap. Search backends can still return fewer results, especially Safari in the background. No additional Raycast extension or separate search engine is installed. Opening is a **dispatched** OS action and is not misrepresented as a confirmed successful Codex login. Partial ChatGPT background coverage still applies.
+The opening sequence is:
 
-Warp uses its supported `warp://tab_config/...` deep links and standard per-tab startup commands rather than injecting keystrokes into a potentially busy terminal. Runtime configs containing resume IDs are written mode 0600 under `~/.warp/tab_configs/` and older generated configs are pruned on subsequent launches. No session IDs are stored in public Dotfiles source.
+1. Resolve the source PR, branch or repository and search the selected providers.
+2. Open each verified Codex ID in a new Warp tab using `codex resume <UUID>`.
+3. Open verified ChatGPT URLs in new tabs of the existing Chrome window and activate Chrome.
+4. If any Codex tabs opened, activate Warp last. Mixed results therefore leave Warp with keyboard focus; both products have their new tabs ready.
 
-`Option+Cmd+Space` is already assigned to Finder search on macOS; the new shortcut uses the existing Hammerspoon Hyper family to avoid silently overriding that system binding.
+The CLI reports dispatches and errors separately. Dispatch does not establish that Codex login or conversation loading has completed. Unverified suggestions are skipped. A failure to activate Warp is reported even when its tab was dispatched successfully.
 
-## ⚠️ Limitations and data safety
+Warp uses supported `warp://tab_config/...` links rather than typing into a busy terminal. Generated tab configurations have mode `0600`; old generated configurations are pruned on subsequent launches. Listing defaults to eight results and opening to 25; `--limit` changes the cap.
 
-The browser backends are experimental: UI structure, content availability and macOS background Accessibility can change. Safari was verified to find a chat from the body-text query `pull/67`, open it and retrieve its direct URL, but reopening the search after navigating can fail while Safari is in the background. When Safari is in the background, only the first navigated result is currently reliable; the adapter stops after that result and reports incomplete coverage. A missing verified URL produces an explicit warning; never assume the entire cloud history was searched.
+## ⚡ Prepared Safari search
 
-The native macOS adapter is compiled from its Chezmoi-managed Swift source on first use and cached at `~/.cache/find-gpt-session/ui-ax`, so later CLI calls do not recompile. Browser operations may navigate the selected browser tab. The Chrome backend requires an existing signed-in ChatGPT tab and restores the prior tab only if it was not changed concurrently.
-
-Codex history uses existing local databases read-only. No new persistent search database is created. Browser adapters use macOS Accessibility and tab URLs; they do not extract cookies, tokens or passwords, call undocumented ChatGPT APIs, or upload conversation content. Do not commit private chat-URL results to public repositories.
-
-The CLI's incomplete_providers field distinguishes incomplete coverage from verified zero matches. When a provider cannot return a verified result, **search_status: incomplete** is reported in JSON and the human-readable output says **“Search incomplete”**, rather than incorrectly reporting **“Found 0 sessions”**; the exit status is 2. A confirmed no-match result uses exit status 1, while a hit uses 0. The Safari navigation adapter reads URL and title together, waits up to 12 seconds for a verified result, and also accepts a new, stable conversation URL after explicitly clicking a visible search result if the page title is slow to update. Regression tests cover delayed navigation and title updates.
-
-For truly unattended background operation and faster repeated result extraction, additional browser automation capability must be validated without affecting the user's active Chrome tab. Background Safari may still hide its Accessibility search controls, in which case the query remains incomplete rather than falsely returning zero matches.
-\n### Background Safari timeouts\n
-Safari Apple Events can block when its tab is in the background. The native
-browser adapter now bounds each AppleScript child to 2.5 seconds and the
-overall provider search to 18 seconds. An unresponsive Safari is marked as
-incomplete instead of indefinitely preventing already-discovered Codex
-sessions from being opened. The Hammerspoon module exposes runtime-only
-diagnostics (status and counts, not private chat text/URLs) for troubleshooting.
-
-
-### Verified workflow and pending interaction test
-
-A live GitHub PR #2 test entered the Hammerspoon handler, searched Codex and
-ChatGPT, and opened one matching Codex session in Warp. After limiting the
-Safari AppleScript and overall browser search timeouts, the handler completed
-in approximately 13.6 seconds rather than stalling for about 90 seconds.
-An unavailable Safari search was reported as incomplete; the Codex result was
-still opened. A physical keyboard shortcut press remains user-verification
-work; a synthetic macOS keyboard event was not conclusive.
-
-
-### Optional Codex text-search integration
-
-The Codex transcript-search module is developed independently under AGENT-5.6.
-When its managed `codex_text.py` is installed, `CodexProvider` uses it for
-free-text queries. This opening feature intentionally does not overwrite or
-duplicate the parallel branch's module; a fresh checkout without that module
-reports incomplete Codex keyword coverage rather than silently losing
-existing support on the private Mac.
-
-
-### Hotkey feedback when a PR has no verified session
-
-The global `Ctrl+Option+Cmd+S` shortcut is separate from session discovery.
-A GitHub/Bitbucket PR can have **zero indexed local Codex sessions** even if
-the PR exists. Safari can also be unavailable in the background, making the
-ChatGPT side incomplete. In that situation the Hammerspoon UI explicitly says
-**"Keine Codex-Session gefunden; ChatGPT-Suche derzeit nicht verfügbar."**
-instead of calling it a failed shortcut. The adapter consumes the same
-structured JSON output as the CLI and distinguishes confirmed no matches,
-partial coverage, unopenable hits, and sessions that actually opened. No
-conversation URLs, message content, or search text are stored in diagnostics.
-
-This is a feedback correctness fix, not a replacement for the incomplete
-background ChatGPT provider (tracked separately in AGENT-5.7).
-
-
-### Safari foreground Accessibility recovery (PR #65 regression)
-
-On macOS, **Safari can be running, logged into ChatGPT and displaying a
-conversation while exposing no usable Accessibility tree when inactive**.
-This was the actual failure behind the Ctrl+Option+Cmd+S false-negative on
-GitHub PR #65: a native UI search for `pull/65` returned no results in the
-background. With Safari foregrounded, the same search returned a verified
-matching ChatGPT URL.
-
-The native Safari adapter now activates Safari briefly during the search and
-restores whichever app was frontmost before it, **unless the user changes the
-foreground app during the search**. Safari's own logged-in tab is reused. This
-does **not** require JavaScript-from-Apple-Events permission, cookie access or
-a permanent browser automation tab. Temporary Safari focus is a known
-tradeoff; reliably invisible multi-hit search remains AGENT-5.7 work.
-
-Verified locally: with Warp frontmost, the `pull/65` query found its
-ChatGPT conversation in approximately 3.3 seconds and returned focus to Warp.
-The full `find-gpt-session --open --context-url <PR URL>` command subsequently
-opened that verified conversation in a new tab **in the existing Chrome
-window**, from one tab to two. Regression checks also exercise the live
-Hammerspoon callback and native Swift self-test.
-
-
-### Prepared Safari search for fast repeated hotkeys
-
-The existing Hammerspoon instance prewarms ChatGPT search in the already-running,
-signed-in Safari tab once after its configuration loads, and also when Safari
-starts later. No LaunchAgent, additional browser window, recurring foreground
-polling, credentials access or unofficial ChatGPT API is required.
+Hammerspoon prepares the search overlay once after configuration load and when Safari launches later. It uses the existing authenticated ChatGPT tab; it does not start a polling daemon or another browser. To request preparation directly:
 
 ```sh
 find-gpt-session --prepare-safari --json
-# {"prepared": true, "warning": null} when the search field is ready
 ```
 
-The native Swift adapter checks whether the Accessibility `AXComboBox Search`
-already exists. If ready, the next search enters its query **without first
-pressing ChatGPT's Search button**, and without foregrounding Safari when
-background AX input is supported by the OS. Otherwise, it waits for the actual
-Search button and field using bounded state polling, rather than typing during
-an animation or relying on a fixed sleep. A foreground fallback remains for
-macOS builds which conceal the browser's web Accessibility tree in the background.
+The adapter selects an existing ChatGPT tab/window before reading Accessibility controls or verifying navigation. It restores the previous Safari tab/window selection if the user has not changed it concurrently. No ChatGPT tab means an explicit incomplete result.
 
-The adapter reopens the search dialog after navigation, *before* restoring
-focus to Chrome/VS Code. If a hotkey arrives while the startup prewarming
-process is still active, Hammerspoon queues the request and sends it after
-that process finishes instead of racing two concurrent AX actions.
+A ready Search field receives the query immediately. Otherwise the adapter waits for the actual control, rather than typing after a fixed animation delay. It can briefly foreground Safari when macOS hides its Accessibility tree, then restore the previous app. It reopens the overlay after navigating to results. An early hotkey is queued with its original PR URL while preparation finishes.
 
-**Limitations:** Initial prewarming can briefly activate Safari, then restore
-the original foreground application. This is an opportunistic optimization,
-not a guarantee of background AX access or zero-latency network search.
-A browser restart, a user-closing the search overlay, or a login/loading
-screen can invalidate readiness; the ordinary on-demand path remains.
-The background multi-result URL resolution is still tracked separately
-under AGENT-5.7.
+Preparation is opportunistic: login/loading screens, closing the overlay, browser restarts and OS Accessibility failures can invalidate readiness. The normal search path remains available. Fully invisible multi-result browser search is not guaranteed.
 
-**Validation status:** Source implementation and provider/CLI/LuaJIT regression
-tests were prepared via the GitHub connector while Mac Remote Desktop
-Commander was quota-blocked. The physical shortcut, Safari UI readiness and
-Chrome-tab outcome **must be tested on the actual Mac before this feature is
-called working or the PR is merged**.
+## ⚠️ Coverage and data safety
+
+Browser results are partial. In the background, Safari may expose only the first navigated result; missing controls or unverified URLs are reported as incomplete rather than confirmed absence. ChatGPT's own search index can also omit messages.
+
+Each AppleScript child is bounded to 2.5 seconds. The browser process allowance scales with the capped result count: 20 seconds of setup plus 20 per result, up to 12 results. This permits the 12-second navigation verification and per-result UI polling to finish without discarding all collected hits at an arbitrary 18-second cutoff.
+
+Codex readers capture private temporary SQLite snapshots, including committed WAL data. SQLite creates any working sidecars only in scratch storage; the source history remains untouched. No persistent search database is added. Browser adapters use Accessibility and tab URLs without extracting cookies/passwords, enabling JavaScript from Apple Events, calling undocumented ChatGPT APIs or uploading conversations.
+
+JSON distinguishes `matches`, `partial`, `incomplete` and `no_matches`. Exit status is `0` for hits, `1` for confirmed no matches and `2` for incomplete searches or opening failures. Hammerspoon displays the corresponding status without persisting query text or chat URLs.
+
+## 🧪 Validation
+
+[Chezmoi lifecycle tests](../../tests/integration/test_chezmoi_lifecycle.py) install the full managed tree into disposable homes for both profiles, then execute the installed Git and keyword search entry points against synthetic history. This catches missing executables/modules and accidental fallback to a developer's existing installation.
+
+[Backend contracts](../../tests/unit/test_session_find.py) cover artifact boundaries, URI-significant paths and WAL snapshots without source writes. [Opening contracts](../../tests/unit/test_session_open.py) cover safe launch configuration, context scoping and Warp activation after Chrome. [Hotkey contracts](../../tests/unit/test_hammerspoon_gpt_sessions.py) cover preparation and queued requests. The native Swift self-test covers delayed URL/title navigation.
+
+The user confirmed the physical shortcut works on the private Mac. Automated installation tests use synthetic data and do not imply exhaustive coverage of cloud history or every macOS Accessibility state.

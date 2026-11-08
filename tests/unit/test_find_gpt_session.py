@@ -185,32 +185,25 @@ def test_cli_incomplete_search_returns_error_not_false_zero(capsys):
 
 
 
-def test_codex_text_adapter_optional_peer_integration():
-    import types
-    from unittest.mock import MagicMock
+def test_codex_text_adapter_uses_bundled_transcript_search():
+    expected = ProviderResult(hits=[SessionHit("codex", "abc", "From transcript", None,
+        90, "User message", "codex resume abc")], complete=True)
+    with patch("find_gpt_session.adapters.CodexTranscriptSearcher") as searcher:
+        searcher.return_value.search.return_value = expected
 
-    expected = ProviderResult(
-        hits=[SessionHit("codex", "abc", "From transcript", None, 90,
-                         "User message", "codex resume abc")], complete=True
-    )
-    cls = MagicMock()
-    cls.return_value.search.return_value = expected
-    with patch.dict(sys.modules, {
-        "find_gpt_session.codex_text":
-            types.SimpleNamespace(CodexTranscriptSearcher=cls)
-    }):
         result = CodexProvider().search(SearchRequest.create("text", "worktree"), 3)
+
     assert result == expected
-    cls.return_value.search.assert_called_once_with("worktree", 3)
 
 
-def test_codex_text_adapter_missing_peer_warns_instead_of_crashing():
-    # Other tests may import the optional module from the installed CLI.
-    with patch.dict(sys.modules, {"find_gpt_session.codex_text": None}):
-        result = CodexProvider().search(SearchRequest.create("text", "worktree"), 3)
+def test_missing_codex_history_is_reported_as_incomplete(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+
+    result = FindSessions([CodexProvider()]).search(SearchRequest.create("text", "worktree"), 3)
+
     assert not result.hits
-    assert "not installed" in " ".join(result.warnings)
-
+    assert result.incomplete_providers == ["codex"]
+    assert "metadata not found" in " ".join(result.warnings)
 
 
 def test_browser_adapter_prepares_already_running_safari_search():
