@@ -98,3 +98,43 @@ free-text queries. This opening feature intentionally does not overwrite or
 duplicate the parallel branch's module; a fresh checkout without that module
 reports incomplete Codex keyword coverage rather than silently losing
 existing support on the private Mac.
+
+
+### Hotkey feedback when a PR has no verified session
+
+The global `Ctrl+Option+Cmd+S` shortcut is separate from session discovery.
+A GitHub/Bitbucket PR can have **zero indexed local Codex sessions** even if
+the PR exists. Safari can also be unavailable in the background, making the
+ChatGPT side incomplete. In that situation the Hammerspoon UI explicitly says
+**"Keine Codex-Session gefunden; ChatGPT-Suche derzeit nicht verfügbar."**
+instead of calling it a failed shortcut. The adapter consumes the same
+structured JSON output as the CLI and distinguishes confirmed no matches,
+partial coverage, unopenable hits, and sessions that actually opened. No
+conversation URLs, message content, or search text are stored in diagnostics.
+
+This is a feedback correctness fix, not a replacement for the incomplete
+background ChatGPT provider (tracked separately in AGENT-5.7).
+
+
+### Safari foreground Accessibility recovery (PR #65 regression)
+
+On macOS, **Safari can be running, logged into ChatGPT and displaying a
+conversation while exposing no usable Accessibility tree when inactive**.
+This was the actual failure behind the Ctrl+Option+Cmd+S false-negative on
+GitHub PR #65: a native UI search for `pull/65` returned no results in the
+background. With Safari foregrounded, the same search returned a verified
+matching ChatGPT URL.
+
+The native Safari adapter now activates Safari briefly during the search and
+restores whichever app was frontmost before it, **unless the user changes the
+foreground app during the search**. Safari's own logged-in tab is reused. This
+does **not** require JavaScript-from-Apple-Events permission, cookie access or
+a permanent browser automation tab. Temporary Safari focus is a known
+tradeoff; reliably invisible multi-hit search remains AGENT-5.7 work.
+
+Verified locally: with Warp frontmost, the `pull/65` query found its
+ChatGPT conversation in approximately 3.3 seconds and returned focus to Warp.
+The full `find-gpt-session --open --context-url <PR URL>` command subsequently
+opened that verified conversation in a new tab **in the existing Chrome
+window**, from one tab to two. Regression checks also exercise the live
+Hammerspoon callback and native Swift self-test.

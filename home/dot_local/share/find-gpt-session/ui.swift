@@ -314,6 +314,46 @@ func search(provider: String, term: String, limit: Int) -> Output {
         return Output(provider: provider, query: term, results: [],
                       completeHistory: false, warnings: ["Browser not running"])
     }
+    // Safari has no usable ChatGPT Accessibility tree when it is not the
+    // foreground app on this macOS installation. The tab is open and logged
+    // in, but searching in the background falsely returned zero matches.
+    // Briefly bring Safari forward only for the native AX search, then
+    // restore the previously active app. Do not steal focus again if the
+    // user switches to a different app while this search is running.
+    let priorApp = NSWorkspace.shared.frontmostApplication
+    let restoreSafariFocus = provider == "safari" &&
+        priorApp?.bundleIdentifier != "com.apple.Safari"
+    if restoreSafariFocus {
+        guard let safari = NSRunningApplication
+            .runningApplications(withBundleIdentifier: "com.apple.Safari").first else {
+            return Output(provider: provider, query: term, results: [],
+                          completeHistory: false, warnings: ["Safari not running"])
+        }
+        _ = safari.activate(options: [])
+        let deadline = Date().addingTimeInterval(1.5)
+        while NSWorkspace.shared.frontmostApplication?.processIdentifier != safari.processIdentifier
+                && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.10)
+        }
+        Thread.sleep(forTimeInterval: 0.30)
+        trace("Safari foreground for AX search")
+    }
+    defer {
+        // NSRunningApplication.activate is asynchronous. Wait for the focus
+        // handoff before returning JSON, otherwise callers can observe Safari
+        // still frontmost even though restoration was requested.
+        if restoreSafariFocus,
+           NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.Safari",
+           let priorApp {
+            _ = priorApp.activate(options: [])
+            let restoreDeadline = Date().addingTimeInterval(1.5)
+            while NSWorkspace.shared.frontmostApplication?.processIdentifier != priorApp.processIdentifier
+                    && Date() < restoreDeadline {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+            trace("foreground restored to previous application")
+        }
+    }
     let selection = provider == "chrome" ? selectChromeTab() : nil
     if provider == "chrome" && selection == nil {
         return Output(provider: provider, query: term, results: [],
@@ -323,12 +363,17 @@ func search(provider: String, term: String, limit: Int) -> Output {
     defer { if let selection { restoreChromeTab(selection) } }
     if selection != nil { Thread.sleep(forTimeInterval: 0.30) }
 
-    guard setSearchTerm(root, term) else {
-        let message = provider == "safari"
-            ? "Safari search UI unavailable (possibly background Accessibility); results unverified"
-            : "Could not open or set ChatGPT Search"
+    var searchReady = setSearchTerm(root, term)
+    if !searchReady && provider == "safari" {
+        // After activating an inactive Safari window its AX web area may
+        // take another frame to become available.
+        Thread.sleep(forTimeInterval: 0.60)
+        searchReady = setSearchTerm(root, term)
+    }
+    guard searchReady else {
         return Output(provider: provider, query: term, results: [],
-                      completeHistory: false, warnings: [message])
+                      completeHistory: false,
+                      warnings: ["Could not access ChatGPT Search after bringing browser forward"])
     }
     let initial = availableResults(root)
     trace("initial results count: \(initial.count)")
