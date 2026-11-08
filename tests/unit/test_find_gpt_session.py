@@ -99,7 +99,7 @@ def test_codex_adapter_uses_native_readonly_search():
     with patch("find_gpt_session.adapters.run_json", return_value=raw) as runner:
         result = CodexProvider().search(SearchRequest.create("branch", "my-branch"), 5)
     assert runner.call_args.args[0] == [
-        str(Path.home() / ".local/bin/session-find"), "--branch", "my-branch", "--limit", "5", "--json"
+        str(ROOT / "home/dot_local/bin/session-find"), "--branch", "my-branch", "--limit", "5", "--json"
     ]
     assert result.complete
     assert result.hits[0].resume_command == "codex resume abc"
@@ -184,29 +184,9 @@ def test_cli_incomplete_search_returns_error_not_false_zero(capsys):
     assert "UI unavailable" in stderr
 
 
+def test_browser_timeout_covers_each_requested_navigation():
+    browser = BrowserProvider("safari", source=Path("/tmp/fake.swift"), executable=Path("/tmp/fake-ax"))
+    with patch.object(browser, "_ready_executable", return_value=Path("/tmp/fake-ax")), patch("find_gpt_session.adapters.run_json", return_value={}) as runner:
+        browser.search(SearchRequest.create("text", "cleanup"), 12)
 
-def test_codex_text_adapter_optional_peer_integration():
-    import types
-    from unittest.mock import MagicMock
-
-    expected = ProviderResult(
-        hits=[SessionHit("codex", "abc", "From transcript", None, 90,
-                         "User message", "codex resume abc")], complete=True
-    )
-    cls = MagicMock()
-    cls.return_value.search.return_value = expected
-    with patch.dict(sys.modules, {
-        "find_gpt_session.codex_text":
-            types.SimpleNamespace(CodexTranscriptSearcher=cls)
-    }):
-        result = CodexProvider().search(SearchRequest.create("text", "worktree"), 3)
-    assert result == expected
-    cls.return_value.search.assert_called_once_with("worktree", 3)
-
-
-def test_codex_text_adapter_missing_peer_warns_instead_of_crashing():
-    # Other tests may import the optional module from the installed CLI.
-    with patch.dict(sys.modules, {"find_gpt_session.codex_text": None}):
-        result = CodexProvider().search(SearchRequest.create("text", "worktree"), 3)
-    assert not result.hits
-    assert "not installed" in " ".join(result.warnings)
+    assert runner.call_args.kwargs["timeout"] >= 12 * (12 + 3)

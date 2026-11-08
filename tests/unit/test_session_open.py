@@ -44,6 +44,8 @@ def test_workspace_context_uses_branch_or_repo(tmp_path):
      "https://github.com/org/demo/pull/67"),
     ("https://bitbucket.org/team/demo/pull-requests/9#comment-3", "pr",
      "https://bitbucket.org/team/demo/pull-requests/9"),
+    ("https://github.com/org/demo/tree/main", "repo", "demo"),
+    ("https://bitbucket.org/team/demo/branch/master", "repo", "demo"),
     ("https://github.com/org/demo/tree/feature-name", "branch", "feature-name"),
     ("https://github.com/org/demo/tree/feature/name/src/file.py", "repo", "demo"),
     ("https://github.com/org/demo", "repo", "demo"),
@@ -123,6 +125,9 @@ def test_unverified_chat_url_is_refused(url):
 def test_session_open_all_results_deduplicates_and_skips_unverified():
     class FakeWarp:
         ids = []
+
+        def reveal(self):
+            pass
 
         def open_session(self, session_id):
             self.ids.append(session_id)
@@ -217,3 +222,29 @@ def test_codex_results_survive_safari_timeout():
     assert result.hits[0].provider == "codex"
     assert result.incomplete_providers == ["safari"]
     assert "timed out" in " ".join(result.warnings)
+
+
+def test_opened_warp_sessions_are_revealed_after_chrome_tabs():
+    events = []
+    class Warp:
+        def open_session(self, session_id):
+            events.append("warp-tab")
+        def reveal(self):
+            events.append("warp-focus")
+    class Chrome:
+        def open_urls(self, urls):
+            events.append("chrome-tabs-and-focus")
+    hits = [SessionHit("codex", CODEX_ID, "Codex", None, 80, "Git"),
+            SessionHit("chatgpt", CODEX_ID, "Chat", CHAT_URL, 70, "Web")]
+
+    result = SessionOpener(warp=Warp(), chrome=Chrome()).open(hits)
+
+    assert events == ["warp-tab", "chrome-tabs-and-focus", "warp-focus"]
+    assert not result.errors
+
+
+def test_warp_activation_failure_is_reported_without_losing_opened_tabs(tmp_path):
+    launcher = WarpTabLauncher(tmp_path, runner=lambda *args, **kwargs: subprocess.CompletedProcess(args, 1))
+
+    with pytest.raises(LaunchError, match="brought forward"):
+        launcher.reveal()

@@ -8,16 +8,23 @@ The Python application core owns query normalization, common session identity, e
 
 | Adapter | Source | Current capabilities |
 | --- | --- | --- |
-| `codex` | Existing local `session-find` Codex history backend | Strong Git context evidence and `codex resume` |
+| `codex` | Local Codex state and transcript SQLite (read-only); existing `session-find` for Git context | Git activity and keyword matches in titles, prompts, user/assistant messages; `codex resume` |
 | `safari` | Native macOS Accessibility with Safari's authenticated ChatGPT search | ChatGPT message-text search; opens visible results to verify URLs |
 | `chrome` | Same native macOS Accessibility adapter | Opt-in Chrome UI search; may briefly switch the active tab |
 | `desktop` | Existing ChatGPT Desktop Accessibility search | Text search suggestions; URLs not yet guaranteed |
 
-These are infrastructure differences, not separate CLI/domain logic. The current Codex/Desktop adapters reuse the existing installed `session-find` implementation while those provider internals are being migrated.
+These are infrastructure differences, not separate CLI/domain logic. For Codex, Git-artifact queries delegate to the existing `session-find` backend, while keyword searches read native Codex messages and metadata directly. The ChatGPT Desktop adapter also reuses the existing `session-find` UI integration.
 
 ## Usage
 
+**Global search is the default.** No need to know whether a conversation was in Codex or ChatGPT:
+
 ```sh
+find-gpt-session search "worktree cleanup"
+find-gpt-session --pr "https://github.com/ArthurZakirov/dotfiles/pull/67"
+find-gpt-session search "worktree cleanup" --json
+
+# Optionally restrict the infrastructure:
 find-gpt-session --pr "https://github.com/ArthurZakirov/dotfiles/pull/67" --provider safari
 find-gpt-session --branch "feat/my-branch" --provider codex
 find-gpt-session search "worktree cleanup" --provider safari --json
@@ -25,9 +32,9 @@ find-gpt-session --jira DCP-123 --provider desktop
 find-gpt-session --pr "https://github.com/ArthurZakirov/dotfiles/pull/2" --provider all
 ```
 
-Without `--provider`, the CLI searches Codex plus Safari. Repeat `--provider` to select more. The browser is never inferred from the Git query; only the provider selection determines infrastructure.
+Without `--provider`, the CLI searches **Codex and ChatGPT via Safari** and combines the results. Repeat `--provider` to select more. The browser is never inferred from the Git query; only the provider selection determines infrastructure. If both products have matches, the ranking reserves a result from each when the result limit allows it.
 
-For PR URLs, browser adapters search the recognizable path fragment (for example `pull/67`) in **ChatGPT's own message and title search**. For free text, they pass your keywords to the same search; it is **not** an embedding-based semantic fuzzy search, and coverage depends on ChatGPT's own search index.
+For PR URLs, browser adapters search the recognizable path fragment (for example `pull/67`) in **ChatGPT's own message and title search**. For free text, they pass your keywords to the same search. Codex searches local titles, previews, user and assistant messages; multiple keywords can match across turns of the same conversation. Neither side is an embedding-based semantic fuzzy search. Codex is limited to locally recorded sessions; ChatGPT coverage depends on its own search index and Safari's background accessibility.
 
 ## ⌨️ Open related sessions from the current Git context
 
