@@ -138,5 +138,24 @@ class FindSessions:
                     hits[key] = hit
         ranked = sorted(hits.values(), key=lambda hit: (
             -hit.score, hit.provider, hit.title.casefold()))
+        # Global searches should not hide the second product merely because
+        # many high-scoring sessions come from one provider. Reserve the best
+        # hit per product (Codex vs ChatGPT) when the limit permits it, then
+        # fill remaining slots by the shared relevance ranking.
+        by_product = {}
+        for hit in ranked:
+            by_product.setdefault(hit.provider, hit)
+        if len(by_product) <= limit:
+            featured = list(by_product.values())
+            selected = set(featured)
+            for hit in ranked:
+                if len(featured) >= limit:
+                    break
+                if hit not in selected:
+                    featured.append(hit)
+                    selected.add(hit)
+            featured.sort(key=lambda hit: (-hit.score, hit.provider, hit.title.casefold()))
+        else:
+            featured = ranked[:limit]
         return SearchResponse(request, tuple(p.name for p in self.providers),
-                              ranked[:limit], warnings, incomplete)
+                              featured, warnings, incomplete)

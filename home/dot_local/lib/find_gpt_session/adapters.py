@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 from .core import ProviderResult, SearchRequest, SessionHit
+from .codex_text import CodexTranscriptSearcher
 
 
 def run_json(argv: list[str], timeout: int = 50) -> dict:
@@ -30,7 +31,7 @@ class CodexProvider:
 
     def search(self, request: SearchRequest, limit: int) -> ProviderResult:
         if request.kind == "text":
-            return ProviderResult(warnings=["free-text search not supported by native Codex adapter"])
+            return CodexTranscriptSearcher().search(request.value, limit)
         result = run_json(["session-find", f"--{request.kind}", request.value,
                            "--limit", str(limit), "--json"])
         hits = [
