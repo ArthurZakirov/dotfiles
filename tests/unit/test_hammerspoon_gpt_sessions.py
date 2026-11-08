@@ -136,3 +136,61 @@ def test_hotkey_invokes_json_cli_and_displays_precise_message():
     assert args.startswith("--json,--open,--context-url,")
     assert "ChatGPT-Suche derzeit nicht verfügbar" in message
     assert status == "provider-incomplete"
+
+@pytest.mark.skipif(LUAJIT is None, reason="LuaJIT unavailable on this runner")
+def test_browser_hotkey_invokes_search_without_modifier_release_polling():
+    """The real hotkey callback must not defer Chrome until modifier release."""
+    output = lua_run(
+        """
+        local alerts = {}
+        local callback
+        HammerspoonConfig.afterModsReleased = function()
+            error('Chrome must not wait for modifier release')
+        end
+        hs.alert = {show=function(msg) table.insert(alerts, msg) end}
+        hs.application = {frontmostApplication=function()
+            return {bundleID=function() return 'com.google.Chrome' end}
+        end}
+        hs.task = {new=function(_,fn,args)
+            callback = fn
+            local task={}
+            function task:environment() return {} end
+            function task:setEnvironment(_) end
+            function task:start() return true end
+            return task
+        end}
+        HammerspoonConfig.gitBrowserUrl=function(_)
+            return 'https://github.com/example/demo/pull/65'
+        end
+        HammerspoonConfig.openRelatedSessionsFromHotkey()
+        print(HammerspoonConfig.lastRelatedSessionOpen.phase)
+        print(alerts[1])
+        """
+    )
+    phase, message = output.splitlines()
+    assert phase == "starting"
+    assert "Session-Suche gestartet" in message
+
+
+@pytest.mark.skipif(LUAJIT is None, reason="LuaJIT unavailable on this runner")
+def test_vscode_hotkey_waits_before_injecting_task_shortcut():
+    output = lua_run(
+        """
+        local alerts = {}
+        local deferred
+        HammerspoonConfig.afterModsReleased = function(fn) deferred=fn end
+        hs.alert = {show=function(msg) table.insert(alerts,msg) end}
+        hs.application={frontmostApplication=function()
+            return {bundleID=function() return 'com.microsoft.VSCode' end}
+        end}
+        local count=0
+        hs.eventtap={keyStroke=function(...)count=count+1 end}
+        HammerspoonConfig.openRelatedSessionsFromHotkey()
+        print(HammerspoonConfig.lastRelatedSessionOpen.phase)
+        print(tostring(deferred ~= nil))
+        print(tostring(count))
+        deferred()
+        print(tostring(count))
+        """
+    )
+    assert output.splitlines() == ["hotkey-received", "true", "0", "1"]

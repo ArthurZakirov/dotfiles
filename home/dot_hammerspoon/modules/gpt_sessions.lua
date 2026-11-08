@@ -117,9 +117,28 @@ HammerspoonConfig.openRelatedSessionsFromApp = openFromContext
 
 -- Reuses the existing hyper-key family. Option+Cmd+Space is reserved by
 -- macOS Finder Search, so do not silently replace a system shortcut.
-hs.hotkey.bind(HammerspoonConfig.hyper, "s", function()
+local function onSessionHotkey()
   local source = hs.application.frontmostApplication()
-  HammerspoonConfig.afterModsReleased(function()
+  -- Show acknowledgement on KEY DOWN, not after release. Waiting for
+  -- checkKeyboardModifiers() caused a silent failure on real Chrome presses:
+  -- the helper sometimes never observed all modifiers as released.
+  HammerspoonConfig.lastRelatedSessionOpen = {
+    phase = "hotkey-received",
+    source = source and source:bundleID() or "unknown",
+  }
+  hs.alert.show("Session-Suche gestartet …", 1.0)
+
+  -- Only VS Code needs the modifiers fully released before injecting its
+  -- *different* task shortcut. Chrome performs no synthetic keystrokes.
+  local bundle = source and source:bundleID() or ""
+  if bundle:match("^com%.microsoft%.VSCode") then
+    HammerspoonConfig.afterModsReleased(function()
+      openFromContext(source)
+    end)
+  else
     openFromContext(source)
-  end)
-end)
+  end
+end
+
+HammerspoonConfig.openRelatedSessionsFromHotkey = onSessionHotkey
+hs.hotkey.bind(HammerspoonConfig.hyper, "s", onSessionHotkey)
