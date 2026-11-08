@@ -13,10 +13,14 @@ import re
 import sqlite3
 import subprocess
 import sys
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+from codex_history.sqlite import open_snapshot
 
 JIRA_BOUNDARY = r"(?<![A-Z0-9]){value}(?![A-Z0-9])"
 REPO_SEGMENTS = {"personal", "professional", "third-party"}
@@ -116,9 +120,7 @@ def repo_name_from_path(path: str | None, home: str) -> str | None:
 def open_ro(path: Path) -> sqlite3.Connection | None:
     if not path.is_file():
         return None
-    # URI-escape file path, and enforce read-only at both connection and SQL level.
-    c = sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
-    c.execute("PRAGMA query_only=ON")
+    c = open_snapshot(path)
     c.row_factory = sqlite3.Row
     return c
 
@@ -275,11 +277,15 @@ class CodexSearcher:
         ))
 
     @staticmethod
-    def _text_has(value: str | None, needle: str, *, jira: bool = False) -> bool:
+    def _text_has(value: str | None, needle: str, *, jira: bool = False, artifact: str | None = None) -> bool:
         if not value:
             return False
         if jira:
             return bool(re.search(JIRA_BOUNDARY.format(value=re.escape(needle)), value, re.IGNORECASE))
+        if artifact == "branch":
+            return bool(re.search(r"(?<![\w./-])" + re.escape(needle) + r"(?![\w./-])", value))
+        if artifact == "commit":
+            return bool(re.search(r"(?<![\w])" + re.escape(needle) + r"[a-f0-9]*(?![\w])", value, re.IGNORECASE))
         return needle.casefold() in value.casefold()
 
     def search(self, q: SearchQuery, limit: int = 25) -> tuple[list[dict], dict]:
@@ -319,7 +325,7 @@ class CodexSearcher:
                 for name, value in (("title", row["title"]), ("first_user_message", row["first_user_message"]),
                                     ("preview", row["preview"])):
                     for field_name, needle in (("branch", q.branch), ("jira", q.jira), ("commit", q.commit)):
-                        if needle and self._text_has(value, needle, jira=field_name == "jira"):
+                        if needle and self._text_has(value, needle, jira=field_name == "jira", artifact=field_name):
                             s.add(field_name, f"threads.{name}", "session text mention", 22, f"Mention in {name}")
                     if q.pr and self._text_has(value, q.pr.split("/", 1)[1]):
                         # Merely mentioning a repo or PR number is insufficient;
@@ -417,7 +423,7 @@ class CodexSearcher:
         if not isinstance(value, str):
             return
         for name, needle in (("jira", q.jira), ("branch", q.branch), ("commit", q.commit)):
-            if needle and self._text_has(value, needle, jira=name == "jira"):
+            if needle and self._text_has(value, needle, jira=name == "jira", artifact=name):
                 s.add(name, source, "text mention", strength, f"Matched {name} in {source}")
         if q.pr and self._text_contains_pr(value, q.pr):
             s.add("pr", source, "PR URL mentioned", strength, q.pr)
@@ -430,8 +436,128 @@ class CodexSearcher:
             s.add("repo", f"{source}.path", "activity in repository", strength, path)
 
 
+CHATGPT_SUGGESTION = re.compile(r"^(?P<title>.+?)\s+(?P<provider>ChatGPT|Work)\s+⌃(?P<position>\d+)$")
+
+
+def chatgpt_search_term(query: SearchQuery) -> str:
+    """Choose a single transparent UI search term from Git context."""
+    if query.pr:
+        return "/".join(query.pr.split("/")[-2:])
+    if query.jira:
+        return query.jira
+    if query.branch:
+        return query.branch
+    if query.commit:
+        return query.commit
+    if query.worktree:
+        return Path(query.worktree).name
+    if query.repo:
+        return query.repo.rstrip("/").split("/")[-1].removesuffix(".git")
+    raise ValueError("A Git artifact or --chatgpt-query is required")
+
+
+def parse_chatgpt_suggestions(elements: list[dict], limit: int) -> tuple[list[dict], list[str]]:
+    """Extract *visible* chat results, never invent conversation IDs or links."""
+    results: list[dict] = []
+    warnings: list[str] = []
+    for element in elements:
+        if element.get("ax_role") != "AXStaticText":
+            continue
+        value = str(element.get("value") or element.get("label") or "").strip()
+        match = CHATGPT_SUGGESTION.fullmatch(value)
+        if match:
+            if len(results) < limit:
+                results.append({
+                    "provider": match.group("provider").lower(),
+                    "title": match.group("title"),
+                    "position": int(match.group("position")),
+                    "session_id": None,
+                    "chat_url": None,
+                    "evidence": "Visible ChatGPT search suggestion; Git relationship not verified",
+                })
+        elif "Some cloud messages may be missing from search" in value:
+            warnings.append("ChatGPT warns that some cloud messages may be missing from search")
+    return results, warnings
+
+
+class ChatGPTDesktopSearcher:
+    """Optional macOS Accessibility adapter over the user's visible ChatGPT search."""
+
+    @staticmethod
+    def _peekaboo(*arguments: str) -> dict:
+        try:
+            result = subprocess.run(
+                ["peekaboo", *arguments, "--json"],
+                capture_output=True, text=True, check=False, timeout=35,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise RuntimeError(f"Peekaboo unavailable: {error}") from error
+        try:
+            payload = json.loads(result.stdout)
+        except ValueError as error:
+            raise RuntimeError("Peekaboo did not return valid JSON") from error
+        if result.returncode != 0 or not payload.get("success"):
+            reason = (payload.get("error") or {}).get("message") or result.stderr.strip()
+            raise RuntimeError(f"ChatGPT UI interaction failed: {reason}")
+        return payload["data"]
+
+    @classmethod
+    def _snapshot(cls, window_id: str) -> dict:
+        return cls._peekaboo("see", "--window-id", window_id,
+                            "--tree", "--no-screenshot", "--depth", "45")
+
+    def search(self, term: str, limit: int = 25) -> tuple[list[dict], dict]:
+        if not term.strip():
+            raise ValueError("ChatGPT search term cannot be empty")
+        inventory = self._peekaboo("window", "list", "--app", "ChatGPT")
+        windows = [
+            window for window in inventory.get("windows", [])
+            if window.get("observation_capability") == "combined_eligible"
+            and window.get("is_on_screen")
+        ]
+        if len(windows) != 1:
+            raise RuntimeError("Expected one accessible ChatGPT main window; open the ChatGPT desktop app")
+        window_id = str(windows[0]["window_id"])
+        snapshot = self._snapshot(window_id)
+        elements = snapshot.get("ui_elements", [])
+        combobox = next((e for e in elements if e.get("ax_role") == "AXComboBox"
+                         and e.get("label") == "Command menu"), None)
+        if combobox is None:
+            # ChatGPT exposes a native Cmd+K shortcut. The Search button's
+            # AXPress is sometimes acknowledged without opening the overlay.
+            self._peekaboo("press", "cmd+k", "--window-id", window_id, "--foreground")
+            for _ in range(3):
+                snapshot = self._snapshot(window_id)
+                combobox = next((e for e in snapshot.get("ui_elements", [])
+                                 if e.get("ax_role") == "AXComboBox"
+                                 and e.get("label") == "Command menu"), None)
+                if combobox is not None:
+                    break
+                time.sleep(0.35)
+            if combobox is None:
+                raise RuntimeError("ChatGPT search overlay did not open after Cmd+K")
+        self._peekaboo("set-value", term, "--on", combobox["id"],
+                       "--snapshot", snapshot["snapshot_id"])
+        # Wait for asynchronously populated cloud search rows, not a fixed result count.
+        time.sleep(0.7)
+        result_view = self._snapshot(window_id)
+        actual = next((e.get("value") for e in result_view.get("ui_elements", [])
+                       if e.get("ax_role") == "AXComboBox"
+                       and e.get("label") == "Command menu"), None)
+        if actual != term:
+            raise RuntimeError("ChatGPT search query could not be verified")
+        results, warnings = parse_chatgpt_suggestions(
+            result_view.get("ui_elements", []), limit,
+        )
+        return results, {
+            "query": term, "count": len(results),
+            "complete_history": False, "warnings": warnings,
+            "note": "Live UI suggestions only; titles and shortcut positions are not stable IDs or chat URLs",
+        }
+
+
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Find Codex sessions by Git artifacts (read-only, no new index).")
+    p = argparse.ArgumentParser(description="Find Codex sessions by Git artifacts; optionally search the ChatGPT desktop UI.")
     for name, help_text in (
         ("repo", "Repository name, local checkout path, or Git remote URL"),
         ("worktree", "Existing or historical absolute worktree path"),
@@ -443,6 +569,8 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--" + name, help=help_text)
     p.add_argument("--codex-home", type=Path, help="Use another Codex data directory")
     p.add_argument("--limit", type=int, default=25, help="Maximum results (default: 25)")
+    p.add_argument("--chatgpt", action="store_true", help="Also search visible ChatGPT desktop conversations (may focus app)")
+    p.add_argument("--chatgpt-query", help="Search ChatGPT desktop directly by text, without requiring a Git artifact")
     p.add_argument("--json", action="store_true", help="Machine-readable output")
     return p
 
@@ -452,16 +580,32 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.limit < 1:
             raise ValueError("--limit must be positive")
-        q = SearchQuery.from_args(args)
-        hits, stats = CodexSearcher(args.codex_home).search(q, args.limit)
-    except (ValueError, FileNotFoundError, sqlite3.DatabaseError) as e:
+        git_fields = ("repo", "branch", "worktree", "commit", "pr", "jira")
+        if args.chatgpt_query and not any(getattr(args, key) for key in git_fields):
+            q = SearchQuery()
+        else:
+            q = SearchQuery.from_args(args)
+        if q.selected:
+            hits, stats = CodexSearcher(args.codex_home).search(q, args.limit)
+        else:
+            hits, stats = [], {"native_codex_search_skipped": True, "total_matches": 0, "warnings": []}
+        chatgpt_results = None
+        chatgpt_stats = None
+        if args.chatgpt or args.chatgpt_query:
+            term = args.chatgpt_query or chatgpt_search_term(q)
+            chatgpt_results, chatgpt_stats = ChatGPTDesktopSearcher().search(term, args.limit)
+    except (ValueError, FileNotFoundError, sqlite3.DatabaseError, RuntimeError) as e:
         print(f"session-find: {e}", file=sys.stderr)
         return 2
     if args.json:
-        print(json.dumps({"query": {k: v for k, v in q.__dict__.items() if v},
-                          "stats": stats, "results": hits}, indent=2, ensure_ascii=False))
+        document = {"query": {k: v for k, v in q.__dict__.items() if v},
+                    "stats": stats, "results": hits}
+        if chatgpt_results is not None:
+            document["chatgpt_search"] = chatgpt_stats
+            document["chatgpt_results"] = chatgpt_results
+        print(json.dumps(document, indent=2, ensure_ascii=False))
     else:
-        print(f"Found {stats['total_matches']} matching sessions; showing {len(hits)}")
+        print(f"Found {stats['total_matches']} Codex sessions; showing {len(hits)}")
         for i, hit in enumerate(hits, 1):
             print(f"\n{i}. {hit['session_id']}  [{hit['evidence_strength']}]  score={hit['score']}")
             print(f"   {hit['title'] or '(untitled)'}")
@@ -470,6 +614,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"   {hit['resume_command']}")
         for warning in stats["warnings"]:
             print(f"Warning: {warning}", file=sys.stderr)
+        if chatgpt_results is not None:
+            print(f"\nChatGPT desktop search for {chatgpt_stats['query']!r}: {len(chatgpt_results)} visible suggestions")
+            for hit in chatgpt_results:
+                print(f"  ⌃{hit['position']}: {hit['title']} [{hit['provider']}] (no verified link)")
+            for warning in chatgpt_stats["warnings"]:
+                print(f"Warning: {warning}", file=sys.stderr)
+            print("Search remains open in ChatGPT; select a result there. No permalink is inferred.")
     return 0
 
 

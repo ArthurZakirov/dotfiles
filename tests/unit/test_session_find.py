@@ -1,5 +1,6 @@
 """Offline contract tests for the read-only session search core."""
 import argparse
+import io
 import json
 import os
 import subprocess
@@ -165,6 +166,51 @@ class SearchFixture(unittest.TestCase):
         hits = self.search(pr="github.com/arthurzakirov/dotfiles/pull/2")
         self.assertEqual(["session-C"], [hit["session_id"] for hit in hits])
 
+    def test_branch_text_does_not_match_longer_branch(self):
+        with sqlite3.connect(self.codex / "state_5.sqlite") as db:
+            db.execute("UPDATE threads SET title='work feat/foo-old feat/foobar prefixfeat/foo' WHERE id='session-A'")
+
+        hits = self.search(branch="feat/foo")
+
+        self.assertEqual([], hits)
+
+    def test_commit_text_matches_prefix_but_not_middle_of_sha(self):
+        with sqlite3.connect(self.codex / "state_5.sqlite") as db:
+            db.execute("UPDATE threads SET title='commit 1234567abcdef0' WHERE id='session-A'")
+
+        prefix = self.search(commit="1234567")
+        middle = self.search(commit="34567ab")
+
+        self.assertEqual(['session-A'], [h['session_id'] for h in prefix])
+        self.assertEqual([], middle)
+
+    def test_reserved_characters_in_codex_directory(self):
+        renamed = self.home / 'codex?# space'
+        self.codex.rename(renamed)
+
+        hits, _ = CodexSearcher(renamed, home=str(self.home)).search(SearchQuery(repo='dotfiles'))
+
+        self.assertEqual({'session-A', 'session-B'}, {h['session_id'] for h in hits})
+
+    def test_wal_snapshot_reads_committed_rows_without_creating_source_shm(self):
+        import shutil
+        source = self.home / 'archive'
+        source.mkdir()
+        writer = sqlite3.connect(self.codex / 'state_5.sqlite')
+        self.addCleanup(writer.close)
+        writer.execute('PRAGMA journal_mode=WAL')
+        writer.execute("UPDATE threads SET title='WAL-only title' WHERE id='session-A'")
+        writer.commit()
+        for suffix in ['', '-wal']:
+            shutil.copyfile(str(self.codex / 'state_5.sqlite') + suffix,
+                            str(source / 'state_5.sqlite') + suffix)
+        before = {p.name: p.read_bytes() for p in source.iterdir()}
+
+        hits, _ = CodexSearcher(source, home=str(self.home)).search(SearchQuery(branch='WAL-only title'))
+
+        self.assertEqual(['session-A'], [h['session_id'] for h in hits])
+        self.assertEqual(before, {p.name: p.read_bytes() for p in source.iterdir()})
+
 
 class NormalizationTests(unittest.TestCase):
     def test_git_ssh_and_https_share_one_identity(self):
@@ -182,6 +228,82 @@ class NormalizationTests(unittest.TestCase):
         values = {"repo": None, "branch": None, "worktree": None, "commit": "xyz", "pr": None, "jira": None}
         with self.assertRaises(ValueError):
             SearchQuery.from_args(argparse.Namespace(**values))
+
+
+class ChatGPTDesktopTests(unittest.TestCase):
+    def test_pr_maps_to_transparent_chatgpt_search_term(self):
+        self.assertEqual(
+            "pull/67",
+            module.chatgpt_search_term(SearchQuery(
+                pr="github.com/arthurzakirov/dotfiles/pull/67",
+            )),
+        )
+        self.assertEqual("DCP-9712", module.chatgpt_search_term(SearchQuery(jira="DCP-9712")))
+
+    def test_accessibility_results_never_invent_chat_links_or_session_ids(self):
+        elements = [
+            {"ax_role": "AXStaticText", "value": "Chats besser finden ChatGPT ⌃1"},
+            {"ax_role": "AXStaticText", "value": "Chats besser finden"},
+            {"ax_role": "AXStaticText", "value": "Some cloud messages may be missing from search"},
+            {"ax_role": "AXStaticText", "value": "Rename worktrees properly ChatGPT ⌃2"},
+        ]
+
+        hits, warnings = module.parse_chatgpt_suggestions(elements, limit=2)
+
+        self.assertEqual(["Chats besser finden", "Rename worktrees properly"],
+                         [x["title"] for x in hits])
+        self.assertEqual([1, 2], [x["position"] for x in hits])
+        self.assertTrue(all(x["chat_url"] is None and x["session_id"] is None for x in hits))
+        self.assertEqual(1, len(warnings))
+
+    def test_chatgpt_provider_operates_via_accessibility_without_network_adapter(self):
+        initial = {"snapshot_id": "initial", "ui_elements": []}
+        overlay = {"snapshot_id": "overlay", "ui_elements": [
+            {"ax_role": "AXComboBox", "label": "Command menu", "id": "input", "value": ""},
+        ]}
+        result_view = {"snapshot_id": "result", "ui_elements": [
+            {"ax_role": "AXComboBox", "label": "Command menu", "id": "input", "value": "pull/67"},
+            {"ax_role": "AXStaticText", "value": "Chats besser finden ChatGPT ⌃1"},
+        ]}
+        responses = [
+            {"windows": [{"window_id": 127, "observation_capability": "combined_eligible",
+                          "is_on_screen": True}]},
+            initial,
+            {},
+            overlay,
+            {},
+            result_view,
+        ]
+        with patch.object(module.ChatGPTDesktopSearcher, "_peekaboo",
+                          side_effect=responses) as fake, patch.object(module.time, "sleep"):
+            matches, summary = module.ChatGPTDesktopSearcher().search("pull/67")
+        self.assertEqual(["Chats besser finden"], [m["title"] for m in matches])
+        self.assertFalse(summary["complete_history"])
+        self.assertEqual(("press", "cmd+k", "--window-id", "127", "--foreground"),
+                         fake.call_args_list[2].args)
+        self.assertEqual("set-value", fake.call_args_list[4].args[0])
+
+    def test_chatgpt_only_cli_requires_no_codex_database(self):
+        sample = [{"provider": "chatgpt", "title": "Chats besser finden",
+                   "position": 1, "session_id": None, "chat_url": None}]
+        summary = {"query": "pull/67", "count": 1, "complete_history": False, "warnings": []}
+        with patch.object(module.ChatGPTDesktopSearcher, "search",
+                          return_value=(sample, summary)), patch("sys.stdout", new_callable=io.StringIO) as out:
+            exit_code = main(["--chatgpt-query", "pull/67", "--json"])
+        self.assertEqual(0, exit_code)
+        payload = json.loads(out.getvalue())
+        self.assertEqual(0, payload["stats"]["total_matches"])
+        self.assertTrue(payload["stats"]["native_codex_search_skipped"])
+        self.assertEqual("Chats besser finden", payload["chatgpt_results"][0]["title"])
+
+    def test_chatgpt_unavailable_returns_error_not_false_zero_results(self):
+        with patch.object(module.ChatGPTDesktopSearcher, "search",
+                          side_effect=RuntimeError("No accessible ChatGPT window")), \
+                patch("sys.stderr", new_callable=io.StringIO) as err:
+            exit_code = main(["--chatgpt-query", "pull/67"])
+        self.assertEqual(2, exit_code)
+        self.assertIn("No accessible ChatGPT window", err.getvalue())
+
 
 
 if __name__ == "__main__":
