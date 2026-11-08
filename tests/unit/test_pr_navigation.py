@@ -305,9 +305,14 @@ def test_installer_handles_jsonc_trailing_commas_and_repeated_apply(installer, t
     assert "// keep binding" in keys_source
     assert {item["label"] for item in tasks} == {
         "Unrelated Task", installer.TASK_LABEL, installer.BRANCH_LABEL,
-        installer.REVIEW_CLEANUP_LABEL,
+        installer.REVIEW_CLEANUP_LABEL, installer.SESSIONS_LABEL,
     }
-    assert {item["key"] for item in keys} == {"ctrl+x", "ctrl+p ctrl+r"}
+    assert {item["key"] for item in keys} == {
+        "ctrl+x", "ctrl+p ctrl+r", installer.SESSIONS_KEY
+    }
+    task = next(item for item in tasks if item["label"] == installer.SESSIONS_LABEL)
+    assert task["command"] == "${userHome}/.local/bin/find-gpt-session"
+    assert task["args"] == ["--open", "--context-path", "${workspaceFolder}"]
 
     installer.install(user)
     assert (tasks_file.read_text(), keys_file.read_text()) == (tasks_source, keys_source)

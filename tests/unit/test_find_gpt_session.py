@@ -182,3 +182,11 @@ def test_cli_incomplete_search_returns_error_not_false_zero(capsys):
     assert "Search incomplete" in stdout
     assert "Found 0 sessions" not in stdout
     assert "UI unavailable" in stderr
+
+
+def test_browser_timeout_covers_each_requested_navigation():
+    browser = BrowserProvider("safari", source=Path("/tmp/fake.swift"), executable=Path("/tmp/fake-ax"))
+    with patch.object(browser, "_ready_executable", return_value=Path("/tmp/fake-ax")), patch("find_gpt_session.adapters.run_json", return_value={}) as runner:
+        browser.search(SearchRequest.create("text", "cleanup"), 12)
+
+    assert runner.call_args.kwargs["timeout"] >= 12 * (12 + 3)
