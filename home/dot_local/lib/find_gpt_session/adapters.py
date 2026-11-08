@@ -11,6 +11,11 @@ from .core import ProviderResult, SearchRequest, SessionHit
 from .codex_text import CodexTranscriptSearcher
 
 
+def session_find_command() -> str:
+    """Use the backend installed alongside this package, including GUI PATHs."""
+    return str(Path(__file__).resolve().parents[2] / "bin/session-find")
+
+
 def run_json(argv: list[str], timeout: int = 50) -> dict:
     try:
         result = subprocess.run(argv, capture_output=True, text=True,
@@ -32,7 +37,7 @@ class CodexProvider:
     def search(self, request: SearchRequest, limit: int) -> ProviderResult:
         if request.kind == "text":
             return CodexTranscriptSearcher().search(request.value, limit)
-        result = run_json(["session-find", f"--{request.kind}", request.value,
+        result = run_json([session_find_command(), f"--{request.kind}", request.value,
                            "--limit", str(limit), "--json"])
         hits = [
             SessionHit("codex", item.get("session_id"),
@@ -52,7 +57,7 @@ class DesktopProvider:
     def search(self, request: SearchRequest, limit: int) -> ProviderResult:
         # Existing desktop AX adapter already lives in session-find;
         # results are suggestions, not verified permalinks.
-        result = run_json(["session-find", "--chatgpt-query", request.ui_term,
+        result = run_json([session_find_command(), "--chatgpt-query", request.ui_term,
                            "--limit", str(limit), "--json"])
         hits = [
             SessionHit("chatgpt", None, item.get("title") or "(untitled)",
@@ -93,7 +98,7 @@ class BrowserProvider:
 
     def search(self, request: SearchRequest, limit: int) -> ProviderResult:
         data = run_json([str(self._ready_executable()), self.name, request.ui_term,
-                         str(min(limit, 12))], timeout=90)
+                         str(min(limit, 12))], timeout=20 + 20 * min(limit, 12))
         hits = [
             SessionHit("chatgpt", item.get("sessionId"),
                        item.get("title") or "(untitled)", item.get("url"),

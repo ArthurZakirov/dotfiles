@@ -13,6 +13,7 @@ from pathlib import Path
 import sqlite3
 
 from .core import ProviderResult, SessionHit
+from codex_history.sqlite import open_snapshot
 
 
 @dataclass
@@ -51,11 +52,7 @@ class _Candidate:
 
 
 def _connect_ro(path: Path) -> sqlite3.Connection | None:
-    if not path.is_file():
-        return None
-    connection = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
-    connection.execute("PRAGMA query_only=ON")
-    return connection
+    return open_snapshot(path)
 
 
 class CodexTranscriptSearcher:
