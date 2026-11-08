@@ -1,6 +1,7 @@
 """Infrastructure adapters for opening verified Codex and ChatGPT sessions."""
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import dataclass, field
 import json
 import os
@@ -13,6 +14,7 @@ import uuid
 from urllib.parse import urlsplit
 
 from .core import SessionHit
+from codex_history.sqlite import open_snapshot
 
 
 class LaunchError(RuntimeError):
@@ -73,12 +75,12 @@ def _codex_working_dir(session_id: str, home: Path) -> Path:
     db = home / ".codex/state_5.sqlite"
     if db.is_file():
         try:
-            with sqlite3.connect(db.as_uri() + "?mode=ro", uri=True) as con:
+            with closing(open_snapshot(db)) as con:
                 con.execute("PRAGMA query_only=ON")
                 row = con.execute("SELECT cwd FROM threads WHERE id=?", (session_id,)).fetchone()
             if row and isinstance(row[0], str) and Path(row[0]).is_dir():
                 return Path(row[0]).resolve()
-        except sqlite3.Error:
+        except (sqlite3.Error, OSError, RuntimeError):
             pass
     return home
 
@@ -135,6 +137,19 @@ class WarpTabLauncher:
                 raise LaunchError("Warp could not open the Codex tab")
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise LaunchError("Warp tab opening failed") from exc
+
+    def reveal(self) -> None:
+        """Activate after every destination has opened so Chrome cannot hide Warp."""
+        try:
+            result = self.runner(
+                ["/usr/bin/osascript", "-e",
+                 'tell application id "dev.warp.Warp-Stable" to activate'],
+                text=True, capture_output=True, check=False, timeout=10,
+            )
+            if result.returncode:
+                raise LaunchError("Warp opened tabs but could not be brought forward")
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise LaunchError("Warp opened tabs but activation failed") from exc
 
 
 class ChromeTabLauncher:
@@ -217,4 +232,9 @@ class SessionOpener:
                 } for url in chrome_urls)
             except LaunchError as exc:
                 result.errors.append("ChatGPT: " + str(exc))
+        if any(item["provider"] == "codex" for item in result.dispatched):
+            try:
+                self.warp.reveal()
+            except LaunchError as exc:
+                result.errors.append("Codex: " + str(exc))
         return result

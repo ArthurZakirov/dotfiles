@@ -65,9 +65,10 @@ def from_browser_url(raw: str) -> SearchRequest:
             # A branch containing slashes cannot be distinguished reliably
             # from a file path without querying refs. Favor the repo over a
             # potentially incorrect branch.
-            if len(path) == 4:
+            if len(path) == 4 and path[3] not in ("main", "master", "develop", "development"):
                 return SearchRequest.create("branch", path[3])
             return SearchRequest.create("repo", repo)
         if url.hostname == "bitbucket.org" and path[2] == "branch":
-            return SearchRequest.create("branch", "/".join(path[3:]))
+            branch = "/".join(path[3:])
+            return SearchRequest.create("repo", repo) if branch in ("main", "master", "develop", "development") else SearchRequest.create("branch", branch)
     return SearchRequest.create("repo", repo)
