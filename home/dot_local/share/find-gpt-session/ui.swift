@@ -127,6 +127,47 @@ func resultElements(_ root: AXUIElement) -> [AXUIElement] {
     return []
 }
 
+// A full PR URL is the search key, but ChatGPT search may tokenize it or
+// temporarily show stale suggestions. Never navigate to a result from a
+// different repository just because its PR number is equal.
+func isVerifiedPRResult(_ heading: String, query: String) -> Bool {
+    guard let url = URL(string: query),
+          let host = url.host?.lowercased(),
+          (host == "github.com" || host == "bitbucket.org") else {
+        return true // Free-text, branch and Jira queries keep their behavior.
+    }
+    let parts = url.pathComponents.filter { $0 != "/" }
+    guard parts.count == 4, ["pull", "pull-requests"].contains(parts[2]),
+          Int(parts[3]) != nil else { return true }
+
+    // The search excerpt may drop the "https://" prefix. Require at least
+    // host + owner + repository + PR path, never a bare "pull/5" suffix.
+    let identity = (host + url.path).lowercased()
+    let excerpt = heading.lowercased()
+    var position = excerpt.startIndex
+    while let match = excerpt.range(of: identity, range: position..<excerpt.endIndex) {
+        if match.upperBound == excerpt.endIndex ||
+           !excerpt[match.upperBound].isNumber {
+            return true
+        }
+        position = match.upperBound
+    }
+    return false
+}
+
+func relevantResults(_ root: AXUIElement, query: String, seconds: Double = 5) -> [AXUIElement] {
+    let deadline = Date().addingTimeInterval(seconds)
+    repeat {
+        let rows = resultElements(root)
+        // For a PR, wait until the actual repo-specific search result arrives,
+        // rather than consuming suggestions from the previous search term.
+        let matches = rows.filter { isVerifiedPRResult(title($0), query: query) }
+        if !matches.isEmpty { return matches }
+        if Date() >= deadline { return [] }
+        Thread.sleep(forTimeInterval: 0.15)
+    } while true
+}
+
 func availableResults(_ root: AXUIElement, seconds: Double = 4) -> [AXUIElement] {
     let deadline = Date().addingTimeInterval(seconds)
     repeat {
@@ -505,11 +546,14 @@ func search(provider: String, term: String, limit: Int) -> Output {
                       completeHistory: false,
                       warnings: ["Could not access ChatGPT Search after bringing browser forward"])
     }
-    let initial = availableResults(root)
-    trace("initial results count: \(initial.count)")
+    let initial = relevantResults(root, query: term)
+    trace("repo-verified results count: \(initial.count)")
     if initial.isEmpty {
+        let warning = resultElements(root).isEmpty
+            ? "No visible search suggestions (could be no matches)"
+            : "Search suggestions lack exact PR repository identity; refusing to open ambiguous chats"
         return Output(provider: provider, query: term, results: [],
-                      completeHistory: false, warnings: ["No visible search suggestions (could be no matches)"])
+                      completeHistory: false, warnings: [warning])
     }
     var results: [Hit] = []
     var seen = Set<String>()
@@ -520,7 +564,7 @@ func search(provider: String, term: String, limit: Int) -> Output {
             warnings.append("Search overlay no longer available")
             break
         }
-        var rows = availableResults(root, seconds: 3)
+        var rows = relevantResults(root, query: term, seconds: 5)
         if rows.count <= index {
             warnings.append("Search result list changed while navigating")
             break
@@ -573,6 +617,25 @@ if args == ["--prepare-safari"] {
 if args.contains("--self-test") {
     let fakeId = "11111111-2222-4333-8444-555555555555"
     let sample = "https://chatgpt.com/c/" + fakeId
+    // Collision regression: #5 in two separate Bitbucket/GitHub
+    // repositories must never authorize opening the same conversation.
+    let target = "https://bitbucket.org/workspace/data-platform/pull-requests/5"
+    precondition(isVerifiedPRResult("Chat …" + target, query: target))
+    precondition(isVerifiedPRResult("Chat …bitbucket.org/workspace/data-platform/pull-requests/5", query: target))
+    precondition(!isVerifiedPRResult(
+        "Chat …https://bitbucket.org/workspace/other-repo/pull-requests/5",
+        query: target))
+    precondition(!isVerifiedPRResult(
+        "Chat …https://bitbucket.org/other-workspace/data-platform/pull-requests/5",
+        query: target))
+    precondition(!isVerifiedPRResult(
+        "Chat …https://bitbucket.org/workspace/data-platform/pull-requests/50",
+        query: target))
+    precondition(!isVerifiedPRResult(
+        "Chat …https://github.com/workspace/data-platform/pull/5",
+        query: target))
+    precondition(!isVerifiedPRResult("Unrelated chat …pull-requests/5", query: target))
+    precondition(isVerifiedPRResult("Regular free-text hit", query: "worktree cleanup"))
     precondition(conversationId(sample) != nil)
     precondition(conversationId("https://example.org/c/" + fakeId) == nil)
     precondition(canonicalUrl(sample + "?src=history_search") == sample)
