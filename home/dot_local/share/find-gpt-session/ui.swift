@@ -147,7 +147,8 @@ func isVerifiedPRResult(_ heading: String, query: String) -> Bool {
     var position = excerpt.startIndex
     while let match = excerpt.range(of: identity, range: position..<excerpt.endIndex) {
         if match.upperBound == excerpt.endIndex ||
-           !excerpt[match.upperBound].isNumber {
+           (!excerpt[match.upperBound].isNumber &&
+            !excerpt[match.upperBound].isLetter) {
             return true
         }
         position = match.upperBound
@@ -630,6 +631,9 @@ if args.contains("--self-test") {
         query: target))
     precondition(!isVerifiedPRResult(
         "Chat …https://bitbucket.org/workspace/data-platform/pull-requests/50",
+        query: target))
+    precondition(!isVerifiedPRResult(
+        "Chat …https://bitbucket.org/workspace/data-platform/pull-requests/5another",
         query: target))
     precondition(!isVerifiedPRResult(
         "Chat …https://github.com/workspace/data-platform/pull/5",
