@@ -32,7 +32,24 @@ find-gpt-session search "worktree cleanup" --provider safari --json
 
 The default providers are `codex` and `safari`. Repeat `--provider` to combine sources or use `--provider all` to include the opt-in Chrome and Desktop adapters. Ranking retains a result from each product when the limit permits.
 
-Codex searches local Git metadata, file activity and text mentions, or titles and user/assistant messages for keyword queries. ChatGPT uses its own title/message search; a PR query becomes a path fragment such as `pull/67`. These are evidence-based searches rather than semantic similarity searches. Common default-branch pages such as `/tree/main` use repository context to avoid opening unrelated `main` sessions.
+Codex searches local Git metadata, file activity and text mentions, or titles and user/assistant messages for keyword queries. ChatGPT uses its own title/message search; a PR query retains the **complete canonical HTTPS URL**, including host, owner/workspace, repository, and PR number (for example `https://bitbucket.org/team/platform/pull-requests/5`). A bare `pull/5` is never sufficient because PR numbers repeat across repositories. The Safari and Chrome adapters additionally require the search excerpt to contain that exact repository identity before opening a chat; an abbreviated or ambiguous excerpt is skipped, not treated as proof of a matching conversation. These are evidence-based searches rather than semantic similarity searches. Common default-branch pages such as `/tree/main` use repository context to avoid opening unrelated `main` sessions.
+
+### Repository-safe PR matching
+
+**The same PR number in different repositories is not the same PR.**
+The application core preserves the full canonical GitHub/Bitbucket URL as
+the browser search term. The native browser adapter waits for results
+containing the correct **host plus full repository and PR path**. A
+suggestion matching only `pull/5`, or `pull-requests/5` from another
+repository, is not opened even if ChatGPT temporarily shows cached results
+from an earlier query.
+
+This deliberately favors **no automatic opening** over opening a chat from
+the wrong repository. Search results may be incomplete when ChatGPT's UI
+truncates the URL or does not display the full repository identity; those
+cases must be inspected manually until the native adapter can verify a more
+reliable evidence source. Codex Git-history queries are unchanged and already
+receive the full canonical PR value.
 
 ## ⌨️ Open results
 
