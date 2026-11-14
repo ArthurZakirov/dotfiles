@@ -74,7 +74,7 @@ local function chromeSources()
   local defaults = preferences and preferences.default_content_setting_values or {}
   local content = preferences and preferences.content_settings or {}
   local exceptions = content.exceptions and content.exceptions.notifications or {}
-  local function site(label, host, subdomains)
+  local function site(label, host, subdomains, iconFile, bundle)
     local allowed
     if preferences then
       allowed = false
@@ -89,13 +89,13 @@ local function chromeSources()
         if not exact then allowed = defaults.notifications == 1 end
       end
     end
-    return {label=label, bundle="com.google.Chrome", value=allowed}
+    return {label=label, iconFile=iconFile, bundle=bundle, value=allowed}
   end
   return {
-    site("Google Calendar", "calendar.google.com"),
-    site("Gmail", "mail.google.com"),
-    site("Slack · Chrome", "slack.com", true),
-    site("ChatGPT · Chrome", "chatgpt.com"),
+    site("Google Calendar", "calendar.google.com", false, "calendar.png"),
+    site("Gmail", "mail.google.com", false, "gmail.png"),
+    site("Slack · Chrome", "slack.com", true, nil, "com.tinyspeck.slackmacgap"),
+    site("ChatGPT · Chrome", "chatgpt.com", false, "chatgpt.png"),
   }
 end
 
@@ -120,7 +120,8 @@ local function showCard(sources, permissions, settings, outputs)
       frame={x=x,y=y,w=w,h=28}})
   end
   local function entry(item,x,y,w)
-    local image = item.bundle and hs.image.imageFromAppBundle(item.bundle)
+    local image = item.iconFile and hs.image.imageFromPath(hs.configdir .. "/assets/" .. item.iconFile)
+      or (item.bundle and hs.image.imageFromAppBundle(item.bundle))
     if image then
       statusCard:appendElements({type="image",image=image,frame={x=x,y=y,w=24,h=24}})
     else
@@ -142,7 +143,11 @@ local function showCard(sources, permissions, settings, outputs)
   for i, source in ipairs(sources) do
     local x = 16 + (i - 1) * (columnWidth + gap)
     box(x, 50, columnWidth, sourceHeight, tone)
-    text(source.title, x + 14, 60, columnWidth - 28, 15)
+    local logo = hs.image.imageFromAppBundle(source.bundle)
+    if logo then
+      statusCard:appendElements({type="image", image=logo, frame={x=x+14,y=58,w=24,h=24}})
+    end
+    text(source.title, x + (logo and 46 or 14), 60, columnWidth - (logo and 60 or 28), 15)
     for j, item in ipairs(source.items) do
       entry(item, x + 14, 90 + (j - 1) * 26, columnWidth - 28)
     end
@@ -188,8 +193,8 @@ local function showConfiguration(value, audio, appStates, startup)
     end
   end
   local sources = {
-    {title="Chrome website notifications", items=chromeSources()},
-    {title="Slack in-app notifications", items={
+    {title="Chrome website notifications", bundle="com.google.Chrome", items=chromeSources()},
+    {title="Slack in-app notifications", bundle="com.tinyspeck.slackmacgap", items={
       {label="Slack · In-app", bundle="com.tinyspeck.slackmacgap", value=appStates.slackInApp},
       {label="Desktop notifications", icon="🖥", value=prefs.desktop},
       {label="Everything", icon="🔔", value=modeSelected("Everything")},
