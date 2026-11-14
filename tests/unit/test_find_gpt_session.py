@@ -5,6 +5,7 @@ import importlib.util
 import json
 from pathlib import Path
 import sys
+import pytest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -256,9 +257,13 @@ def test_cli_prepare_safari_reports_unavailable_and_does_not_search(capsys):
     searchers.assert_not_called()
 
 
-def test_browser_timeout_covers_each_requested_navigation():
+@pytest.mark.parametrize("limit", [1, 8, 12, 25])
+def test_browser_timeout_covers_each_requested_navigation(limit):
     browser = BrowserProvider("safari", source=Path("/tmp/fake.swift"), executable=Path("/tmp/fake-ax"))
     with patch.object(browser, "_ready_executable", return_value=Path("/tmp/fake-ax")), patch("find_gpt_session.adapters.run_json", return_value={}) as runner:
-        browser.search(SearchRequest.create("text", "cleanup"), 12)
+        browser.search(SearchRequest.create("text", "cleanup"), limit)
 
-    assert runner.call_args.kwargs["timeout"] >= 12 * (12 + 3)
+    rows = min(limit, 12)
+    native_waits_per_row = 4.5 + 3 + 2.5 + 12 + 2.5
+    assert runner.call_args.args[0][-1] == str(rows)
+    assert runner.call_args.kwargs["timeout"] >= 18 + rows * native_waits_per_row
