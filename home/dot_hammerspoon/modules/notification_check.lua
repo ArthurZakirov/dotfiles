@@ -60,7 +60,7 @@ hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
   end
 
   checking = true
-  hs.urlevent.openURL(settingsURL)
+  hs.execute("/usr/bin/open " .. settingsURL)
   local deadline = hs.timer.secondsSinceEpoch() + 5
   hs.timer.waitUntil(function()
     value = sharingSetting()
