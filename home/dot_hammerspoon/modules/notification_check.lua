@@ -1,9 +1,6 @@
 local settingsURL = "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
-local predicate = 'process == "NotificationCenter" AND eventMessage CONTAINS "muted by display state (displayShared)"'
 local activeAlert
 local checking = false
-local stream
-local retryTimer
 
 local function targetScreen()
   local screen = hs.screen.primaryScreen()
@@ -232,33 +229,3 @@ hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
     end)
   end)
 end)
-
-local function watchSuppressions()
-  local buffer = ""
-  local lastWarning = 0
-  stream = hs.task.new("/usr/bin/log", function()
-    stream = nil
-    retryTimer = hs.timer.doAfter(5, watchSuppressions)
-  end, function(task, output)
-    if not task then return false end
-    buffer = buffer .. output
-    local lineEnd = buffer:match(".*()\n")
-    if not lineEnd then return true end
-
-    local lines = buffer:sub(1, lineEnd)
-    buffer = buffer:sub(lineEnd + 1)
-    local now = hs.timer.secondsSinceEpoch()
-    if lines:find("muted by display state (displayShared)", 1, true) and now - lastWarning >= 3 then
-      lastWarning = now
-      show("⚠️ A notification was just suppressed while sharing the display.\n"
-        .. "Press Control + Option + Command + N to check the current setting.")
-    end
-    return true
-  end, {"stream", "--style", "compact", "--predicate", predicate})
-
-  if not stream or not stream:start() then
-    retryTimer = hs.timer.doAfter(5, watchSuppressions)
-  end
-end
-
-watchSuppressions()
