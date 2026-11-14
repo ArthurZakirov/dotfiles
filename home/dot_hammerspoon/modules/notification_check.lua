@@ -1,40 +1,11 @@
+local settingsURL = "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
 local predicate = 'process == "NotificationCenter" AND eventMessage CONTAINS "muted by display state (displayShared)"'
-local pending
 local activeAlert
+local checking = false
+local stream
+local retryTimer
 
-local function recordingStatus()
-  local app = hs.application.get("com.apple.controlcenter")
-  if not app then return "Control Center is unavailable." end
-
-  local menu = hs.axuielement.applicationElement(app).AXExtrasMenuBar
-  for _, item in ipairs(menu and menu.AXChildren or {}) do
-    if item.AXIdentifier == "com.apple.menuextra.controlcenter" then
-      local description = item.AXDescription or ""
-      if description:find("Screen Recording is in use", 1, true)
-        or description:find("Bildschirmaufnahme wird verwendet", 1, true) then
-        return "Control Center currently reports screen recording."
-      end
-    end
-  end
-  return "Current screen recording is unconfirmed."
-end
-
-local function showResult(exitCode, output)
-  pending = nil
-  local lastBlocked
-  for timestamp in output:gmatch("(%d%d%d%d%-%d%d%-%d%d %d%d:%d%d:%d%d)[^\n]*muted by display state %(displayShared%)") do
-    lastBlocked = timestamp
-  end
-
-  local headline = "⚪ Notification suppression unconfirmed"
-  local detail = "No matching suppression was logged in the last 15 minutes."
-  if exitCode ~= 0 then
-    detail = "Could not read the macOS notification log."
-  elseif lastBlocked then
-    headline = "❌ Notification suppressed while sharing the display"
-    detail = "Last confirmed event: " .. lastBlocked .. "."
-  end
-
+local function show(message)
   local screen = hs.screen.primaryScreen()
   for _, candidate in ipairs(hs.screen.allScreens()) do
     if candidate:name() == "DELL U3225QE" then
@@ -42,19 +13,89 @@ local function showResult(exitCode, output)
       break
     end
   end
-
-  local message = headline .. "\n" .. detail .. "\n" .. recordingStatus()
-    .. "\n\nSystem Settings → Notifications → When mirroring or sharing the display"
   if activeAlert then hs.alert.closeSpecific(activeAlert) end
   activeAlert = hs.alert.show(message, {textSize = 17}, screen, 15)
 end
 
-hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
-  if pending then return end
-  pending = hs.task.new("/usr/bin/log", showResult, {
-    "show", "--last", "15m", "--style", "compact", "--predicate", predicate,
-  })
-  if not pending or not pending:start() then
-    showResult(1, "")
+local function findSharingSetting(element, depth)
+  if not element or depth == 0 then return nil end
+  if element.AXIdentifier == "allow-when-sharing" then
+    return element.AXValue
   end
+  for _, child in ipairs(element.AXChildren or {}) do
+    local value = findSharingSetting(child, depth - 1)
+    if value then return value end
+  end
+end
+
+local function sharingSetting()
+  local app = hs.application.get("com.apple.systempreferences")
+  if not app then return nil end
+  local settings = hs.axuielement.applicationElement(app)
+  for _, window in ipairs(settings.AXWindows or {}) do
+    local value = findSharingSetting(window, 16)
+    if value then return value end
+  end
+end
+
+local function showConfiguration(value)
+  checking = false
+  if value == "Allow Notifications" then
+    show("✅ Notifications are allowed while mirroring or sharing the display.")
+  elseif value == "Notifications Off" then
+    show("❌ Notifications are off while mirroring or sharing the display.\n"
+      .. "System Settings → Notifications → When mirroring or sharing the display → Allow Notifications")
+  else
+    show("⚪ Could not verify the current display-sharing notification setting.\n"
+      .. "System Settings → Notifications → When mirroring or sharing the display")
+  end
+end
+
+hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
+  if checking then return end
+  local value = sharingSetting()
+  if value then
+    showConfiguration(value)
+    return
+  end
+
+  checking = true
+  hs.urlevent.openURL(settingsURL)
+  local deadline = hs.timer.secondsSinceEpoch() + 5
+  hs.timer.waitUntil(function()
+    value = sharingSetting()
+    return value ~= nil or hs.timer.secondsSinceEpoch() >= deadline
+  end, function()
+    showConfiguration(value)
+  end, 0.25)
 end)
+
+local function watchSuppressions()
+  local buffer = ""
+  local lastWarning = 0
+  stream = hs.task.new("/usr/bin/log", function()
+    stream = nil
+    retryTimer = hs.timer.doAfter(5, watchSuppressions)
+  end, function(task, output)
+    if not task then return false end
+    buffer = buffer .. output
+    local lineEnd = buffer:match(".*()\n")
+    if not lineEnd then return true end
+
+    local lines = buffer:sub(1, lineEnd)
+    buffer = buffer:sub(lineEnd + 1)
+    local now = hs.timer.secondsSinceEpoch()
+    if lines:find("muted by display state (displayShared)", 1, true) and now - lastWarning >= 3 then
+      lastWarning = now
+      show("⚠️ A notification was just suppressed while sharing the display.\n"
+        .. "Press Control + Option + Command + N to check the current setting.")
+    end
+    return true
+  end, {"stream", "--style", "compact", "--predicate", predicate})
+
+  if not stream or not stream:start() then
+    retryTimer = hs.timer.doAfter(5, watchSuppressions)
+  end
+end
+
+watchSuppressions()
