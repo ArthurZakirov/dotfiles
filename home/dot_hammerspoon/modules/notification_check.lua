@@ -38,35 +38,68 @@ local function sharingSetting()
   end
 end
 
-local function showConfiguration(value)
+local function row(label, value, detail)
+  local mark = value == nil and "⚪" or (value and "✅" or "❌")
+  return mark .. " " .. label .. (detail and (": " .. detail) or "")
+end
+
+local function showConfiguration(value, audio)
   checking = false
-  if value == "Allow Notifications" then
-    show("✅ Notifications are allowed while mirroring or sharing the display.")
-  elseif value == "Notifications Off" then
-    show("❌ Notifications are off while mirroring or sharing the display.\n"
-      .. "System Settings → Notifications → When mirroring or sharing the display → Allow Notifications")
-  else
-    show("⚪ Could not verify the current display-sharing notification setting.\n"
-      .. "System Settings → Notifications → When mirroring or sharing the display")
+  local effect = hs.audiodevice.defaultEffectDevice()
+  local lines = {"Sound & Notifications"}
+  local function add(text) lines[#lines + 1] = text end
+  local selected
+  if audio and audio.outputKnown then
+    selected = false
+    for _, device in ipairs(audio.devices) do
+      if device.selected then selected = true end
+    end
   end
+  add(row("Sound effects output", selected, effect and effect:name() or "Unknown"))
+  add(row("Multi-Output Device exists", audio and #audio.devices > 0))
+  for _, device in ipairs(audio and audio.devices or {}) do
+    for _, name in ipairs(device.members) do
+      add(row("  " .. name, device.selected, device.name))
+    end
+  end
+  local prefs = hs.plist.read(os.getenv("HOME") .. "/Library/Preferences/com.apple.ncprefs.plist")
+  local function appStatus(bundle)
+    for _, app in ipairs(prefs and prefs.apps or {}) do
+      if app["bundle-id"] == bundle then
+        if app.auth == 7 then return true end
+        if app.auth == 0 then return false end
+      end
+    end
+  end
+  add(row("Google Chrome notifications", appStatus("com.google.Chrome")))
+  add(row("Slack notifications", appStatus("com.tinyspeck.slackmacgap")))
+  local scriptOK, alertVolume = hs.osascript.applescript("alert volume of (get volume settings)")
+  add(row("Alert volume", scriptOK and tonumber(alertVolume) and tonumber(alertVolume) > 0,
+    scriptOK and (tostring(alertVolume) .. "%") or "Unknown"))
+  local startup = hs.execute("/usr/sbin/nvram StartupMute 2>/dev/null"):match("StartupMute%s+(%S+)")
+  add(row("Play sound on startup", startup and startup ~= "%01", not startup and "Unknown" or nil))
+  local sharing
+  if value == "Allow Notifications" then sharing = true
+  elseif value == "Notifications Off" then sharing = false end
+  add(row("Notifications while sharing", sharing, value or "Unknown"))
+  show(table.concat(lines, "\n"))
 end
 
 hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
   if checking then return end
-  local value = sharingSetting()
-  if value then
-    showConfiguration(value)
-    return
-  end
-
   checking = true
   hs.execute("/usr/bin/open " .. settingsURL)
+  local value
   local deadline = hs.timer.secondsSinceEpoch() + 5
   hs.timer.waitUntil(function()
     value = sharingSetting()
     return value ~= nil or hs.timer.secondsSinceEpoch() >= deadline
   end, function()
-    showConfiguration(value)
+    local swift = hs.task.new("/usr/bin/swift", function(code, output)
+      local ok, audio = pcall(hs.json.decode, output)
+      showConfiguration(value, code == 0 and ok and audio or nil)
+    end, {hs.configdir .. "/bin/audio_notification_status.swift"})
+    if not swift or not swift:start() then showConfiguration(value) end
   end, 0.25)
 end)
 
