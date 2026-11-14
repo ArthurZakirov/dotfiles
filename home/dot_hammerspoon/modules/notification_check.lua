@@ -21,10 +21,10 @@ local function show(message)
   activeAlert = hs.alert.show(message, {textSize = 17}, targetScreen(), 15)
 end
 
-local function settingsValue(title, identifier)
+local function settingsControl(title, identifier)
   local function find(element, depth)
     if depth == 0 then return nil end
-    if element.AXIdentifier == identifier then return element.AXValue end
+    if element.AXIdentifier == identifier then return element end
     for _, child in ipairs(element.AXChildren or {}) do
       local value = find(child, depth - 1)
       if value ~= nil then return value end
@@ -40,6 +40,11 @@ local function settingsValue(title, identifier)
   end
 end
 
+local function settingsValue(title, identifier)
+  local control = settingsControl(title, identifier)
+  return control and control.AXValue
+end
+
 local function checkbox(title, identifier)
   local value = settingsValue(title, identifier)
   if value == 0 or value == false then return false end
@@ -47,6 +52,8 @@ local function checkbox(title, identifier)
 end
 
 local function sharingSetting()
+  local back = settingsControl("Slack", "go back") or settingsControl("Google Chrome", "go back")
+  if back then back:performAction("AXPress") end
   return settingsValue("Notifications", "allow-when-sharing")
 end
 
@@ -184,9 +191,11 @@ hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
   readSetting("x-apple.systempreferences:com.apple.Sound-Settings.extension", function()
     return checkbox("Sound", "BootChimeCheckbox")
   end, function(startup)
-    readApp("com.google.Chrome", "Google Chrome", function(chrome)
-      readApp("com.tinyspeck.slackmacgap", "Slack", function(slack)
-        readSetting(settingsURL, sharingSetting, function(value)
+    readSetting(settingsURL, sharingSetting, function(value)
+      readApp("com.google.Chrome", "Google Chrome", function(chrome)
+        readApp("com.tinyspeck.slackmacgap", "Slack", function(slack)
+          local back = settingsControl("Slack", "go back") or settingsControl("Google Chrome", "go back")
+          if back then back:performAction("AXPress") end
           local states = {chrome = chrome, slack = slack}
           local swift = hs.task.new("/usr/bin/swift", function(code, output)
             local ok, audio = pcall(hs.json.decode, output)
