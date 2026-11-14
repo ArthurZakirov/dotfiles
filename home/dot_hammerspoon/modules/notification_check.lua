@@ -63,11 +63,51 @@ local function closeCard()
   if statusCard then statusCard:delete(); statusCard = nil end
 end
 
+local function chromeSources(macOSAllowed)
+  local home = os.getenv("HOME")
+  local root = home .. "/Library/Application Support/Google/Chrome/"
+  local ok, state = pcall(hs.json.read, root .. "Local State")
+  local profile = ok and state and state.profile and state.profile.last_used
+  local preferences
+  if type(profile) == "string" and not profile:find("/", 1, true) then
+    local read, data = pcall(hs.json.read, root .. profile .. "/Preferences")
+    preferences = read and data and data.profile
+  end
+  local defaults = preferences and preferences.default_content_setting_values or {}
+  local content = preferences and preferences.content_settings or {}
+  local exceptions = content.exceptions and content.exceptions.notifications or {}
+  local function site(label, host, subdomains)
+    local allowed
+    if preferences then
+      allowed = false
+      for pattern, rule in pairs(exceptions) do
+        local origin = pattern:match("^https://([^/,:]+):?%d*,%*$")
+        if origin and (origin == host or (subdomains and origin:sub(-#host-1) == "." .. host)) then
+          if rule.setting == 1 then allowed = true; break end
+        end
+      end
+      if not subdomains then
+        local exact = exceptions["https://" .. host .. ":443,*"] or exceptions["https://" .. host .. ",*"]
+        if not exact then allowed = defaults.notifications == 1 end
+      end
+    end
+    return {label=label, bundle="com.google.Chrome", value=allowed}
+  end
+  return {
+    site("Google Calendar", "calendar.google.com"),
+    site("Gmail", "mail.google.com"),
+    site("Slack · Chrome", "slack.com", true),
+    site("ChatGPT · Chrome", "chatgpt.com"),
+    {label="Chrome · macOS", bundle="com.google.Chrome", value=macOSAllowed},
+  }
+end
+
 local function showCard(sources, settings, outputs)
   closeCard()
   local frame = targetScreen():frame()
   local width, gap = math.min(frame.w - 32, 600), 12
-  local height = 384 + math.max(1, math.ceil(#outputs / 2)) * 36
+  local sourceExpansion = (math.max(#sources[1], #sources[2]) - 2) * 26
+  local height = 384 + sourceExpansion + math.max(1, math.ceil(#outputs / 2)) * 36
   statusCard = hs.canvas.new({x = frame.x + (frame.w - width) / 2,
     y = frame.y + math.max(0, (frame.h - height) / 2), w = width, h = height})
   statusCard:level(hs.canvas.windowLevels.overlay)
@@ -97,21 +137,21 @@ local function showCard(sources, settings, outputs)
   local half = (sectionWidth - 32 - gap) / 2
   box(0,0,width,height,{white=0.09,alpha=0.98})
   text("Sound & Notifications",20,14,width-40,20)
-  box(16,50,sectionWidth,108,tone)
+  box(16,50,sectionWidth,108+sourceExpansion,tone)
   text("Notification sources",30,60,sectionWidth-28,15)
   for i, source in ipairs(sources) do
     for j, item in ipairs(source) do
       entry(item,32+(i-1)*(half+gap),93+(j-1)*26,half)
     end
   end
-  box(16,170,sectionWidth,174,tone)
-  text("Shared macOS settings",30,180,sectionWidth-28,15)
-  for i, item in ipairs(settings) do entry(item,32,204+(i-1)*26,sectionWidth-32) end
-  box(16,356,sectionWidth,height-364,tone)
-  text("Audio outputs",30,362,sectionWidth-28,15)
-  if #outputs == 0 then text("No output members verified",32,386,sectionWidth-32,14) end
+  box(16,170+sourceExpansion,sectionWidth,174,tone)
+  text("Shared macOS settings",30,180+sourceExpansion,sectionWidth-28,15)
+  for i, item in ipairs(settings) do entry(item,32,204+sourceExpansion+(i-1)*26,sectionWidth-32) end
+  box(16,356+sourceExpansion,sectionWidth,height-364-sourceExpansion,tone)
+  text("Audio outputs",30,362+sourceExpansion,sectionWidth-28,15)
+  if #outputs == 0 then text("No output members verified",32,386+sourceExpansion,sectionWidth-32,14) end
   for i, item in ipairs(outputs) do
-    entry(item,32+((i-1)%2)*(half+gap),386+math.floor((i-1)/2)*36,half)
+    entry(item,32+((i-1)%2)*(half+gap),386+sourceExpansion+math.floor((i-1)/2)*36,half)
   end
   statusCard:show()
   escapeHotkey = hs.hotkey.bind({}, "escape", closeCard)
@@ -134,7 +174,7 @@ local function showConfiguration(value, audio, appStates, startup)
   if value == "Allow Notifications" then sharing = true
   elseif value == "Notifications Off" then sharing = false end
   local sources = {
-    {{label="Chrome · macOS", bundle="com.google.Chrome", value=appStates.chrome}},
+    chromeSources(appStates.chrome),
     {
       {label="Slack · In-app", bundle="com.tinyspeck.slackmacgap", value=appStates.slackInApp},
       {label="Slack · macOS", bundle="com.tinyspeck.slackmacgap", value=appStates.slack},
