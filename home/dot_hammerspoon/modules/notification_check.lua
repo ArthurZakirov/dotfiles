@@ -21,25 +21,33 @@ local function show(message)
   activeAlert = hs.alert.show(message, {textSize = 17}, targetScreen(), 15)
 end
 
-local function findSharingSetting(element, depth)
-  if not element or depth == 0 then return nil end
-  if element.AXIdentifier == "allow-when-sharing" then
-    return element.AXValue
+local function settingsValue(title, identifier)
+  local function find(element, depth)
+    if depth == 0 then return nil end
+    if element.AXIdentifier == identifier then return element.AXValue end
+    for _, child in ipairs(element.AXChildren or {}) do
+      local value = find(child, depth - 1)
+      if value ~= nil then return value end
+    end
   end
-  for _, child in ipairs(element.AXChildren or {}) do
-    local value = findSharingSetting(child, depth - 1)
-    if value then return value end
+  local app = hs.application.get("com.apple.systempreferences")
+  if not app then return nil end
+  for _, window in ipairs(hs.axuielement.applicationElement(app).AXWindows or {}) do
+    if window.AXTitle == title then
+      local value = find(window, 20)
+      if value ~= nil then return value end
+    end
   end
 end
 
+local function checkbox(title, identifier)
+  local value = settingsValue(title, identifier)
+  if value == 0 or value == false then return false end
+  if value == 1 or value == true then return true end
+end
+
 local function sharingSetting()
-  local app = hs.application.get("com.apple.systempreferences")
-  if not app then return nil end
-  local settings = hs.axuielement.applicationElement(app)
-  for _, window in ipairs(settings.AXWindows or {}) do
-    local value = findSharingSetting(window, 16)
-    if value then return value end
-  end
+  return settingsValue("Notifications", "allow-when-sharing")
 end
 
 local statusCard
@@ -98,7 +106,7 @@ local function showCard(sources, settings, outputs)
   end)
 end
 
-local function showConfiguration(value, audio, appStates)
+local function showConfiguration(value, audio, appStates, startup)
   checking = false
   local effect = hs.audiodevice.defaultEffectDevice()
   local selected
@@ -110,7 +118,6 @@ local function showConfiguration(value, audio, appStates)
   end
   local ok, rawVolume = hs.osascript.applescript("alert volume of (get volume settings)")
   local volume = ok and tonumber(rawVolume) or nil
-  local startup = hs.execute("/usr/sbin/nvram StartupMute 2>/dev/null"):match("StartupMute%s+(%S+)")
   local sharing
   if value == "Allow Notifications" then sharing = true
   elseif value == "Notifications Off" then sharing = false end
@@ -122,7 +129,7 @@ local function showConfiguration(value, audio, appStates)
     {label="Notifications while sharing", icon="🖥", value=sharing},
     {label="Alert volume" .. (volume and (" · " .. volume .. "%") or ""),
       icon="🔔", value=volume and volume > 0},
-    {label="Play sound on startup", icon="⏻", value=startup and startup ~= "%01"},
+    {label="Play sound on startup", icon="⏻", value=startup},
     {label="Multi-Output Device exists", icon="🎛", value=audio and #audio.devices > 0},
     {label="Sound effects output · " .. (effect and effect:name() or "Unknown"), icon="🔊", value=selected},
   }
@@ -150,26 +157,6 @@ local function waitForSetting(read, done)
   end, function() done(value) end, 0.2)
 end
 
-local function appToggle(title)
-  local function find(element, depth)
-    if depth == 0 then return nil end
-    if element.AXIdentifier == "allow-notifications" then return element.AXValue end
-    for _, child in ipairs(element.AXChildren or {}) do
-      local value = find(child, depth - 1)
-      if value ~= nil then return value end
-    end
-  end
-  local app = hs.application.get("com.apple.systempreferences")
-  if not app then return nil end
-  for _, window in ipairs(hs.axuielement.applicationElement(app).AXWindows or {}) do
-    if window.AXTitle == title then
-      local value = find(window, 16)
-      if value == 0 or value == false then return false end
-      if value == 1 or value == true then return true end
-    end
-  end
-end
-
 local function openSettings(url, done)
   local task = hs.task.new("/usr/bin/open", function(code)
     done(code == 0)
@@ -177,28 +164,36 @@ local function openSettings(url, done)
   if not task or not task:start() then done(false) end
 end
 
-local function readApp(bundle, title, done)
-  openSettings(settingsURL .. "?id=" .. bundle, function(opened)
-    if not opened then done(nil); return end
-    waitForSetting(function() return appToggle(title) end, done)
+local function readSetting(url, read, done)
+  openSettings(url, function(opened)
+    if opened then waitForSetting(read, done)
+    else done(nil) end
   end)
+end
+
+local function readApp(bundle, title, done)
+  readSetting(settingsURL .. "?id=" .. bundle, function()
+    return checkbox(title, "allow-notifications")
+  end, done)
 end
 
 hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
   if checking then return end
   checking = true
   show("Checking Sound & Notifications…")
-  readApp("com.google.Chrome", "Google Chrome", function(chrome)
-    readApp("com.tinyspeck.slackmacgap", "Slack", function(slack)
-      openSettings(settingsURL, function(opened)
-      waitForSetting(opened and sharingSetting or function() end, function(value)
-        local states = {chrome = chrome, slack = slack}
-        local swift = hs.task.new("/usr/bin/swift", function(code, output)
-          local ok, audio = pcall(hs.json.decode, output)
-          showConfiguration(value, code == 0 and ok and audio or nil, states)
-        end, {hs.configdir .. "/bin/audio_notification_status.swift"})
-        if not swift or not swift:start() then showConfiguration(value, nil, states) end
-      end)
+  readSetting("x-apple.systempreferences:com.apple.Sound-Settings.extension", function()
+    return checkbox("Sound", "BootChimeCheckbox")
+  end, function(startup)
+    readApp("com.google.Chrome", "Google Chrome", function(chrome)
+      readApp("com.tinyspeck.slackmacgap", "Slack", function(slack)
+        readSetting(settingsURL, sharingSetting, function(value)
+          local states = {chrome = chrome, slack = slack}
+          local swift = hs.task.new("/usr/bin/swift", function(code, output)
+            local ok, audio = pcall(hs.json.decode, output)
+            showConfiguration(value, code == 0 and ok and audio or nil, states, startup)
+          end, {hs.configdir .. "/bin/audio_notification_status.swift"})
+          if not swift or not swift:start() then showConfiguration(value, nil, states, startup) end
+        end)
       end)
     end)
   end)
