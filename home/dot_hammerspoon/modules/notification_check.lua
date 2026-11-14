@@ -182,10 +182,22 @@ local function showConfiguration(value, audio, appStates, startup)
   local sharing
   if value == "Allow Notifications" then sharing = true
   elseif value == "Notifications Off" then sharing = false end
+  local prefs = appStates.slackPreferences or {}
+  local mentions = "Mentions and Direct Messages"
+  local function modeSelected(label)
+    if prefs.mode == "Everything" or (type(prefs.mode) == "string" and prefs.mode:lower() == mentions:lower()) then
+      return prefs.mode:lower() == label:lower()
+    end
+  end
   local sources = {
     {title="Chrome website notifications", items=chromeSources()},
     {title="Slack in-app notifications", items={
       {label="Slack · In-app", bundle="com.tinyspeck.slackmacgap", value=appStates.slackInApp},
+      {label="Desktop notifications", icon="🖥", value=prefs.desktop},
+      {label="Everything", icon="🔔", value=modeSelected("Everything")},
+      {label="Mentions and DMs", icon="💬", value=modeSelected(mentions)},
+      {label="Thread replies", icon="↩", value=prefs.threads},
+      {label="Messages from VIPs", icon="★", value=prefs.vips},
     }},
   }
   local permissions = {
@@ -261,6 +273,44 @@ local function slackElement(root, matches)
   end
 end
 
+local function readSlackPreferences(app, done)
+  local function control(title, role)
+    return slackElement(hs.axuielement.applicationElement(app), function(label, kind)
+      return kind == role and (not title or label == title)
+    end)
+  end
+  local function checked(title)
+    local element = control(title, "AXCheckBox")
+    local value = element and element:attributeValue("AXValue")
+    if value == 0 or value == 1 then return value == 1 end
+  end
+  local alreadyOpen = control("Preferences", "AXHeading") ~= nil
+  if not alreadyOpen then hs.eventtap.keyStroke({"cmd"}, ",", 0, app) end
+  waitForSetting(function()
+    if not app:isFrontmost() then return end
+    local tab = control("Notifications", "AXRadioButton")
+    if not tab then return end
+    if tab:attributeValue("AXValue") ~= 1 then
+      tab:performAction("AXPress")
+      return
+    end
+    local desktop = checked("Desktop notifications")
+    if desktop == nil then return end
+    local mode = control(nil, "AXComboBox")
+    return {
+      desktop = desktop,
+      threads = checked("Thread replies"),
+      vips = checked("Messages from VIPs, even if notifications are paused"),
+      mode = mode and mode:attributeValue("AXValue"),
+    }
+  end, function(values)
+    if not alreadyOpen and app:isFrontmost() and control("Preferences", "AXHeading") then
+      hs.eventtap.keyStroke({}, "escape", 0, app)
+    end
+    done(values)
+  end)
+end
+
 local function readSlackStatus(done)
   local app = hs.application.get("com.tinyspeck.slackmacgap")
   local window = app and (app:mainWindow() or app:allWindows()[1])
@@ -268,13 +318,12 @@ local function readSlackStatus(done)
   local previous = hs.window.focusedWindow()
   local minimized, hidden = window:isMinimized(), app:isHidden()
   local openedMenu = false
-  local function finish(value)
-    if openedMenu and app:isFrontmost() then hs.eventtap.keyStroke({}, "escape", 0, app) end
+  local function finish(value, preferences)
     local restoreFocus = app:isFrontmost()
     if minimized then window:minimize() end
     if hidden then app:hide() end
     if restoreFocus and previous and previous:id() ~= window:id() then previous:focus() end
-    done(value)
+    done(value, preferences)
   end
   local function read()
     if not app:isFrontmost() then return end
@@ -298,7 +347,11 @@ local function readSlackStatus(done)
   if minimized then window:unminimize() end
   app:activate(true)
   window:focus()
-  waitForSetting(read, finish, 4)
+  waitForSetting(read, function(value)
+    if not app:isFrontmost() then finish(value); return end
+    if openedMenu or value ~= nil then hs.eventtap.keyStroke({}, "escape", 0, app) end
+    readSlackPreferences(app, function(preferences) finish(value, preferences) end)
+  end, 4)
 end
 
 hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
@@ -323,8 +376,9 @@ hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
           local back = settingsControl("Slack", "go back") or settingsControl("Google Chrome", "go back")
           if back then back:performAction("AXPress") end
           local states = {chrome = chrome, slack = slack}
-          readSlackStatus(function(inApp)
+          readSlackStatus(function(inApp, preferences)
             states.slackInApp = inApp
+            states.slackPreferences = preferences
             local swift = hs.task.new("/usr/bin/swift", function(code, output)
               local ok, audio = pcall(hs.json.decode, output)
               showConfiguration(value, code == 0 and ok and audio or nil, states, startup)
