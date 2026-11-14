@@ -136,8 +136,8 @@ local function showConfiguration(value, audio, appStates, startup)
   local sources = {
     {{label="Chrome · macOS", bundle="com.google.Chrome", value=appStates.chrome}},
     {
-      {label="Slack · macOS", bundle="com.tinyspeck.slackmacgap", value=appStates.slack},
       {label="Slack · In-app", bundle="com.tinyspeck.slackmacgap", value=appStates.slackInApp},
+      {label="Slack · macOS", bundle="com.tinyspeck.slackmacgap", value=appStates.slack},
     },
   }
   local settings = {
