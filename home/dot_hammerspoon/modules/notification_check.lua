@@ -357,50 +357,72 @@ local function readSlackStatus(done)
   end, 4)
 end
 
+local function ensureNotificationApps(done)
+  local bundles = {"com.google.Chrome", "com.tinyspeck.slackmacgap"}
+  for _, bundle in ipairs(bundles) do
+    if not hs.application.get(bundle) then
+      local launch = hs.task.new("/usr/bin/open", function(code)
+        if code ~= 0 then print("Notification diagnostics could not start " .. bundle) end
+      end, {"-g", "-b", bundle})
+      if not launch or not launch:start() then
+        print("Notification diagnostics could not request launch for " .. bundle)
+      end
+    end
+  end
+  waitForSetting(function()
+    for _, bundle in ipairs(bundles) do
+      if not hs.application.get(bundle) then return end
+    end
+    return true
+  end, done, 8)
+end
+
 hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
   if checking then return end
   checking = true
   show("Checking Sound & Notifications…")
-  readSetting("x-apple.systempreferences:com.apple.Sound-Settings.extension", function()
-    return checkbox("Sound", "BootChimeCheckbox")
-  end, function(startup)
-    local backPressed = false
-    local function readSharing()
-      local value = sharingSetting()
-      if value ~= nil then return value end
-      if not backPressed then
-        local back = settingsControl("Slack", "go back") or settingsControl("Google Chrome", "go back")
-        if back then backPressed = not not back:performAction("AXPress") end
-      end
-    end
-    local function withSharing(value)
-      readApp("com.google.Chrome", "Google Chrome", function(chrome)
-        readApp("com.tinyspeck.slackmacgap", "Slack", function(slack)
+  ensureNotificationApps(function()
+    readSetting("x-apple.systempreferences:com.apple.Sound-Settings.extension", function()
+      return checkbox("Sound", "BootChimeCheckbox")
+    end, function(startup)
+      local backPressed = false
+      local function readSharing()
+        local value = sharingSetting()
+        if value ~= nil then return value end
+        if not backPressed then
           local back = settingsControl("Slack", "go back") or settingsControl("Google Chrome", "go back")
-          if back then back:performAction("AXPress") end
-          local states = {chrome = chrome, slack = slack}
-          readSlackStatus(function(inApp, preferences)
-            states.slackInApp = inApp
-            states.slackPreferences = preferences
-            local swift = hs.task.new("/usr/bin/swift", function(code, output)
-              local ok, audio = pcall(hs.json.decode, output)
-              showConfiguration(value, code == 0 and ok and audio or nil, states, startup)
-            end, {hs.configdir .. "/bin/audio_notification_status.swift"})
-            if not swift or not swift:start() then showConfiguration(value, nil, states, startup) end
+          if back then backPressed = not not back:performAction("AXPress") end
+        end
+      end
+      local function withSharing(value)
+        readApp("com.google.Chrome", "Google Chrome", function(chrome)
+          readApp("com.tinyspeck.slackmacgap", "Slack", function(slack)
+            local back = settingsControl("Slack", "go back") or settingsControl("Google Chrome", "go back")
+            if back then back:performAction("AXPress") end
+            local states = {chrome = chrome, slack = slack}
+            readSlackStatus(function(inApp, preferences)
+              states.slackInApp = inApp
+              states.slackPreferences = preferences
+              local swift = hs.task.new("/usr/bin/swift", function(code, output)
+                local ok, audio = pcall(hs.json.decode, output)
+                showConfiguration(value, code == 0 and ok and audio or nil, states, startup)
+              end, {hs.configdir .. "/bin/audio_notification_status.swift"})
+              if not swift or not swift:start() then showConfiguration(value, nil, states, startup) end
+            end)
           end)
         end)
+      end
+      openSettings(settingsURL, function(opened)
+        if not opened then withSharing(nil); return end
+        waitForSetting(readSharing, function(value)
+          if value ~= nil then withSharing(value); return end
+          backPressed = false
+          openSettings(settingsURL, function(reopened)
+            if reopened then waitForSetting(readSharing, withSharing, 6)
+            else withSharing(nil) end
+          end)
+        end, 6)
       end)
-    end
-    openSettings(settingsURL, function(opened)
-      if not opened then withSharing(nil); return end
-      waitForSetting(readSharing, function(value)
-        if value ~= nil then withSharing(value); return end
-        backPressed = false
-        openSettings(settingsURL, function(reopened)
-          if reopened then waitForSetting(readSharing, withSharing, 6)
-          else withSharing(nil) end
-        end)
-      end, 6)
     end)
   end)
 end)
