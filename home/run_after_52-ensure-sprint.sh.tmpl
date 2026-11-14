@@ -1,0 +1,34 @@
+#!/bin/bash
+set -euo pipefail
+
+[[ "$(uname -s)" == Darwin ]] || exit 0
+
+revision=29b530378b90ff8332d84da8c38f8aba61f1053d
+repository=git@github.com:ArthurZakirov/sprint.git
+state="$HOME/Library/Application Support/dotfiles/sprint"
+mkdir -p "$state"
+checkout="$state/source"
+if [[ ! -d "$checkout/.git" ]]; then
+  git init -q "$checkout"
+fi
+if ! git -C "$checkout" cat-file -e "$revision^{commit}" 2>/dev/null; then
+  git -C "$checkout" fetch --no-tags "$repository" "$revision"
+fi
+git -C "$checkout" checkout --quiet --detach "$revision"
+
+if [[ "$(cat "$state/installed-revision" 2>/dev/null || true)" != "$revision" ||
+      ! -x "$HOME/Applications/Sprint.app/Contents/MacOS/Sprint" ||
+      ! -x "$HOME/.local/bin/sprint" ]]; then
+  make -C "$checkout" install
+  printf '%s\n' "$revision" > "$state/installed-revision"
+fi
+
+skill="$HOME/.agents/skills/sprint-cli"
+if [[ -f "$state/disable-skill" ]]; then
+  if [[ -L "$skill" && "$(readlink "$skill")" == "$checkout/skills/sprint-cli" ]]; then
+    rm "$skill"
+  fi
+elif [[ ! -e "$skill" && ! -L "$skill" ]]; then
+  mkdir -p "$(dirname "$skill")"
+  ln -s "$checkout/skills/sprint-cli" "$skill"
+fi
