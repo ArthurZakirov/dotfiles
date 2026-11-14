@@ -67,7 +67,7 @@ local function showCard(sources, settings, outputs)
   closeCard()
   local frame = targetScreen():frame()
   local width, gap = math.min(frame.w - 32, 600), 12
-  local height = 358 + math.max(1, math.ceil(#outputs / 2)) * 36
+  local height = 384 + math.max(1, math.ceil(#outputs / 2)) * 36
   statusCard = hs.canvas.new({x = frame.x + (frame.w - width) / 2,
     y = frame.y + math.max(0, (frame.h - height) / 2), w = width, h = height})
   statusCard:level(hs.canvas.windowLevels.overlay)
@@ -97,17 +97,21 @@ local function showCard(sources, settings, outputs)
   local half = (sectionWidth - 32 - gap) / 2
   box(0,0,width,height,{white=0.09,alpha=0.98})
   text("Sound & Notifications",20,14,width-40,20)
-  box(16,50,sectionWidth,82,tone)
+  box(16,50,sectionWidth,108,tone)
   text("Notification sources",30,60,sectionWidth-28,15)
-  for i, item in ipairs(sources) do entry(item,32+(i-1)*(half+gap),93,half) end
-  box(16,144,sectionWidth,174,tone)
-  text("Shared macOS settings",30,154,sectionWidth-28,15)
-  for i, item in ipairs(settings) do entry(item,32,178+(i-1)*26,sectionWidth-32) end
-  box(16,330,sectionWidth,height-338,tone)
-  text("Audio outputs",30,336,sectionWidth-28,15)
-  if #outputs == 0 then text("No output members verified",32,360,sectionWidth-32,14) end
+  for i, source in ipairs(sources) do
+    for j, item in ipairs(source) do
+      entry(item,32+(i-1)*(half+gap),93+(j-1)*26,half)
+    end
+  end
+  box(16,170,sectionWidth,174,tone)
+  text("Shared macOS settings",30,180,sectionWidth-28,15)
+  for i, item in ipairs(settings) do entry(item,32,204+(i-1)*26,sectionWidth-32) end
+  box(16,356,sectionWidth,height-364,tone)
+  text("Audio outputs",30,362,sectionWidth-28,15)
+  if #outputs == 0 then text("No output members verified",32,386,sectionWidth-32,14) end
   for i, item in ipairs(outputs) do
-    entry(item,32+((i-1)%2)*(half+gap),360+math.floor((i-1)/2)*36,half)
+    entry(item,32+((i-1)%2)*(half+gap),386+math.floor((i-1)/2)*36,half)
   end
   statusCard:show()
   escapeHotkey = hs.hotkey.bind({}, "escape", closeCard)
@@ -130,8 +134,11 @@ local function showConfiguration(value, audio, appStates, startup)
   if value == "Allow Notifications" then sharing = true
   elseif value == "Notifications Off" then sharing = false end
   local sources = {
-    {label="Google Chrome", bundle="com.google.Chrome", value=appStates.chrome},
-    {label="Slack", bundle="com.tinyspeck.slackmacgap", value=appStates.slack},
+    {{label="Chrome · macOS", bundle="com.google.Chrome", value=appStates.chrome}},
+    {
+      {label="Slack · macOS", bundle="com.tinyspeck.slackmacgap", value=appStates.slack},
+      {label="Slack · In-app", bundle="com.tinyspeck.slackmacgap", value=appStates.slackInApp},
+    },
   }
   local settings = {
     {label="Notifications while sharing", icon="🖥", value=sharing},
@@ -186,6 +193,53 @@ local function readApp(bundle, title, done)
   end, done)
 end
 
+local function slackElement(window, matches)
+  local queue = {hs.axuielement.windowElement(window)}
+  for i = 1, 3500 do
+    local element = queue[i]
+    if not element then return end
+    if matches(element:attributeValue("AXTitle"), element:attributeValue("AXRole")) then
+      return element
+    end
+    for _, child in ipairs(element:attributeValue("AXChildren") or {}) do
+      queue[#queue+1] = child
+    end
+  end
+end
+
+local function readSlackStatus(done)
+  local app = hs.application.get("com.tinyspeck.slackmacgap")
+  local window = app and (app:mainWindow() or app:allWindows()[1])
+  if not window then done(nil); return end
+  local previous = hs.window.focusedWindow()
+  local minimized, hidden = window:isMinimized(), app:isHidden()
+  local openedMenu = false
+  local function finish(value)
+    if openedMenu and app:isFrontmost() then hs.eventtap.keyStroke({}, "escape", 0, app) end
+    local restoreFocus = app:isFrontmost()
+    if minimized then window:minimize() end
+    if hidden then app:hide() end
+    if restoreFocus and previous and previous:id() ~= window:id() then previous:focus() end
+    done(value)
+  end
+  local function read()
+    if not app:isFrontmost() then return end
+    local item = slackElement(window, function(title)
+      return title == "Notifications On" or title == "Notifications Paused"
+    end)
+    if item then return item:attributeValue("AXTitle") == "Notifications On" end
+    if not openedMenu then
+      local profile = slackElement(window, function(title, role)
+        return role == "AXButton" and title and title:match("^User: ")
+      end)
+      if profile then openedMenu = not not profile:performAction("AXPress") end
+    end
+  end
+  if minimized then window:unminimize() end
+  window:focus()
+  waitForSetting(read, finish, 2)
+end
+
 hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
   if checking then return end
   checking = true
@@ -208,11 +262,14 @@ hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
           local back = settingsControl("Slack", "go back") or settingsControl("Google Chrome", "go back")
           if back then back:performAction("AXPress") end
           local states = {chrome = chrome, slack = slack}
-          local swift = hs.task.new("/usr/bin/swift", function(code, output)
-            local ok, audio = pcall(hs.json.decode, output)
-            showConfiguration(value, code == 0 and ok and audio or nil, states, startup)
-          end, {hs.configdir .. "/bin/audio_notification_status.swift"})
-          if not swift or not swift:start() then showConfiguration(value, nil, states, startup) end
+          readSlackStatus(function(inApp)
+            states.slackInApp = inApp
+            local swift = hs.task.new("/usr/bin/swift", function(code, output)
+              local ok, audio = pcall(hs.json.decode, output)
+              showConfiguration(value, code == 0 and ok and audio or nil, states, startup)
+            end, {hs.configdir .. "/bin/audio_notification_status.swift"})
+            if not swift or not swift:start() then showConfiguration(value, nil, states, startup) end
+          end)
         end)
       end)
     end
