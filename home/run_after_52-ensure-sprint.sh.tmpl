@@ -3,7 +3,7 @@ set -euo pipefail
 
 [[ "$(uname -s)" == Darwin ]] || exit 0
 
-revision=3551af5c883170dd3b8ae9d97100e05c31b9e7e9
+revision=62a0a8dea62b2cef7434634521259424757cfd2e
 repository=git@github.com:ArthurZakirov/sprint.git
 state="$HOME/Library/Application Support/dotfiles/sprint"
 mkdir -p "$state"
@@ -21,14 +21,4 @@ if [[ "$(cat "$state/installed-revision" 2>/dev/null || true)" != "$revision" ||
       ! -x "$HOME/.local/bin/sprint" ]]; then
   make -C "$checkout" install
   printf '%s\n' "$revision" > "$state/installed-revision"
-fi
-
-skill="$HOME/.agents/skills/sprint-cli"
-if [[ -f "$state/disable-skill" ]]; then
-  if [[ -L "$skill" && "$(readlink "$skill")" == "$checkout/skills/sprint-cli" ]]; then
-    rm "$skill"
-  fi
-elif [[ ! -e "$skill" && ! -L "$skill" ]]; then
-  mkdir -p "$(dirname "$skill")"
-  ln -s "$checkout/skills/sprint-cli" "$skill"
 fi
