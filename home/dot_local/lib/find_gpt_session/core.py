@@ -25,11 +25,17 @@ class SearchRequest:
         if kind == "pr":
             parsed = urlsplit(raw)
             parts = parsed.path.strip("/").split("/")
-            if (parsed.scheme != "https" or not parsed.hostname or
-                    len(parts) < 4 or parts[2] not in _PR_TYPES or
+            host = (parsed.hostname or "").lower()
+            valid_type = ((host == "github.com" and len(parts) >= 4 and
+                           parts[2] == "pull") or
+                          (host == "bitbucket.org" and len(parts) >= 4 and
+                           parts[2] == "pull-requests"))
+            if (parsed.scheme != "https" or not valid_type or
+                    parsed.username is not None or parsed.password is not None or
+                    parsed.port not in (None, 443) or not all(parts[:2]) or
                     not parts[3].isdigit()):
                 raise ValueError("--pr requires a GitHub or Bitbucket HTTPS pull-request URL")
-            return cls(kind, f"https://{parsed.hostname.lower()}/{'/'.join(parts[:4])}")
+            return cls(kind, f"https://{host}/{'/'.join(parts[:4])}")
         if kind == "commit" and not _COMMIT.fullmatch(raw):
             raise ValueError("--commit requires a 7–40 character Git SHA prefix")
         if kind == "jira":
@@ -44,8 +50,10 @@ class SearchRequest:
     def ui_term(self) -> str:
         """One visible ChatGPT search term; no claim of semantic fuzzy retrieval."""
         if self.kind == "pr":
-            parts = urlsplit(self.value).path.strip("/").split("/")
-            return f"{parts[2]}/{parts[3]}"
+            # PR numbers are only unique *inside a repository*. Searching for
+            # "pull/5" or "pull-requests/5" can open a chat from another repo.
+            # Use the entire canonical URL, including host, owner and repo.
+            return self.value
         if self.kind == "repo":
             return self.value.rstrip("/").split("/")[-1].removesuffix(".git")
         if self.kind == "worktree":

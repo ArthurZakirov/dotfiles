@@ -33,7 +33,7 @@ def test_url_canonicalization_and_ui_search_term():
         "pr", "https://github.com/ArthurZakirov/dotfiles/pull/67#discussion"
     )
     assert q.value == "https://github.com/ArthurZakirov/dotfiles/pull/67"
-    assert q.ui_term == "pull/67"
+    assert q.ui_term == "https://github.com/ArthurZakirov/dotfiles/pull/67"
 
 
 def test_repo_branch_and_jira_term():
@@ -142,7 +142,7 @@ def test_cli_contract_json():
                             "--json"]) == 0
     print_calls = [c.args[0] for c in out.write.call_args_list if c.args and c.args[0].strip()]
     payload = json.loads("".join(print_calls))
-    assert payload["query"]["ui_term"] == "pull/4"
+    assert payload["query"]["ui_term"] == "https://github.com/a/b/pull/4"
     assert payload["results"][0]["session_id"] == "abc"
 
 
@@ -262,3 +262,57 @@ def test_browser_timeout_covers_each_requested_navigation():
         browser.search(SearchRequest.create("text", "cleanup"), 12)
 
     assert runner.call_args.kwargs["timeout"] >= 12 * (12 + 3)
+
+
+def test_pull_request_search_keys_identify_repository_and_host():
+    """Same PR number in different repositories must generate different queries."""
+    requests = [
+        SearchRequest.create("pr", "https://bitbucket.org/team/platform/pull-requests/5"),
+        SearchRequest.create("pr", "https://bitbucket.org/team/analytics/pull-requests/5"),
+        SearchRequest.create("pr", "https://bitbucket.org/other/platform/pull-requests/5"),
+        SearchRequest.create("pr", "https://github.com/team/platform/pull/5"),
+    ]
+    assert len({request.ui_term for request in requests}) == len(requests)
+    for request in requests:
+        assert request.ui_term == request.value
+        assert "/" in request.ui_term and "://" in request.ui_term
+        assert request.ui_term not in ("pull/5", "pull-requests/5")
+
+
+def test_pr_search_uses_full_canonical_url_and_removes_location_fragments():
+    request = SearchRequest.create(
+        "pr", "https://bitbucket.org/Team/Platform/pull-requests/5/overview"
+              "?review=1#comment-2"
+    )
+    assert request.value == "https://bitbucket.org/Team/Platform/pull-requests/5"
+    assert request.ui_term == request.value
+
+
+def test_reject_untrusted_pr_hosts_and_mismatched_route_types():
+    import pytest
+
+    for address in (
+        "https://github.com/team/platform/pull-requests/5",
+        "https://bitbucket.org/team/platform/pull/5",
+        "https://example.com/team/platform/pull/5",
+        "https://bitbucket.org.evil.example/team/platform/pull-requests/5",
+        "https://user@bitbucket.org/team/platform/pull-requests/5",
+        "https://github.com:444/team/platform/pull/5",
+    ):
+        with pytest.raises(ValueError, match="GitHub or Bitbucket"):
+            SearchRequest.create("pr", address)
+
+
+def test_browser_provider_passes_full_pr_url_not_number_only():
+    browser = BrowserProvider("safari", source=Path("/tmp/fake.swift"),
+                              executable=Path("/tmp/fake-ax"))
+    query = SearchRequest.create("pr", "https://bitbucket.org/team/platform/pull-requests/5")
+    with patch.object(browser, "_ready_executable", return_value=Path("/tmp/fake-ax")), \
+         patch("find_gpt_session.adapters.run_json", return_value={
+             "provider": "safari", "results": [], "warnings": []
+         }) as runner:
+        browser.search(query, 3)
+    assert runner.call_args.args[0] == [
+        "/tmp/fake-ax", "safari",
+        "https://bitbucket.org/team/platform/pull-requests/5", "3"
+    ]

@@ -170,7 +170,7 @@ def test_cli_open_context_invokes_search_then_open_without_extra_cli(capsys):
 
         def search(self, request, limit):
             assert request.kind == "pr"
-            assert request.ui_term == "pull/67"
+            assert request.ui_term == "https://github.com/org/demo/pull/67"
             hits = [
                 SessionHit("codex", CODEX_ID, "Codex", None, 80, "Git"),
                 SessionHit("chatgpt", CODEX_ID, "Chat", CHAT_URL, 70, "Chat"),

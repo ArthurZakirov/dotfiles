@@ -32,7 +32,15 @@ run_quality_checks() {
   # The native ChatGPT browser adapter uses AppKit/Accessibility. Compile its
   # type declarations on the existing macOS CI runner, not only the Python CLI.
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    swiftc -typecheck "$repo_root/home/dot_local/share/find-gpt-session/ui.swift"
+    local swift_source="$repo_root/home/dot_local/share/find-gpt-session/ui.swift"
+    local swift_tmp
+    swift_tmp="$(mktemp -d)"
+    swiftc -typecheck "$swift_source"
+    # Execute synthetic UI-result collision checks on a real macOS runner.
+    # This does not require an authenticated browser or Accessibility access.
+    swiftc "$swift_source" -o "$swift_tmp/ui-ax-self-test"
+    "$swift_tmp/ui-ax-self-test" --self-test
+    rm -rf -- "$swift_tmp"
   fi
 }
 
