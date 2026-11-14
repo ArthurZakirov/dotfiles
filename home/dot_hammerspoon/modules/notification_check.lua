@@ -193,8 +193,8 @@ local function readApp(bundle, title, done)
   end, done)
 end
 
-local function slackElement(window, matches)
-  local queue = {hs.axuielement.windowElement(window)}
+local function slackElement(root, matches)
+  local queue = {root}
   for i = 1, 3500 do
     local element = queue[i]
     if not element then return end
@@ -226,20 +226,27 @@ local function readSlackStatus(done)
   end
   local function read()
     if not app:isFrontmost() then return end
-    local item, label = slackElement(window, function(title)
+    local item, label = slackElement(hs.axuielement.applicationElement(app), function(title)
       return title == "Notifications On" or title == "Notifications Paused"
     end)
     if item then return label == "Notifications On" end
     if not openedMenu then
-      local profile = slackElement(window, function(title, role)
-        return role == "AXButton" and title and title:match("^User: ")
+      local profile = slackElement(hs.axuielement.windowElement(window), function(title, role)
+        return (role == "AXButton" or role == "AXPopUpButton") and title and title:match("^User: ")
       end)
-      if profile then openedMenu = not not profile:performAction("AXPress") end
+      if profile then
+        local frame = profile:attributeValue("AXFrame")
+        if frame and frame.w > 0 and frame.h > 0 then
+          hs.eventtap.leftClick({x = frame.x + frame.w / 2, y = frame.y + frame.h / 2})
+          openedMenu = true
+        end
+      end
     end
   end
   if minimized then window:unminimize() end
+  app:activate(true)
   window:focus()
-  waitForSetting(read, finish, 2)
+  waitForSetting(read, finish, 4)
 end
 
 hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
