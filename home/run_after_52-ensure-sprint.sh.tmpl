@@ -1,0 +1,24 @@
+#!/bin/bash
+set -euo pipefail
+
+[[ "$(uname -s)" == Darwin ]] || exit 0
+
+revision=62a0a8dea62b2cef7434634521259424757cfd2e
+repository=git@github.com:ArthurZakirov/sprint.git
+state="$HOME/Library/Application Support/dotfiles/sprint"
+mkdir -p "$state"
+checkout="$state/source"
+if [[ ! -d "$checkout/.git" ]]; then
+  git init -q "$checkout"
+fi
+if ! git -C "$checkout" cat-file -e "$revision^{commit}" 2>/dev/null; then
+  git -C "$checkout" fetch --no-tags "$repository" "$revision"
+fi
+git -C "$checkout" checkout --quiet --detach "$revision"
+
+if [[ "$(cat "$state/installed-revision" 2>/dev/null || true)" != "$revision" ||
+      ! -x "$HOME/Applications/Sprint.app/Contents/MacOS/Sprint" ||
+      ! -x "$HOME/.local/bin/sprint" ]]; then
+  make -C "$checkout" install
+  printf '%s\n' "$revision" > "$state/installed-revision"
+fi
