@@ -377,7 +377,7 @@ local function ensureNotificationApps(done)
   end, done, 8)
 end
 
-hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
+hs.hotkey.bind({"ctrl", "alt", "cmd", "shift"}, "n", function()
   if checking then return end
   checking = true
   show("Checking Sound & Notifications…")

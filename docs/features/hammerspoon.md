@@ -50,6 +50,7 @@ left-to-right screen order (then top-to-bottom).
 | Claude | `Ctrl+Alt+H` | Interactive action palette |
 | All apps | `Option+1` | Toggle Codex CLI Realtime Voice (`F8`) in the last focused Warp window |
 | All apps | `Hyper+Ä` | SteelSeries audio and microphone check |
+| All apps | `Hyper+Shift+N` | Show sound and notification diagnostics (Esc to close) |
 | All apps | `Hyper+R` | Reload Hammerspoon configuration |
 
 Claude shortcuts activate only when Claude is frontmost. The ChatGPT shortcut

@@ -38,7 +38,7 @@ def test_both_profiles_generate_identical_hammerspoon_files(profile_factory):
         ).splitlines()
         paths = [path for path in managed if path.startswith(".hammerspoon/")]
         tree[profile] = {
-            path: profile_factory.chezmoi(
+            path: profile_factory.chezmoi_bytes(
                 config, "cat", str(Path.home() / path)
             )
             for path in paths
