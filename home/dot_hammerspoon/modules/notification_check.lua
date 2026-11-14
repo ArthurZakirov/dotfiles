@@ -115,8 +115,8 @@ local function showCard(sources, permissions, settings, outputs)
     statusCard:appendElements({type="rectangle", action="fill", roundedRectRadii={xRadius=12,yRadius=12},
       fillColor=color, frame={x=x,y=y,w=w,h=h}})
   end
-  local function text(value,x,y,w,size,color)
-    statusCard:appendElements({type="text",text=value,textSize=size,textColor=color or {white=0.95},
+  local function text(value,x,y,w,size,color,font)
+    statusCard:appendElements({type="text",text=value,textSize=size,textFont=font,textColor=color or {white=0.95},
       frame={x=x,y=y,w=w,h=28}})
   end
   local function entry(item,x,y,w)
@@ -147,21 +147,21 @@ local function showCard(sources, permissions, settings, outputs)
     if logo then
       statusCard:appendElements({type="image", image=logo, frame={x=x+14,y=58,w=24,h=24}})
     end
-    text(source.title, x + (logo and 46 or 14), 60, columnWidth - (logo and 60 or 28), 15)
+    text(source.title, x + (logo and 46 or 14), 60, columnWidth - (logo and 60 or 28), 17, nil, "HelveticaNeue-Bold")
     for j, item in ipairs(source.items) do
       entry(item, x + 14, 90 + (j - 1) * 26, columnWidth - 28)
     end
   end
   box(16, permissionsY, sectionWidth, 76, tone)
-  text("macOS app permissions", 30, permissionsY + 10, sectionWidth - 28, 15)
+  text("macOS app permissions", 30, permissionsY + 10, sectionWidth - 28, 17, nil, "HelveticaNeue-Bold")
   for i, item in ipairs(permissions) do
     entry(item, 32 + (i - 1) * (half + gap), permissionsY + 40, half)
   end
   box(16, settingsY, sectionWidth, 174, tone)
-  text("Shared macOS settings", 30, settingsY + 10, sectionWidth - 28, 15)
+  text("Shared macOS settings", 30, settingsY + 10, sectionWidth - 28, 17, nil, "HelveticaNeue-Bold")
   for i, item in ipairs(settings) do entry(item, 32, settingsY + 34 + (i - 1) * 26, sectionWidth - 32) end
   box(16, outputsY, sectionWidth, height - outputsY - 8, tone)
-  text("Audio outputs", 30, outputsY + 6, sectionWidth - 28, 15)
+  text("Audio outputs", 30, outputsY + 6, sectionWidth - 28, 17, nil, "HelveticaNeue-Bold")
   if #outputs == 0 then text("No output members verified", 32, outputsY + 30, sectionWidth - 32, 14) end
   for i, item in ipairs(outputs) do
     entry(item, 32 + ((i - 1) % 2) * (half + gap), outputsY + 30 + math.floor((i - 1) / 2) * 36, half)
@@ -193,8 +193,8 @@ local function showConfiguration(value, audio, appStates, startup)
     end
   end
   local sources = {
-    {title="Chrome website notifications", bundle="com.google.Chrome", items=chromeSources()},
-    {title="Slack in-app notifications", bundle="com.tinyspeck.slackmacgap", items={
+    {title="Chrome website alerts", bundle="com.google.Chrome", items=chromeSources()},
+    {title="Slack in-app alerts", bundle="com.tinyspeck.slackmacgap", items={
       {label="Slack · In-app", bundle="com.tinyspeck.slackmacgap", value=appStates.slackInApp},
       {label="Desktop notifications", icon="🖥", value=prefs.desktop},
       {label="Everything", icon="🔔", value=modeSelected("Everything")},
