@@ -5,7 +5,7 @@ local checking = false
 local stream
 local retryTimer
 
-local function show(message)
+local function targetScreen()
   local screen = hs.screen.primaryScreen()
   for _, candidate in ipairs(hs.screen.allScreens()) do
     if candidate:name() == "DELL U3225QE" then
@@ -13,8 +13,12 @@ local function show(message)
       break
     end
   end
+  return screen
+end
+
+local function show(message)
   if activeAlert then hs.alert.closeSpecific(activeAlert) end
-  activeAlert = hs.alert.show(message, {textSize = 17}, screen, 15)
+  activeAlert = hs.alert.show(message, {textSize = 17}, targetScreen(), 15)
 end
 
 local function findSharingSetting(element, depth)
@@ -38,16 +42,65 @@ local function sharingSetting()
   end
 end
 
-local function row(label, value, detail)
-  local mark = value == nil and "⚪" or (value and "✅" or "❌")
-  return mark .. " " .. label .. (detail and (": " .. detail) or "")
+local statusCard
+local closeTimer
+local function showCard(sources, settings, outputs)
+  if statusCard then statusCard:delete() end
+  if closeTimer then closeTimer:stop() end
+  local frame = targetScreen():frame()
+  local width, gap = math.min(frame.w - 32, 600), 12
+  local height = 358 + math.max(1, math.ceil(#outputs / 2)) * 36
+  statusCard = hs.canvas.new({x = frame.x + (frame.w - width) / 2,
+    y = frame.y + math.max(0, (frame.h - height) / 2), w = width, h = height})
+  statusCard:level(hs.canvas.windowLevels.overlay)
+  local function box(x,y,w,h,color)
+    statusCard:appendElements({type="rectangle", action="fill", roundedRectRadii={xRadius=12,yRadius=12},
+      fillColor=color, frame={x=x,y=y,w=w,h=h}})
+  end
+  local function text(value,x,y,w,size,color)
+    statusCard:appendElements({type="text",text=value,textSize=size,textColor=color or {white=0.95},
+      frame={x=x,y=y,w=w,h=28}})
+  end
+  local function entry(item,x,y,w)
+    local image = item.bundle and hs.image.imageFromAppBundle(item.bundle)
+    if image then
+      statusCard:appendElements({type="image",image=image,frame={x=x,y=y,w=24,h=24}})
+    else
+      text(item.icon or "🔊",x,y,27,16)
+    end
+    text(item.label,x+32,y+2,w-60,14)
+    local status = item.value == nil and "—" or (item.value and "✓" or "✕")
+    local color = item.value == nil and {white=0.6} or
+      (item.value and {red=0.40,green=0.88,blue=0.64} or {red=1,green=0.45,blue=0.46})
+    text(status,x+w-23,y,24,18,color)
+  end
+  local tone = {white=0.16}
+  local sectionWidth = width - 32
+  local half = (sectionWidth - 32 - gap) / 2
+  box(0,0,width,height,{white=0.09,alpha=0.98})
+  text("Sound & Notifications",20,14,width-40,20)
+  box(16,50,sectionWidth,82,tone)
+  text("Notification sources",30,60,sectionWidth-28,15)
+  for i, item in ipairs(sources) do entry(item,32+(i-1)*(half+gap),93,half) end
+  box(16,144,sectionWidth,174,tone)
+  text("Shared macOS settings",30,154,sectionWidth-28,15)
+  for i, item in ipairs(settings) do entry(item,32,178+(i-1)*26,sectionWidth-32) end
+  box(16,330,sectionWidth,height-338,tone)
+  text("Audio outputs",30,336,sectionWidth-28,15)
+  if #outputs == 0 then text("No output members verified",32,360,sectionWidth-32,14) end
+  for i, item in ipairs(outputs) do
+    entry(item,32+((i-1)%2)*(half+gap),360+math.floor((i-1)/2)*36,half)
+  end
+  statusCard:show()
+  closeTimer = hs.timer.doAfter(15, function()
+    if statusCard then statusCard:delete(); statusCard = nil end
+    closeTimer = nil
+  end)
 end
 
 local function showConfiguration(value, audio, appStates)
   checking = false
   local effect = hs.audiodevice.defaultEffectDevice()
-  local lines = {"Sound & Notifications"}
-  local function add(text) lines[#lines + 1] = text end
   local selected
   if audio and audio.outputKnown then
     selected = false
@@ -55,32 +108,32 @@ local function showConfiguration(value, audio, appStates)
       if device.selected then selected = true end
     end
   end
-  add(row("Sound effects output", selected, effect and effect:name() or "Unknown"))
-  add(row("Multi-Output Device exists", audio and #audio.devices > 0))
-
-  table.insert(lines, 2, row("Google Chrome", appStates.chrome)
-    .. "     │     " .. row("Slack", appStates.slack))
-  table.insert(lines, 3, "↓  Shared macOS settings  ↓")
-  local scriptOK, alertVolume = hs.osascript.applescript("alert volume of (get volume settings)")
-  add(row("Alert volume", scriptOK and tonumber(alertVolume) and tonumber(alertVolume) > 0,
-    scriptOK and (tostring(alertVolume) .. "%") or "Unknown"))
+  local ok, rawVolume = hs.osascript.applescript("alert volume of (get volume settings)")
+  local volume = ok and tonumber(rawVolume) or nil
   local startup = hs.execute("/usr/sbin/nvram StartupMute 2>/dev/null"):match("StartupMute%s+(%S+)")
-  add(row("Play sound on startup", startup and startup ~= "%01", not startup and "Unknown" or nil))
   local sharing
   if value == "Allow Notifications" then sharing = true
   elseif value == "Notifications Off" then sharing = false end
-  add(row("Notifications while sharing", sharing, value or "Unknown"))
+  local sources = {
+    {label="Google Chrome", bundle="com.google.Chrome", value=appStates.chrome},
+    {label="Slack", bundle="com.tinyspeck.slackmacgap", value=appStates.slack},
+  }
+  local settings = {
+    {label="Notifications while sharing", icon="🖥", value=sharing},
+    {label="Alert volume" .. (volume and (" · " .. volume .. "%") or ""),
+      icon="🔔", value=volume and volume > 0},
+    {label="Play sound on startup", icon="⏻", value=startup and startup ~= "%01"},
+    {label="Multi-Output Device exists", icon="🎛", value=audio and #audio.devices > 0},
+    {label="Sound effects output · " .. (effect and effect:name() or "Unknown"), icon="🔊", value=selected},
+  }
   local outputs = {}
   for _, device in ipairs(audio and audio.devices or {}) do
     for _, name in ipairs(device.members) do
-      outputs[#outputs + 1] = row(name, device.selected)
+      outputs[#outputs + 1] = {label=name, value=device.selected,
+        icon=name:find("Speaker",1,true) and "🔊" or "🎧"}
     end
   end
-  if #outputs > 0 then
-    add("↓  Audio outputs  ↓")
-    add(table.concat(outputs, "     │     "))
-  end
-  show(table.concat(lines, "\n"))
+  showCard(sources, settings, outputs)
 end
 
 local function waitForSetting(read, done)
