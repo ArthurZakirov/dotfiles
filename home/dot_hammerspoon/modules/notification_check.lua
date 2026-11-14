@@ -57,22 +57,34 @@ local function showConfiguration(value, audio)
   end
   add(row("Sound effects output", selected, effect and effect:name() or "Unknown"))
   add(row("Multi-Output Device exists", audio and #audio.devices > 0))
-  for _, device in ipairs(audio and audio.devices or {}) do
-    for _, name in ipairs(device.members) do
-      add(row("  " .. name, device.selected, device.name))
-    end
-  end
-  local prefs = hs.plist.read(os.getenv("HOME") .. "/Library/Preferences/com.apple.ncprefs.plist")
-  local function appStatus(bundle)
-    for _, app in ipairs(prefs and prefs.apps or {}) do
-      if app["bundle-id"] == bundle then
-        if app.auth == 7 then return true end
-        if app.auth == 0 then return false end
+
+  local function appStatus(label)
+    local app = hs.application.get("com.apple.systempreferences")
+    if not app then return nil end
+    local function find(element, depth)
+      if depth == 0 then return nil end
+      for _, text in ipairs({element.AXTitle or "", element.AXDescription or "", element.AXValue or ""}) do
+        if type(text) == "string" then
+          local summary = text:match("^" .. label .. "[,\n] +(.+)$")
+          if summary == "Off" then return false end
+          if summary and (summary:find("Desktop", 1, true) or summary:find("Sounds", 1, true)
+            or summary:find("Badges", 1, true)) then return true end
+        end
       end
+      for _, child in ipairs(element.AXChildren or {}) do
+        local result = find(child, depth - 1)
+        if result ~= nil then return result end
+      end
+      return nil
+    end
+    for _, window in ipairs(hs.axuielement.applicationElement(app).AXWindows or {}) do
+      local result = find(window, 16)
+      if result ~= nil then return result end
     end
   end
-  add(row("Google Chrome notifications", appStatus("com.google.Chrome")))
-  add(row("Slack notifications", appStatus("com.tinyspeck.slackmacgap")))
+  table.insert(lines, 2, row("Google Chrome", appStatus("Google Chrome"))
+    .. "     │     " .. row("Slack", appStatus("Slack")))
+  table.insert(lines, 3, "↓  Shared macOS settings  ↓")
   local scriptOK, alertVolume = hs.osascript.applescript("alert volume of (get volume settings)")
   add(row("Alert volume", scriptOK and tonumber(alertVolume) and tonumber(alertVolume) > 0,
     scriptOK and (tostring(alertVolume) .. "%") or "Unknown"))
@@ -82,6 +94,16 @@ local function showConfiguration(value, audio)
   if value == "Allow Notifications" then sharing = true
   elseif value == "Notifications Off" then sharing = false end
   add(row("Notifications while sharing", sharing, value or "Unknown"))
+  local outputs = {}
+  for _, device in ipairs(audio and audio.devices or {}) do
+    for _, name in ipairs(device.members) do
+      outputs[#outputs + 1] = row(name, device.selected)
+    end
+  end
+  if #outputs > 0 then
+    add("↓  Audio outputs  ↓")
+    add(table.concat(outputs, "     │     "))
+  end
   show(table.concat(lines, "\n"))
 end
 
