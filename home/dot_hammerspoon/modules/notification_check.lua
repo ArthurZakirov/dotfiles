@@ -54,11 +54,9 @@ local function sharingSetting()
 end
 
 local statusCard
-local closeTimer
 local escapeHotkey
 
 local function closeCard()
-  if closeTimer then closeTimer:stop(); closeTimer = nil end
   if escapeHotkey then escapeHotkey:delete(); escapeHotkey = nil end
   if statusCard then statusCard:delete(); statusCard = nil end
 end
@@ -164,7 +162,6 @@ local function showCard(sources, permissions, settings, outputs)
   end
   statusCard:show()
   escapeHotkey = hs.hotkey.bind({}, "escape", closeCard)
-  closeTimer = hs.timer.doAfter(15, closeCard)
 end
 
 local function showConfiguration(value, audio, appStates, startup)
