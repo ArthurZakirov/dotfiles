@@ -58,9 +58,16 @@ end
 
 local statusCard
 local closeTimer
+local escapeHotkey
+
+local function closeCard()
+  if closeTimer then closeTimer:stop(); closeTimer = nil end
+  if escapeHotkey then escapeHotkey:delete(); escapeHotkey = nil end
+  if statusCard then statusCard:delete(); statusCard = nil end
+end
+
 local function showCard(sources, settings, outputs)
-  if statusCard then statusCard:delete() end
-  if closeTimer then closeTimer:stop() end
+  closeCard()
   local frame = targetScreen():frame()
   local width, gap = math.min(frame.w - 32, 600), 12
   local height = 358 + math.max(1, math.ceil(#outputs / 2)) * 36
@@ -106,10 +113,8 @@ local function showCard(sources, settings, outputs)
     entry(item,32+((i-1)%2)*(half+gap),360+math.floor((i-1)/2)*36,half)
   end
   statusCard:show()
-  closeTimer = hs.timer.doAfter(15, function()
-    if statusCard then statusCard:delete(); statusCard = nil end
-    closeTimer = nil
-  end)
+  escapeHotkey = hs.hotkey.bind({}, "escape", closeCard)
+  closeTimer = hs.timer.doAfter(15, closeCard)
 end
 
 local function showConfiguration(value, audio, appStates, startup)
