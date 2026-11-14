@@ -198,8 +198,10 @@ local function slackElement(window, matches)
   for i = 1, 3500 do
     local element = queue[i]
     if not element then return end
-    if matches(element:attributeValue("AXTitle"), element:attributeValue("AXRole")) then
-      return element
+    local role = element:attributeValue("AXRole")
+    for _, attribute in ipairs({"AXTitle", "AXDescription", "AXValue"}) do
+      local label = element:attributeValue(attribute)
+      if type(label) == "string" and matches(label, role) then return element, label end
     end
     for _, child in ipairs(element:attributeValue("AXChildren") or {}) do
       queue[#queue+1] = child
@@ -224,10 +226,10 @@ local function readSlackStatus(done)
   end
   local function read()
     if not app:isFrontmost() then return end
-    local item = slackElement(window, function(title)
+    local item, label = slackElement(window, function(title)
       return title == "Notifications On" or title == "Notifications Paused"
     end)
-    if item then return item:attributeValue("AXTitle") == "Notifications On" end
+    if item then return label == "Notifications On" end
     if not openedMenu then
       local profile = slackElement(window, function(title, role)
         return role == "AXButton" and title and title:match("^User: ")
