@@ -133,7 +133,12 @@ local function showConfiguration(value, audio, appStates)
         icon=name:find("Speaker",1,true) and "🔊" or "🎧"}
     end
   end
-  showCard(sources, settings, outputs)
+  if activeAlert then hs.alert.closeSpecific(activeAlert); activeAlert = nil end
+  local rendered, err = pcall(showCard, sources, settings, outputs)
+  if not rendered then
+    print("Notification card: " .. tostring(err))
+    show("Sound & Notifications: could not render the status card.")
+  end
 end
 
 local function waitForSetting(read, done)
@@ -165,24 +170,35 @@ local function appToggle(title)
   end
 end
 
+local function openSettings(url, done)
+  local task = hs.task.new("/usr/bin/open", function(code)
+    done(code == 0)
+  end, {url})
+  if not task or not task:start() then done(false) end
+end
+
 local function readApp(bundle, title, done)
-  hs.execute("/usr/bin/open " .. string.format("%q", settingsURL .. "?id=" .. bundle))
-  waitForSetting(function() return appToggle(title) end, done)
+  openSettings(settingsURL .. "?id=" .. bundle, function(opened)
+    if not opened then done(nil); return end
+    waitForSetting(function() return appToggle(title) end, done)
+  end)
 end
 
 hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
   if checking then return end
   checking = true
+  show("Checking Sound & Notifications…")
   readApp("com.google.Chrome", "Google Chrome", function(chrome)
     readApp("com.tinyspeck.slackmacgap", "Slack", function(slack)
-      hs.execute("/usr/bin/open " .. settingsURL)
-      waitForSetting(sharingSetting, function(value)
+      openSettings(settingsURL, function(opened)
+      waitForSetting(opened and sharingSetting or function() end, function(value)
         local states = {chrome = chrome, slack = slack}
         local swift = hs.task.new("/usr/bin/swift", function(code, output)
           local ok, audio = pcall(hs.json.decode, output)
           showConfiguration(value, code == 0 and ok and audio or nil, states)
         end, {hs.configdir .. "/bin/audio_notification_status.swift"})
         if not swift or not swift:start() then showConfiguration(value, nil, states) end
+      end)
       end)
     end)
   end)
