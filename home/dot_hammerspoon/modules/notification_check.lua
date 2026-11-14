@@ -33,7 +33,7 @@ local function settingsControl(title, identifier)
   local app = hs.application.get("com.apple.systempreferences")
   if not app then return nil end
   for _, window in ipairs(hs.axuielement.applicationElement(app).AXWindows or {}) do
-    if window.AXTitle == title then
+    if title == nil or window.AXTitle == title then
       local value = find(window, 20)
       if value ~= nil then return value end
     end
@@ -52,9 +52,13 @@ local function checkbox(title, identifier)
 end
 
 local function sharingSetting()
+  local value = settingsValue(nil, "allow-when-sharing")
+  if value == "Allow Notifications" or value == "Notifications Off" then return value end
   local back = settingsControl("Slack", "go back") or settingsControl("Google Chrome", "go back")
   if back then back:performAction("AXPress") end
-  return settingsValue("Notifications", "allow-when-sharing")
+  if settingsControl("Sound", "BootChimeCheckbox") then
+    hs.task.new("/usr/bin/open", nil, {settingsURL}):start()
+  end
 end
 
 local statusCard
@@ -149,6 +153,7 @@ local function showConfiguration(value, audio, appStates, startup)
   end
   if activeAlert then hs.alert.closeSpecific(activeAlert); activeAlert = nil end
   local rendered, err = pcall(showCard, sources, settings, outputs)
+  if rendered then print("Notification diagnostics sharing: " .. tostring(value)) end
   if not rendered then
     print("Notification card: " .. tostring(err))
     show("Sound & Notifications: could not render the status card.")
@@ -191,11 +196,11 @@ hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
   readSetting("x-apple.systempreferences:com.apple.Sound-Settings.extension", function()
     return checkbox("Sound", "BootChimeCheckbox")
   end, function(startup)
-    readSetting(settingsURL, sharingSetting, function(value)
       readApp("com.google.Chrome", "Google Chrome", function(chrome)
         readApp("com.tinyspeck.slackmacgap", "Slack", function(slack)
           local back = settingsControl("Slack", "go back") or settingsControl("Google Chrome", "go back")
           if back then back:performAction("AXPress") end
+          readSetting(settingsURL, sharingSetting, function(value)
           local states = {chrome = chrome, slack = slack}
           local swift = hs.task.new("/usr/bin/swift", function(code, output)
             local ok, audio = pcall(hs.json.decode, output)
