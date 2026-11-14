@@ -43,6 +43,12 @@ class ChezmoiProfileFixture:
             "--config", str(config), *args,
         ).stdout
 
+    def chezmoi_bytes(self, config: Path, *args: str) -> bytes:
+        return subprocess.run(
+            ("chezmoi", "--source", str(self.repository), "--config", str(config), *args),
+            check=True, capture_output=True,
+        ).stdout
+
     def render(self, profile: str) -> RenderedProfile:
         config = self.scratch_directory / f"{profile}.toml"
         self.chezmoi(
