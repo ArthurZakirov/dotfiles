@@ -54,11 +54,6 @@ end
 local function sharingSetting()
   local value = settingsValue(nil, "allow-when-sharing")
   if value == "Allow Notifications" or value == "Notifications Off" then return value end
-  local back = settingsControl("Slack", "go back") or settingsControl("Google Chrome", "go back")
-  if back then back:performAction("AXPress") end
-  if settingsControl("Sound", "BootChimeCheckbox") then
-    hs.task.new("/usr/bin/open", nil, {settingsURL}):start()
-  end
 end
 
 local statusCard
@@ -160,9 +155,9 @@ local function showConfiguration(value, audio, appStates, startup)
   end
 end
 
-local function waitForSetting(read, done)
+local function waitForSetting(read, done, timeout)
   local value
-  local deadline = hs.timer.secondsSinceEpoch() + 4
+  local deadline = hs.timer.secondsSinceEpoch() + (timeout or 4)
   hs.timer.waitUntil(function()
     value = read()
     return value ~= nil or hs.timer.secondsSinceEpoch() >= deadline
@@ -196,11 +191,20 @@ hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
   readSetting("x-apple.systempreferences:com.apple.Sound-Settings.extension", function()
     return checkbox("Sound", "BootChimeCheckbox")
   end, function(startup)
+    local backPressed = false
+    local function readSharing()
+      local value = sharingSetting()
+      if value ~= nil then return value end
+      if not backPressed then
+        local back = settingsControl("Slack", "go back") or settingsControl("Google Chrome", "go back")
+        if back then backPressed = not not back:performAction("AXPress") end
+      end
+    end
+    local function withSharing(value)
       readApp("com.google.Chrome", "Google Chrome", function(chrome)
         readApp("com.tinyspeck.slackmacgap", "Slack", function(slack)
           local back = settingsControl("Slack", "go back") or settingsControl("Google Chrome", "go back")
           if back then back:performAction("AXPress") end
-          readSetting(settingsURL, sharingSetting, function(value)
           local states = {chrome = chrome, slack = slack}
           local swift = hs.task.new("/usr/bin/swift", function(code, output)
             local ok, audio = pcall(hs.json.decode, output)
@@ -209,6 +213,17 @@ hs.hotkey.bind(HammerspoonConfig.hyper, "n", function()
           if not swift or not swift:start() then showConfiguration(value, nil, states, startup) end
         end)
       end)
+    end
+    openSettings(settingsURL, function(opened)
+      if not opened then withSharing(nil); return end
+      waitForSetting(readSharing, function(value)
+        if value ~= nil then withSharing(value); return end
+        backPressed = false
+        openSettings(settingsURL, function(reopened)
+          if reopened then waitForSetting(readSharing, withSharing, 6)
+          else withSharing(nil) end
+        end)
+      end, 6)
     end)
   end)
 end)
