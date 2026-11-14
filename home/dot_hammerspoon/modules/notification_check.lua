@@ -137,6 +137,7 @@ local function showCard(sources, permissions, settings, outputs)
   local half = (sectionWidth - 32 - gap) / 2
   box(0,0,width,height,{white=0.09,alpha=0.98})
   text("Sound & Notifications",20,14,width-40,20)
+  text("Esc to close",width-105,18,90,13,{white=0.7})
   local columnWidth = (sectionWidth - gap) / 2
   for i, source in ipairs(sources) do
     local x = 16 + (i - 1) * (columnWidth + gap)
