@@ -548,37 +548,47 @@ def test_voice_frontend_speaks_only_visible_backend_items_and_paces_walkthroughs
     assert "change representation rather than repeat jargon" in pacing
 
 
-def test_hooks_template_preserves_expected_events():
-    source = (SOURCE / "hooks.json.tmpl").read_text(encoding="utf-8")
-    data = json.loads(source.replace("{{ .chezmoi.homeDir }}", "/tmp/codex-fixture"))
+@pytest.mark.parametrize("profile", ["personal", "professional"])
+@pytest.mark.parametrize("previously_enabled", [False, True], ids=["fresh", "upgrade"])
+def test_apply_disables_scope_checkpoint(profile_factory, profile, tmp_path, previously_enabled):
+    codex = tmp_path / ".codex"
+    codex.mkdir()
+    config = codex / "hooks.json"
+    checkpoint = codex / "hooks-json/scope-checkpoint/checkpoint.py"
+    if previously_enabled:
+        checkpoint.parent.mkdir(parents=True)
+        checkpoint.write_text("# Previously installed checkpoint")
+        handler = {"type": "command", "command": f'python3 "{checkpoint}" hook'}
+        config.write_text(json.dumps({"hooks": {
+            "UserPromptSubmit": [{"hooks": [handler]}],
+            "PreToolUse": [{"hooks": [handler]}],
+        }}))
+        records = codex / "scope-checkpoint/records"
+        records.mkdir(parents=True)
+        (records / "example.json").write_text("{}")
 
-    assert set(data["hooks"]) == {"UserPromptSubmit", "PreToolUse", "Stop"}
-    prompt_hooks = [
-        hook for entry in data["hooks"]["UserPromptSubmit"] for hook in entry["hooks"]
-    ]
-    before_tool_hooks = [
-        hook for entry in data["hooks"]["PreToolUse"] for hook in entry["hooks"]
-    ]
-    stop_hooks = [hook for entry in data["hooks"]["Stop"] for hook in entry["hooks"]]
+    for _ in range(2):
+        result = chezmoi_codex_command(
+            profile_factory, profile, tmp_path, "apply",
+            "--exclude", "scripts", str(config), str(checkpoint),
+        )
+        assert result.returncode == 0, result.stderr
 
-    assert len(prompt_hooks) == 3
-    assert len(before_tool_hooks) == 1
-    assert len(stop_hooks) == 1
+        assert not checkpoint.exists()
+        hooks = json.loads(config.read_text())["hooks"]
+        assert set(hooks) == {"UserPromptSubmit", "Stop"}
+        prompt_hooks = [hook for group in hooks["UserPromptSubmit"] for hook in group["hooks"]]
+        stop_hooks = [hook for group in hooks["Stop"] for hook in group["hooks"]]
+        assert len(prompt_hooks) == 2
+        assert len(stop_hooks) == 1
+        assert "bedtime-device-guard/bedtime_guard.py" in prompt_hooks[0]["command"]
+        assert prompt_hooks[0]["async"] is False
+        for hook in (prompt_hooks[1], *stop_hooks):
+            assert "agents-md-freshness/check.py" in hook["command"]
+            assert hook["async"] is True
 
-    for hook in (prompt_hooks[0], before_tool_hooks[0]):
-        assert "scope-checkpoint/checkpoint.py" in hook["command"]
-        assert hook["async"] is False
-        assert hook["timeoutSec"] > 0
-        assert " hook" in hook["command"]
-    assert prompt_hooks[0]["command"] == before_tool_hooks[0]["command"]
-
-    assert "bedtime-device-guard/bedtime_guard.py" in prompt_hooks[1]["command"]
-    assert prompt_hooks[1]["async"] is False
-
-    for hook in (prompt_hooks[2], *stop_hooks):
-        assert "agents-md-freshness/check.py" in hook["command"]
-        assert hook["async"] is True
-        assert "block" not in hook["command"]
+    if previously_enabled:
+        assert (records / "example.json").read_text() == "{}"
 
 
 def test_checkout_review_output_has_path_only_copy_block():

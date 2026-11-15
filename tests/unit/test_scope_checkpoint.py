@@ -13,7 +13,7 @@ import pytest
 
 SCRIPT = (
     Path(__file__).resolve().parents[2]
-    / "home/dot_codex/hooks-json/scope-checkpoint/executable_checkpoint.py"
+    / "src/codex-guidance/scope-checkpoint/checkpoint.py"
 )
 SESSION = "thread-42"
 TURN = "turn-1"
