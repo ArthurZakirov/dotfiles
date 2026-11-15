@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""Generate and open a Warp window for recent local Codex chats."""
+import argparse
+import json
+import os
+from pathlib import Path
+import shlex
+import shutil
+import subprocess
+import tempfile
+import time
+import uuid
+
+
+def open_tab(title, cwd, command, new_window=False):
+    directory = Path.home() / ".warp" / "tab_configs"
+    directory.mkdir(parents=True, exist_ok=True)
+    name = "managed_codex_" + uuid.uuid4().hex
+    target = directory / (name + ".toml")
+    ready = directory / (name + ".ready")
+    startup = "touch " + shlex.quote(str(ready)) + " && " + command
+    contents = (
+        f"name = {json.dumps(title, ensure_ascii=False)}\n"
+        f"title = {json.dumps(title, ensure_ascii=False)}\n"
+        '[[panes]]\nid = "main"\ntype = "terminal"\n'
+        f"directory = {json.dumps(cwd, ensure_ascii=False)}\n"
+        f"commands = [{json.dumps(startup, ensure_ascii=False)}]\n"
+    )
+    try:
+        with target.open("x", encoding="utf-8") as config:
+            config.write(contents)
+        suffix = "?new_window=true" if new_window else ""
+        subprocess.run(["/usr/bin/open", "warp://tab_config/" + name + suffix], check=True)
+        deadline = time.monotonic() + 8
+        while not ready.exists():
+            if time.monotonic() >= deadline:
+                raise SystemExit("Warp did not acknowledge the requested tab.")
+            time.sleep(0.1)
+    finally:
+        target.unlink(missing_ok=True)
+        ready.unlink(missing_ok=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument("--no-open", action="store_true")
+    parser.add_argument("--new", action="store_true")
+    args = parser.parse_args()
+    if args.limit < 1:
+        parser.error("--limit must be positive")
+    config = Path.home() / ".config" / "warp-codex" / "command"
+    try:
+        command = shlex.split(config.read_text(encoding="utf-8")) if config.exists() else ["codex"]
+    except (OSError, ValueError) as error:
+        parser.error(f"Cannot read {config}: {error}")
+    if not command:
+        parser.error(f"No Codex command in {config}")
+    search_path = os.pathsep.join([
+        os.environ.get("PATH", ""), str(Path.home() / ".local" / "bin"),
+        "/opt/homebrew/bin", "/usr/local/bin",
+    ])
+    executable = shutil.which(os.path.expanduser(command[0]), path=search_path)
+    if not executable:
+        parser.error(f"Codex executable not found: {command[0]}")
+    codex = [executable, *command[1:]]
+
+    if args.new:
+        open_tab("Codex", os.getcwd(), shlex.join(codex))
+        return
+
+    requests = [
+        dict(id=1, method="initialize", params={"clientInfo": {
+            "name": "warp_codex_chats", "version": "1",
+        }}),
+        dict(method="initialized"),
+    ]
+    with subprocess.Popen([*codex, "app-server"], stdin=subprocess.PIPE,
+                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                          text=True) as server:
+        try:
+            for request in requests:
+                server.stdin.write(json.dumps(request) + "\n")
+            cursor = None
+            tabs = []
+            seen = set()
+            while len(tabs) < args.limit:
+                params = dict(limit=50, sortKey="updated_at", archived=False)
+                if cursor:
+                    params["cursor"] = cursor
+                server.stdin.write(json.dumps(dict(id=2, method="thread/list", params=params)) + "\n")
+                server.stdin.flush()
+                for line in server.stdout:
+                    response = json.loads(line)
+                    if response.get("id") == 2:
+                        break
+                else:
+                    raise SystemExit("Codex app-server closed before returning chats.")
+                if "error" in response:
+                    raise SystemExit("Codex app-server rejected the chat list request.")
+                result = response["result"]
+                for chat in result["data"]:
+                    cwd = chat.get("cwd")
+                    if not cwd or not Path(cwd).is_absolute() or not Path(cwd).is_dir():
+                        continue
+                    if chat.get("ephemeral") or chat.get("canAcceptDirectInput") is False:
+                        continue
+                    try:
+                        session = str(uuid.UUID(chat["sessionId"] or chat["id"]))
+                    except (TypeError, ValueError, KeyError):
+                        continue
+                    if session in seen:
+                        continue
+                    seen.add(session)
+                    title = " ".join((chat.get("name") or "Codex-Chat").split())
+                    command = shlex.join([*codex, "resume", session])
+                    tabs.append((title, cwd, command))
+                    if len(tabs) == args.limit:
+                        break
+                cursor = result.get("nextCursor")
+                if not cursor:
+                    break
+        finally:
+            server.terminate()
+
+    if not tabs:
+        print("No eligible local Codex chats yet.")
+        return
+    directory = Path.home() / ".warp" / "launch_configurations"
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / "recent-codex-chats.yaml"
+    lines = ["name: Recent Codex Chats", "windows:", "  - tabs:"]
+    for title, cwd, command in tabs:
+        lines.extend([
+            f"      - title: {json.dumps(title, ensure_ascii=False)}",
+            "        layout:",
+            f"          cwd: {json.dumps(cwd, ensure_ascii=False)}",
+            "          commands:",
+            f"            - exec: {json.dumps(command, ensure_ascii=False)}",
+        ])
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory,
+                                     delete=False) as temporary:
+        temporary.write("\n".join(lines) + "\n")
+    os.replace(temporary.name, target)
+    print(f"Generated {len(tabs)} Warp tabs.")
+    if not args.no_open:
+        for index, (title, cwd, command) in enumerate(tabs):
+            open_tab(title, cwd, command, new_window=index == 0)
+
+
+if __name__ == "__main__":
+    main()

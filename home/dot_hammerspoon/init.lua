@@ -29,6 +29,7 @@ dofile(hs.configdir .. "/modules/notification_check.lua")
 HammerspoonConfig.codexDesktopSession = dofile(hs.configdir .. "/modules/codex_desktop_session.lua")
 dofile(hs.configdir .. "/modules/agents_freshness.lua")
 dofile(hs.configdir .. "/modules/codex_resume.lua")
+dofile(hs.configdir .. "/modules/warp_codex_chats.lua")
 
 hs.alert.show("Hammerspoon config loaded")
 
