@@ -10,22 +10,6 @@ Prefer structured, authenticated integrations over UI automation for account-bac
 | A structured integration is unavailable, cannot perform the required operation, or remains blocked after the supported connection/authentication path is attempted or declined. | Use browser interaction as the fallback. When the runtime can control the user's regular Chrome profile and the task benefits from existing sessions, extensions, or password-manager access, prefer that Chrome profile over an isolated or in-app browser; otherwise use the available browser surface and state the limitation when it materially affects the task. |
 | The task is ordinary public-web research that does not require the user's account, private data, or an authenticated action. | Use the most appropriate research/browser tooling directly; do not add integration-discovery or authentication work that does not help the task. |
 
-When Codex on macOS needs the user's signed-in regular Chrome, use
-`~/.local/bin/agent-chrome` with ordinary Agent Browser commands. Consult the
-installed Agent Browser skill for command syntax. Use this entry point from
-every chat and omit session, connection, and state persistence options. It uses
-a fixed daemon session and attaches to running Chrome through Agent Browser's
-auto-connect. Keep the shared daemon running between tasks.
-
-The daemon pins its browser tab so tabs opened by the user or extensions
-cannot take over. Chats still share the selected tab and snapshot references.
-Coordinate so only one chat operates the shared session at a time. Use a
-dedicated task tab, verify it, and take a fresh snapshot before acting.
-Close only the task tab you opened. If a command reports `tab_gone`, use
-`agent-chrome tab new <url>` to bind a fresh task tab.
-
-Enable Chrome's remote debugging through `chrome://inspect/#remote-debugging`
-when setting up the connection. If Chrome or its Agent Browser daemon restarts,
-use the same entry point to reattach. Chrome may ask the user to allow the
-connection again. If a connection fails during a write, reconnect with a
-read-only check and verify the outcome before deciding whether to repeat it.
+When your current Codex task on macOS calls for browser fallback and needs the
+user's signed-in regular Chrome, follow the
+[Agent Browser regular Chrome workflow](https://github.com/ArthurZakirov/dotfiles/blob/main/docs/features/agent-browser.md#regular-chrome).

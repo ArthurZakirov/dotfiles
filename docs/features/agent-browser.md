@@ -38,6 +38,50 @@ Chrome for Testing. A separate explicit update is required to do that.
 When no browser executable is available, the helper runs agent-browser install.
 In isolated CI, installation hooks are not executed; ordinary applies verify the runtime.
 
+<a id="regular-chrome"></a>
+## 🌐 Regular Chrome
+
+Use this workflow when an authorized Codex task on macOS needs the user's
+existing signed-in Chrome after structured integration options have been checked.
+
+### Human setup
+
+When remote debugging needs to be enabled, open
+`chrome://inspect/#remote-debugging` in regular Chrome and enable remote
+debugging. If Chrome asks to allow a remote debugging connection, review the
+request and click **Allow** if you approve it. Tell the agent when setup or
+approval is complete. Chrome may ask again after Chrome or the daemon restarts.
+
+### Current agent operation
+
+Run `~/.local/bin/agent-chrome` with ordinary Agent Browser commands for this
+task. Use the installed skill for syntax. The
+[managed entry point](../../home/dot_local/bin/executable_agent-chrome)
+supplies a fixed daemon session, attachment to running Chrome, and strict tab
+pinning. Omit session, connection, and state persistence options. Keep the
+daemon running when your task ends.
+
+The daemon shares its selected tab and snapshot references with other callers.
+Use a dedicated task tab, verify the selected tab, and take a fresh snapshot
+before acting. If you observe that another task is using the session,
+coordinate access with the user before proceeding. Close only a task tab you
+opened.
+
+### Current agent recovery
+
+- **Chrome unavailable or approval pending.** Report what the command
+  actually returned. If it found no running debuggable Chrome, ask the user
+  to open regular Chrome and enable remote debugging at
+  `chrome://inspect/#remote-debugging`. If Chrome is waiting for approval,
+  ask the user to review the Chrome prompt and click **Allow** if they approve.
+  Leave both controls to the user. Wait for confirmation before retrying the
+  connection with `~/.local/bin/agent-chrome tab list`.
+- **Connection interrupted.** Use the same entry point for a read-only check
+  after Chrome or the daemon restarts. If a write may have run before the
+  interruption, verify its outcome before deciding whether to repeat it.
+- **Pinned tab gone.** If the command reports `tab_gone`, run
+  `agent-chrome tab new <url>` to bind a fresh task tab, then take a new snapshot.
+
 ## Verify
 
 ```sh
