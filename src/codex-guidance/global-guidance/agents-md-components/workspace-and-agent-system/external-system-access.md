@@ -17,10 +17,12 @@ every chat and omit session, connection, and state persistence options. It uses
 a fixed daemon session and attaches to running Chrome through Agent Browser's
 auto-connect. Keep the shared daemon running between tasks.
 
-The daemon shares its active tab and snapshot references across chats. Use a
-dedicated task tab, verify the active tab and take a fresh snapshot before
-acting, and coordinate so only one chat operates the shared session at a time.
-Close only the task tab you opened.
+The daemon pins its browser tab so tabs opened by the user or extensions
+cannot take over. Chats still share the selected tab and snapshot references.
+Coordinate so only one chat operates the shared session at a time. Use a
+dedicated task tab, verify it, and take a fresh snapshot before acting.
+Close only the task tab you opened. If a command reports `tab_gone`, use
+`agent-chrome tab new <url>` to bind a fresh task tab.
 
 Enable Chrome's remote debugging through `chrome://inspect/#remote-debugging`
 when setting up the connection. If Chrome or its Agent Browser daemon restarts,

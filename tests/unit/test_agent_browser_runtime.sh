@@ -31,7 +31,7 @@ STUB
 chmod +x "$trial/bin/agent-browser"
 export PATH="$trial/bin:$PATH"
 entrypoint="$root/home/dot_local/bin/executable_agent-chrome"
-expected="$(printf '%s\n' --session dotfiles-chrome --auto-connect tab new 'https://example.com/?q=with space')"
+expected="$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab tab new 'https://example.com/?q=with space')"
 for project in "$trial" "$trial/other-project"; do
   output="$(cd "$project" && AGENT_BROWSER_SESSION=per-chat "$entrypoint" tab new 'https://example.com/?q=with space')"
   [[ "$output" == "$expected" ]]
@@ -40,4 +40,4 @@ done
 result=0
 BROWSER_TEST_EXIT=42 "$entrypoint" click '@e1' > "$trial/attempt" || result=$?
 [[ "$result" == 42 ]]
-[[ "$(cat "$trial/attempt")" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect click '@e1')" ]]
+[[ "$(cat "$trial/attempt")" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab click '@e1')" ]]
