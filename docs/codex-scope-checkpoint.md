@@ -4,21 +4,46 @@ An optional Codex hook records a scope/effort decision **per turn and workspace*
 before a potentially mutating tool call. It replaces the blanket guidance-audit
 footer. It does not determine whether the agent's scope judgment is correct.
 
-## Configure using Codex hooks
+## Enable manually
 
-After the branch is reviewed, merged, and installed with `chezmoi apply`,
-start a **new Codex session** so Codex loads the updated hook registration.
-Use Codex's native hook settings to enable or disable the scope-checkpoint
-handlers under **`UserPromptSubmit`** and **`PreToolUse`**. Both need to be
-enabled to get the initial reminder and the pre-write gate.
+A normal `chezmoi apply` removes the checkpoint registrations from the managed
+`~/.codex/hooks.json` and removes the old installed `checkpoint.py`. Existing
+assessment records stay in place.
 
-The managed hook has **no independent activation flag, enable/disable
-command, or Python-script toggle**. When Codex calls the hook, the checkpoint
-runs. Disabling the registered handlers in Codex stops those invocations.
-There is no need to create or remove an `enabled` file. Existing legacy
-`~/.codex/scope-checkpoint/enabled` files are ignored.
+To enable the checkpoint until the next apply, run these commands from the
+Dotfiles repository root:
 
-Assessment data remains local and is never committed to Git.
+```sh
+install -d "$HOME/.codex/hooks-json/scope-checkpoint"
+install -m 755 src/codex-guidance/scope-checkpoint/checkpoint.py \
+  "$HOME/.codex/hooks-json/scope-checkpoint/checkpoint.py"
+```
+
+In `~/.codex/hooks.json`, append the following handler to the existing
+`UserPromptSubmit` group's `hooks` array. Add a `PreToolUse` event with a group
+whose `hooks` array contains the same handler. Replace `/absolute/home` with
+your home directory.
+
+```json
+{
+  "type": "command",
+  "command": "python3 \"/absolute/home/.codex/hooks-json/scope-checkpoint/checkpoint.py\" hook",
+  "timeoutSec": 5,
+  "async": false
+}
+```
+
+Start a new Codex session to load the configuration. Use Codex's native hook
+settings to enable both handlers if prompted. To restore the managed default,
+run `chezmoi apply --force` for the two affected paths:
+
+```sh
+chezmoi apply --force "$HOME/.codex/hooks.json" \
+  "$HOME/.codex/hooks-json/scope-checkpoint/checkpoint.py"
+```
+
+Without `--force`, confirm the Chezmoi prompt if it detects edits to the managed
+hook configuration.
 
 ## Expected behavior
 
