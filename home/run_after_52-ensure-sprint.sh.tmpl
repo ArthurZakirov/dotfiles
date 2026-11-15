@@ -1,0 +1,34 @@
+#!/bin/bash
+set -euo pipefail
+
+[[ "$(uname -s)" == Darwin ]] || exit 0
+
+revision=3ff312631d1ce71119107985b9d8e1e0c84ba8fb
+repository=https://github.com/ArthurZakirov/sprint.git
+state="$HOME/Library/Application Support/dotfiles/sprint"
+mkdir -p "$state"
+checkout="$state/source"
+if [[ ! -d "$checkout/.git" ]]; then
+  git init -q "$checkout"
+fi
+if ! git -C "$checkout" cat-file -e "$revision^{commit}" 2>/dev/null; then
+  git -C "$checkout" fetch --no-tags "$repository" "$revision"
+fi
+git -C "$checkout" checkout --quiet --detach "$revision"
+
+if [[ "$(cat "$state/installed-revision" 2>/dev/null || true)" != "$revision" ||
+      ! -x "$HOME/Applications/Sprint.app/Contents/MacOS/Sprint" ||
+      ! -x "$HOME/.local/bin/sprint" ]]; then
+  if [[ ! -f "$state/installed-revision" ]]; then
+    backup=""
+    for existing in "$HOME/Applications/Sprint.app" "$HOME/.local/bin/sprint"                     "$HOME/Library/LaunchAgents/local.sprint.login.plist"; do
+      if [[ -e "$existing" || -L "$existing" ]]; then
+        [[ -n "$backup" ]] || backup="$(mktemp -d "$state/prior-install.XXXXXXXX")"
+        /bin/cp -pPR "$existing" "$backup/"
+      fi
+    done
+    if [[ -n "$backup" ]]; then printf 'Sprint: prior installation saved in %s\n' "$backup"; fi
+  fi
+  make -C "$checkout" install
+  printf '%s\n' "$revision" > "$state/installed-revision"
+fi
