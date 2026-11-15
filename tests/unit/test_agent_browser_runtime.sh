@@ -20,3 +20,24 @@ chmod +x "$AGENT_BROWSER_EXECUTABLE_PATH"
 ensure_agent_browser_runtime >/dev/null
 unset AGENT_BROWSER_EXECUTABLE_PATH
 echo 'Browser runtime: repeated installs skipped and explicit binary reused'
+
+# Check the managed entry point from independent processes and project directories.
+mkdir -p "$trial/bin" "$trial/other-project"
+cat > "$trial/bin/agent-browser" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$@"
+exit "${BROWSER_TEST_EXIT:-0}"
+STUB
+chmod +x "$trial/bin/agent-browser"
+export PATH="$trial/bin:$PATH"
+entrypoint="$root/home/dot_local/bin/executable_agent-chrome"
+expected="$(printf '%s\n' --session dotfiles-chrome --auto-connect tab new 'https://example.com/?q=with space')"
+for project in "$trial" "$trial/other-project"; do
+  output="$(cd "$project" && AGENT_BROWSER_SESSION=per-chat "$entrypoint" tab new 'https://example.com/?q=with space')"
+  [[ "$output" == "$expected" ]]
+done
+
+result=0
+BROWSER_TEST_EXIT=42 "$entrypoint" click '@e1' > "$trial/attempt" || result=$?
+[[ "$result" == 42 ]]
+[[ "$(cat "$trial/attempt")" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect click '@e1')" ]]
