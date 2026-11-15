@@ -14,6 +14,26 @@ before acting. If you observe that another task is using the session,
 coordinate access with the user before proceeding. Close only a task tab you
 opened.
 
+For your current task, replace `example-task-01` with a unique task tab
+label and `https://example.com` with the intended URL. The label identifies
+the tab within the wrapper's fixed daemon session. Run each command as needed
+and inspect its result before continuing.
+
+```sh
+~/.local/bin/agent-chrome tab new --label example-task-01 https://example.com
+~/.local/bin/agent-chrome tab example-task-01
+~/.local/bin/agent-chrome get url
+~/.local/bin/agent-chrome snapshot
+# Optional, if the title helps with the current task.
+~/.local/bin/agent-chrome get title
+# Run only when done with the task tab you opened.
+~/.local/bin/agent-chrome tab close example-task-01
+```
+
+If the URL or snapshot differs from the intended page, stop before acting.
+Confirm the task tab's label and reselect it, then check the URL and take a
+fresh snapshot. Continue only after both checks match the intended page.
+
 ## Recover from command results
 
 Use the current command's output and running or exited state to choose the next action.
