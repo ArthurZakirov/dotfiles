@@ -38,6 +38,20 @@ Chrome for Testing. A separate explicit update is required to do that.
 When no browser executable is available, the helper runs agent-browser install.
 In isolated CI, installation hooks are not executed; ordinary applies verify the runtime.
 
+<a id="regular-chrome"></a>
+## 🌐 Regular Chrome
+
+Set up regular Chrome when the agent needs your existing signed-in profile on
+macOS.
+
+### Human setup
+
+When remote debugging needs to be enabled, open
+`chrome://inspect/#remote-debugging` in regular Chrome and enable remote
+debugging. If Chrome asks to allow a remote debugging connection, review the
+request and click **Allow** if you approve it. Tell the agent when setup or
+approval is complete. Chrome may ask again after Chrome or the daemon restarts.
+
 ## Verify
 
 ```sh

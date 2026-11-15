@@ -1,0 +1,3 @@
+#!/bin/sh
+# Share an existing Chrome connection across Codex chats on this machine.
+exec agent-browser --session dotfiles-chrome --auto-connect --pin-tab "$@"

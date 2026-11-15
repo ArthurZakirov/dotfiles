@@ -14,6 +14,52 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_agent_chrome_lookup_after_apply(tmp_path, profile_factory):
+    rendered = profile_factory.render("professional")
+    home = tmp_path / "home"
+    (home / ".local/bin").mkdir(parents=True)
+    profile_factory.run(
+        "chezmoi", "--source", str(ROOT / "home"), "--config", str(rendered.config),
+        "--destination", str(home), "apply", "--exclude", "scripts",
+        str(home / ".zshrc"), str(home / ".local/bin/agent-chrome"),
+    )
+    executable = home / ".local/bin/agent-chrome"
+    assert executable.is_file() and os.access(executable, os.X_OK)
+
+    # Replace the runtime and optional zsh dependencies with local fixtures.
+    browser = tmp_path / "agent-browser"
+    browser.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\"\n")
+    browser.chmod(0o755)
+    (home / ".oh-my-zsh").mkdir()
+    (home / ".oh-my-zsh/oh-my-zsh.sh").touch()
+    (home / ".zshrc.local").write_text(
+        'export HOMEBREW_PREFIX="$HOME"\npath=("${HOME:h}" $path)\n'
+    )
+    for plugin in ("zsh-autosuggestions", "zsh-syntax-highlighting"):
+        directory = home / "share" / plugin
+        directory.mkdir(parents=True)
+        (directory / f"{plugin}.zsh").touch()
+    env = {"HOME": str(home), "ZDOTDIR": str(home), "PATH": f"{tmp_path}:/usr/bin:/bin"}
+    expected = ["--session", "dotfiles-chrome", "--auto-connect", "--pin-tab", "tab", "list"]
+
+    interactive = profile_factory.run(
+        "/bin/zsh", "-ic", "command -v agent-chrome && agent-chrome tab list", env=env,
+    )
+    assert interactive.stdout.splitlines() == [str(executable), *expected]
+
+    # Codex can run a noninteractive shell with a PATH inherited from zsh.
+    inherited = profile_factory.run(
+        "/bin/zsh", "-ic", "/bin/zsh -fc 'agent-chrome tab list'", env=env,
+    )
+    assert inherited.stdout.splitlines() == expected
+
+    fallback = profile_factory.run(
+        "/bin/zsh", "-fc", '[[ -z "$(command -v agent-chrome)" ]] && ~/.local/bin/agent-chrome tab list',
+        env=env,
+    )
+    assert fallback.stdout.splitlines() == expected
+
+
 @pytest.mark.parametrize("profile", ["personal", "professional"])
 def test_full_managed_tree_diff_apply_and_upgrade(profile, tmp_path, profile_factory):
     """An empty HOME, repeated apply and a modified managed file all work."""
