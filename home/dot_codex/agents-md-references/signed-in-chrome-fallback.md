@@ -4,7 +4,8 @@
 
 ## Attach and select a tab
 
-Run `~/.local/bin/agent-chrome` with ordinary Agent Browser commands. Use
+Run `agent-chrome` with ordinary Agent Browser commands. If your shell lacks
+`~/.local/bin` in `PATH`, use `~/.local/bin/agent-chrome`. Use
 the installed Agent Browser skill for command syntax. The wrapper
 attaches to running Chrome with a fixed daemon session and strict tab pinning.
 Omit session, connection, and state persistence options. Keep the
@@ -24,19 +25,19 @@ and inspect each command's result before continuing.
    URL.
 
    ```sh
-   ~/.local/bin/agent-chrome tab new --label example-task-01 https://example.com
+   agent-chrome tab new --label example-task-01 https://example.com
    ```
 
    Select the tab by its label.
 
    ```sh
-   ~/.local/bin/agent-chrome tab example-task-01
+   agent-chrome tab example-task-01
    ```
 
 2. **Verify the URL.** Read the URL of the selected tab.
 
    ```sh
-   ~/.local/bin/agent-chrome get url
+   agent-chrome get url
    ```
 
    If the URL differs from the intended page, stop before taking a snapshot
@@ -47,7 +48,7 @@ and inspect each command's result before continuing.
 3. **Take a fresh snapshot.** Inspect the selected page before acting.
 
    ```sh
-   ~/.local/bin/agent-chrome snapshot
+   agent-chrome snapshot
    ```
 
    If the snapshot differs from the intended page, stop before acting.
@@ -58,7 +59,7 @@ and inspect each command's result before continuing.
    page.
 
    ```sh
-   ~/.local/bin/agent-chrome get title
+   agent-chrome get title
    ```
 
 ## Close the task tab
@@ -66,7 +67,7 @@ and inspect each command's result before continuing.
 When the task is done, close only the task tab you opened.
 
 ```sh
-~/.local/bin/agent-chrome tab close example-task-01
+agent-chrome tab close example-task-01
 ```
 
 ## Recover from command results
@@ -77,17 +78,17 @@ Use the current command's output and running or exited state to choose the next 
   debuggable Chrome, share that result and ask the user to open regular Chrome
   and enable remote debugging at `chrome://inspect/#remote-debugging`. After
   the user confirms setup and the previous attempt has ended, check the
-  connection with `~/.local/bin/agent-chrome tab list`.
+  connection with `agent-chrome tab list`.
 - **Approval pending.** Ask the user to review the Chrome prompt and click
   **Allow** if they approve. The user handles Chrome settings and approval.
   If the command is still waiting, let that same invocation finish after the
   user clicks **Allow** and inspect its result. If the attempt ended while
-  waiting for approval, retry with the read-only `~/.local/bin/agent-chrome tab list`
+  waiting for approval, retry with the read-only `agent-chrome tab list`
   after the user confirms approval.
 - **Connection interrupted.** After Chrome or the daemon recovers and the
   previous command has ended, check the connection with
-  `~/.local/bin/agent-chrome tab list`. If a write may have run before the
+  `agent-chrome tab list`. If a write may have run before the
   interruption, verify its outcome before deciding whether to repeat it.
 - **Pinned tab gone.** If the command reports `tab_gone`, run
-  `~/.local/bin/agent-chrome tab new <url>` to bind a fresh task tab, then take
+  `agent-chrome tab new <url>` to bind a fresh task tab, then take
   a new snapshot.
