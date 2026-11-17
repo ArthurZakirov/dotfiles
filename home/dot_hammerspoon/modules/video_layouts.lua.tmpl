@@ -65,9 +65,10 @@ function M.apply(mode)
   arrange(1)
   return true
 end
-hs.hotkey.bind({"ctrl","alt","cmd","shift"},"v",function()
-  M.apply(M.mode == "editing" and "recording" or "editing")
-end)
+-- Personal recording replaces the baseline reload shortcut.
+hs.hotkey.disableAll({"ctrl","alt","cmd"},"r")
+hs.hotkey.bind({"ctrl","alt","cmd"},"r",function() M.apply("recording") end)
+hs.hotkey.bind({"ctrl","alt","cmd"},"e",function() M.apply("editing") end)
 VideoLayouts = M
 return M
 {{ else -}}
