@@ -21,6 +21,7 @@ dofile(hs.configdir .. "/modules/claude.lua")
 dofile(hs.configdir .. "/modules/chatgpt.lua")
 dofile(hs.configdir .. "/modules/chatgpt_voice.lua")
 dofile(hs.configdir .. "/modules/layout.lua")
+dofile(hs.configdir .. "/modules/video_layouts.lua")
 
 hs.hotkey.bind(HammerspoonConfig.hyper, "r", hs.reload)
 hs.autoLaunch(true)
