@@ -18,7 +18,12 @@ local function windows(app)
   for _, w in ipairs(app:allWindows()) do
     if w:isStandard() then table.insert(result, w) end
   end
-  table.sort(result, function(a,b) return a:id() < b:id() end)
+  local main = app:mainWindow()
+  table.sort(result, function(a,b)
+    if main and a:id() == main:id() then return true end
+    if main and b:id() == main:id() then return false end
+    return a:id() < b:id()
+  end)
   return result
 end
 local function findApp(bundle)
