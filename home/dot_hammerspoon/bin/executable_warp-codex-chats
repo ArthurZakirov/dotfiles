@@ -106,7 +106,7 @@ def main():
                     if chat.get("ephemeral") or chat.get("canAcceptDirectInput") is False:
                         continue
                     try:
-                        session = str(uuid.UUID(chat["sessionId"] or chat["id"]))
+                        session = str(uuid.UUID(chat["id"]))
                     except (TypeError, ValueError, KeyError):
                         continue
                     if session in seen:

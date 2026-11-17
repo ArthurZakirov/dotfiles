@@ -12,7 +12,11 @@ LAUNCHER = (
     Path(__file__).resolve().parents[2]
     / "home/dot_hammerspoon/bin/executable_warp-codex-chats"
 )
-SESSION = "11111111-2222-4333-8444-555555555555"
+THREAD = "11111111-2222-4333-8444-555555555555"
+
+
+SIBLING = "22222222-3333-4444-8555-666666666666"
+TREE = "33333333-4444-4555-8666-777777777777"
 
 
 @pytest.mark.parametrize("fork", [False, True])
@@ -34,8 +38,8 @@ def test_same_cli_lists_resumes_and_starts_chats(tmp_path, monkeypatch, fork):
         "    request = json.loads(line)\n"
         "    if request.get('id') == 2:\n"
         "        assert request['params']['sortKey'] == 'updated_at'\n"
-        f"        chat = dict(sessionId={SESSION!r}, cwd=os.getcwd(), name='A chat')\n"
-        "        print(json.dumps(dict(id=2, result=dict(data=[chat]))), flush=True)\n"
+        f"        chats = [dict(id=thread, sessionId={TREE!r}, cwd=os.getcwd(), name='A chat') for thread in [{THREAD!r}, {SIBLING!r}]]\n"
+        "        print(json.dumps(dict(id=2, result=dict(data=chats))), flush=True)\n"
     )
     executable.chmod(0o700)
     monkeypatch.setenv("PATH", str(bin_dir) + ":" + str(Path(sys.executable).parent))
@@ -51,8 +55,10 @@ def test_same_cli_lists_resumes_and_starts_chats(tmp_path, monkeypatch, fork):
     monkeypatch.setattr(sys, "argv", [str(LAUNCHER)])
     launcher.main()
     assert opened == [
-        (("A chat", str(tmp_path), shlex.join([*command, "resume", SESSION])),
-         {"new_window": True})
+        (("A chat", str(tmp_path), shlex.join([*command, "resume", THREAD])),
+         {"new_window": True}),
+        (("A chat", str(tmp_path), shlex.join([*command, "resume", SIBLING])),
+         {"new_window": False}),
     ]
 
     monkeypatch.setattr(sys, "argv", [str(LAUNCHER), "--new"])
