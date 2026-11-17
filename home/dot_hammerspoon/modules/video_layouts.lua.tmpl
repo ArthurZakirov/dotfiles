@@ -8,7 +8,7 @@ local specs = {
     { app = "com.microsoft.VSCode", screen = "DELL U3225QE" },
   },
   editing = {
-    { app = "com.openai.codex", screen = "DELL P2725DE" },
+    { app = "com.openai.codex", name = "ChatGPT", path = "/Applications/ChatGPT.app", screen = "DELL P2725DE" },
     { app = "ai.storyteller.filmcraft.audiofix", screen = "DELL U3225QE" },
     { app = "com.obsproject.obs-studio", screen = "DELL P2225H" },
   },
@@ -26,11 +26,13 @@ local function windows(app)
   end)
   return result
 end
-local function findApp(bundle)
+local function findApp(spec)
   for _, app in ipairs(hs.application.runningApplications()) do
-    if app:bundleID() == bundle and #windows(app) > 0 then return app end
+    if app:bundleID() == spec.app and (not spec.name or app:name() == spec.name) and #windows(app) > 0 then return app end
   end
-  return hs.application.get(bundle)
+  local app = hs.application.get(spec.app)
+  if app and (not spec.name or app:name() == spec.name) then return app end
+  return nil
 end
 function M.apply(mode)
   if not specs[mode] then return false end
@@ -44,12 +46,22 @@ function M.apply(mode)
   M.generation = M.generation + 1
   local generation = M.generation
   M.mode = mode
-  for _, spec in ipairs(specs[mode]) do local app = findApp(spec.app); if app then app:unhide(); app:activate(true) else hs.application.launchOrFocusByBundleID(spec.app) end end
+  for _, spec in ipairs(specs[mode]) do
+    local app = findApp(spec)
+    if app then
+      app:unhide()
+      app:activate(true)
+    elseif spec.path then
+      hs.application.open(spec.path)
+    else
+      hs.application.launchOrFocusByBundleID(spec.app)
+    end
+  end
   local function arrange(attempt)
     if generation ~= M.generation then return end
     local pending = false
     for _, spec in ipairs(specs[mode]) do
-      local app = findApp(spec.app)
+      local app = findApp(spec)
       local ws = app and windows(app) or {}
       local count = 1
       if #ws < count then pending = true end
