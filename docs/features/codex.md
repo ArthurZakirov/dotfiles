@@ -230,6 +230,27 @@ session lock remains held for 45 seconds, the tab reports an actionable
 error. A real end-to-end Desktop/Warp smoke test is required before
 claiming the quit/lock handoff works on a particular Mac.
 
+## Recent Codex chats in Warp
+
+After `chezmoi apply`, Hammerspoon opens up to ten recent local Codex chats
+in a dedicated Warp window when Warp launches. Warp uses vertical tabs by
+default when applying to a machine without an existing Warp settings file.
+In Warp, `Cmd+R` replaces the managed chat window and `Cmd+T` opens a new
+Codex chat in a new tab.
+
+All three actions use `codex` by default. To select the bundled voice fork
+on this Mac, save its executable name in the local override file.
+
+```sh
+mkdir -p ~/.config/warp-codex
+printf '%s\n' codex-voice > ~/.config/warp-codex/command
+```
+
+The file can also contain a quoted executable path and optional arguments.
+The executable must support `app-server` and `resume` to restore recent
+chats from its session store. The launcher reads the override on each
+invocation. Delete the local override file to return to `codex`.
+
 ## AGENTS.md freshness warnings
 
 The desktop shortcut and Codex hooks call the
