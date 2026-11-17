@@ -1,4 +1,4 @@
-{{ if eq .profile "personal" -}}
+{{ if eq (get . "profile") "personal" -}}
 -- Two desktop layouts; never sends recording or terminal commands.
 local M = { mode = "editing", generation = 0 }
 local specs = {
