@@ -1,0 +1,94 @@
+{{ if eq (get . "profile") "personal" -}}
+-- Two desktop layouts; never sends recording or terminal commands.
+local M = { mode = "editing", generation = 0 }
+local specs = {
+  recording = {
+    { app = "com.google.Chrome", screen = "DELL P2225H" },
+    { app = "dev.warp.Warp-Stable", screen = "DELL P2725DE" },
+    { app = "com.microsoft.VSCode", screen = "DELL U3225QE" },
+  },
+  editing = {
+    { app = "com.openai.codex", name = "ChatGPT", path = "/Applications/ChatGPT.app", screen = "DELL P2725DE" },
+    { app = "ai.storyteller.filmcraft.audiofix", screen = "DELL U3225QE" },
+    { app = "com.obsproject.obs-studio", screen = "DELL P2225H" },
+  },
+}
+local function windows(app)
+  local result = {}
+  for _, w in ipairs(app:allWindows()) do
+    if w:isStandard() then table.insert(result, w) end
+  end
+  local main = app:mainWindow()
+  table.sort(result, function(a,b)
+    if main and a:id() == main:id() then return true end
+    if main and b:id() == main:id() then return false end
+    return a:id() < b:id()
+  end)
+  return result
+end
+local function findApp(spec)
+  for _, app in ipairs(hs.application.runningApplications()) do
+    if app:bundleID() == spec.app and (not spec.name or app:name() == spec.name) and #windows(app) > 0 then return app end
+  end
+  local app = hs.application.get(spec.app)
+  if app and (not spec.name or app:name() == spec.name) then return app end
+  return nil
+end
+function M.apply(mode)
+  if not specs[mode] then return false end
+  -- Fail before changing windows if the expected desk is not connected.
+  for _, spec in ipairs(specs[mode]) do
+    if not hs.screen.find(spec.screen) then
+      hs.alert.show("Video layout: missing " .. spec.screen)
+      return false
+    end
+  end
+  M.generation = M.generation + 1
+  local generation = M.generation
+  M.mode = mode
+  for _, spec in ipairs(specs[mode]) do
+    local app = findApp(spec)
+    if app then
+      app:unhide()
+      app:activate(true)
+    elseif spec.path then
+      hs.application.open(spec.path)
+    else
+      hs.application.launchOrFocusByBundleID(spec.app)
+    end
+  end
+  local function arrange(attempt)
+    if generation ~= M.generation then return end
+    local pending = false
+    for _, spec in ipairs(specs[mode]) do
+      local app = findApp(spec)
+      local ws = app and windows(app) or {}
+      local count = 1
+      if #ws < count then pending = true end
+      for i = 1, math.min(count,#ws) do
+        local w = ws[i]
+        if w:isFullScreen() then w:setFullScreen(false); pending = true end
+        if w:isMinimized() then w:unminimize() end
+        local f = hs.screen.find(spec.screen):frame()
+        w:setFrame(f,0); w:raise()
+      end
+    end
+    if (pending or attempt < 3) and attempt < 12 then
+      hs.timer.doAfter(0.5,function() arrange(attempt+1) end)
+    else
+      hs.alert.show(pending and "Video layout: some windows unavailable" or (mode == "recording" and "Recording backdrop" or "Video editing"))
+    end
+  end
+  arrange(1)
+  return true
+end
+-- Personal recording replaces the baseline reload shortcut.
+hs.hotkey.disableAll({"ctrl","alt","cmd"},"r")
+hs.hotkey.bind({"ctrl","alt","cmd"},"r",function() M.apply("recording") end)
+hs.hotkey.bind({"ctrl","alt","cmd"},"e",function() M.apply("editing") end)
+VideoLayouts = M
+return M
+{{ else -}}
+-- Video production layouts are disabled on non-personal profiles.
+return nil
+{{ end -}}

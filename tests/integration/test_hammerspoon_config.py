@@ -26,7 +26,7 @@ def test_full_hammerspoon_configuration_is_shared_across_profiles(profile, profi
     assert audio_files <= managed
 
 
-def test_both_profiles_generate_identical_hammerspoon_files(profile_factory):
+def test_profiles_share_baseline_except_explicit_video_layouts(profile_factory):
     configurations = {
         profile: profile_factory.render(profile).config
         for profile in ("personal", "professional")
@@ -47,4 +47,9 @@ def test_both_profiles_generate_identical_hammerspoon_files(profile_factory):
         scripts = profile_factory.chezmoi(config, "managed", "--include", "scripts")
         assert "30-ensure-hammerspoon.sh" in scripts
 
+    video_module = ".hammerspoon/modules/video_layouts.lua"
+    assert b"hs.hotkey.bind" in tree["personal"].pop(video_module)
+    professional = tree["professional"].pop(video_module)
+    assert b"hs.hotkey.bind" not in professional
+    assert professional.strip().endswith(b"return nil")
     assert tree["personal"] == tree["professional"]

@@ -183,3 +183,16 @@ def test_preapply_backup_hook_uses_invoking_chezmoi_paths(
     assert f'{source}' in hook.read_text()
     assert 'snapshot_existing_managed' in hook.read_text()
     profile_factory.run("/bin/bash", "-n", str(hook))
+
+
+@pytest.mark.parametrize("profile", ["personal", "professional"])
+def test_video_layout_shortcuts_only_on_personal_profile(profile, profile_factory):
+    rendered = profile_factory.render(profile)
+    module = profile_factory.chezmoi(rendered.config, "cat", str(Path.home() / ".hammerspoon/modules/video_layouts.lua"))
+    if profile == "personal":
+        assert 'hs.hotkey.bind' in module
+        assert 'VideoLayouts = M' in module
+    else:
+        assert 'hs.hotkey.bind' not in module
+        assert 'launchOrFocus' not in module
+        assert module.strip().endswith('return nil')

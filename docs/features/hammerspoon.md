@@ -2,9 +2,9 @@
 
 [← Features](README.md) · [Development](../development.md)
 
-Chezmoi manages **the same complete Hammerspoon configuration on personal and
-professional Macs** at `~/.hammerspoon/`. No Hammerspoon functionality is
-profile-specific.
+Chezmoi manages Hammerspoon at `~/.hammerspoon/` on both profiles.
+The video-production layouts below are **personal-only**; the professional
+profile does not register these layout shortcuts or launch their apps.
 
 **Shortcut notation:** `Hyper` = `Ctrl+Alt+Cmd`. Display numbers follow
 left-to-right screen order (then top-to-bottom).
@@ -21,6 +21,27 @@ left-to-right screen order (then top-to-bottom).
 | `Hyper+N` | Focus next display |
 | `Hyper+H` | Identify numbered displays |
 | `Hyper+/` | Searchable window picker |
+
+## Personal video-production layouts
+
+These fixed modes preserve running applications, including OBS recording:
+
+| Shortcut | P2225H | P2725DE (portrait) | U3225QE |
+| --- | --- | --- | --- |
+| `Hyper+R` — Record | Chrome | Warp | One VS Code window, with the prepared two editor groups |
+| `Hyper+E` — Edit | OBS | ChatGPT | FilmCraft Audio Fix |
+
+All three named monitors must be connected; otherwise the mode reports the missing
+monitor before moving windows. The module raises each application's main window;
+it does not reset browser tabs, editor files or terminal sessions. Prepare those
+contents once and keep them open. It never starts or stops recording.
+
+On the personal profile, `Hyper+R` replaces the baseline Hammerspoon reload binding;
+there is no replacement reload shortcut. The old four-modifier V toggle is not used.
+Professional Macs retain their baseline reload binding and no video-mode bindings.
+The [profile-scoped module](../../home/dot_hammerspoon/modules/video_layouts.lua.tmpl)
+selects ChatGPT by both bundle identifier and application name, and launches its
+specific application path when needed, avoiding Codex Desktop's shared identifier.
 
 ## Spaces and Mission Control
 

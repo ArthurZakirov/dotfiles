@@ -23,6 +23,7 @@ dofile(hs.configdir .. "/modules/chatgpt_voice.lua")
 dofile(hs.configdir .. "/modules/layout.lua")
 
 hs.hotkey.bind(HammerspoonConfig.hyper, "r", hs.reload)
+dofile(hs.configdir .. "/modules/video_layouts.lua")
 hs.autoLaunch(true)
 dofile(hs.configdir .. "/modules/audio_check.lua")
 dofile(hs.configdir .. "/modules/notification_check.lua")
