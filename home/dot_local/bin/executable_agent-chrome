@@ -1,7 +1,14 @@
 #!/bin/sh
 # Share an ordinary Chrome connection across Codex chats on this machine.
 # Documentation and shutdown commands must not launch a browser.
-case "${1:-}" in
+# Ignore the JSON output flag for classification; forward all arguments intact.
+chrome_command=
+for chrome_arg do
+    [ "$chrome_arg" = --json ] && continue
+    chrome_command=$chrome_arg
+    break
+done
+case "$chrome_command" in
     ''|help|--help|-h|--version|-V|version|skills|close) ;;
     *)
         if [ "$(uname -s)" = Darwin ]; then

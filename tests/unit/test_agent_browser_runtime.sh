@@ -91,10 +91,14 @@ test ! -s "$trial/attempt"
 for command in skills --help --version close; do
   CHROME_TEST_PROCESS=closed "$entrypoint" "$command" >/dev/null
   test ! -f "$CHROME_TEST_LAUNCH"
+  CHROME_TEST_PROCESS=closed "$entrypoint" --json "$command" >/dev/null
+  test ! -f "$CHROME_TEST_LAUNCH"
 done
+output="$(CHROME_TEST_PROCESS=closed "$entrypoint" --json skills get core)"
+[[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab --json skills get core)" ]]
+test ! -f "$CHROME_TEST_LAUNCH"
 CHROME_TEST_OS=Linux CHROME_TEST_PROCESS=closed "$entrypoint" tab list >/dev/null
 test ! -f "$CHROME_TEST_LAUNCH"
-echo 'Chrome entrypoint: closed launched, running reused, denied distinguished, launch failure bounded'
 
 # A running Chrome with inaccessible discovery must not cause another launch.
 rm -f "$CHROME_TEST_LAUNCH"
@@ -112,3 +116,4 @@ chmod +x "$trial/bin/sleep"
 export CHROME_TEST_WAIT="$trial/wait"
 CHROME_TEST_PROCESS=never "$entrypoint" tab list >/dev/null
 [[ "$(wc -l < "$CHROME_TEST_WAIT" | tr -d ' ')" == 10 ]]
+echo 'Chrome entrypoint: closed launched, running reused, denied distinguished, launch failure bounded'
