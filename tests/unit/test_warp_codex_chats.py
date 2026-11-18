@@ -50,17 +50,22 @@ def test_same_cli_lists_resumes_and_starts_chats(tmp_path, monkeypatch, fork):
         config.write_text('codex-voice --profile "Local Voice"\n')
         command.extend(["--profile", "Local Voice"])
 
+    interactive = [
+        *command, "-c", "check_for_update_on_startup=false",
+        "-c", 'tui.terminal_title=["thread-name"]',
+    ]
     opened = []
     monkeypatch.setattr(launcher, "open_tab", lambda *a, **kw: opened.append((a, kw)))
     monkeypatch.setattr(sys, "argv", [str(LAUNCHER)])
     launcher.main()
     assert opened == [
-        (("A chat", str(tmp_path), shlex.join([*command, "resume", THREAD])),
+        (("A chat", str(tmp_path), shlex.join([*interactive, "resume", THREAD])),
          {"new_window": True}),
-        (("A chat", str(tmp_path), shlex.join([*command, "resume", SIBLING])),
+        (("A chat", str(tmp_path), shlex.join([*interactive, "resume", SIBLING])),
          {"new_window": False}),
     ]
 
     monkeypatch.setattr(sys, "argv", [str(LAUNCHER), "--new"])
+    monkeypatch.chdir(bin_dir)
     launcher.main()
-    assert opened[-1] == (("Codex", str(tmp_path), shlex.join(command)), {})
+    assert opened[-1] == (("Codex", str(tmp_path), shlex.join(interactive)), {})
