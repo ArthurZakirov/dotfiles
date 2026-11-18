@@ -88,7 +88,7 @@ result=0
 CHROME_TEST_PROCESS=closed CHROME_TEST_LAUNCH_FAIL=1 "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error" || result=$?
 [[ "$result" == 1 ]]
 test ! -s "$trial/attempt"
-for command in skills --help --version close; do
+for command in skills --help --version close quit exit; do
   CHROME_TEST_PROCESS=closed "$entrypoint" "$command" >/dev/null
   test ! -f "$CHROME_TEST_LAUNCH"
   CHROME_TEST_PROCESS=closed "$entrypoint" --json "$command" >/dev/null

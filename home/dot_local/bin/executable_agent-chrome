@@ -9,7 +9,7 @@ for chrome_arg do
     break
 done
 case "$chrome_command" in
-    ''|help|--help|-h|--version|-V|version|skills|close) ;;
+    ''|help|--help|-h|--version|-V|version|skills|close|quit|exit) ;;
     *)
         if [ "$(uname -s)" = Darwin ]; then
             # pgrep exit 1 means absent only when process inspection succeeded.
