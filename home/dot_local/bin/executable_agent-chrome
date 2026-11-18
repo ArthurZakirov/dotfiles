@@ -1,3 +1,29 @@
 #!/bin/sh
-# Share an existing Chrome connection across Codex chats on this machine.
+# Share an ordinary Chrome connection across Codex chats on this machine.
+# Documentation and shutdown commands must not launch a browser.
+case "${1:-}" in
+    ''|help|--help|-h|--version|-V|version|skills|close) ;;
+    *)
+        if [ "$(uname -s)" = Darwin ]; then
+            # pgrep exit 1 means absent only when process inspection succeeded.
+            process_error=$(pgrep -x 'Google Chrome' 2>&1 >/dev/null)
+            process_status=$?
+            if [ "$process_status" -eq 1 ] && [ -z "$process_error" ]; then
+                if ! open -a 'Google Chrome'; then
+                    echo 'agent-chrome: ordinary Chrome launch failed; connection not attempted.' >&2
+                    exit 1
+                fi
+                # Bound startup waiting; never kill/restart an existing Chrome.
+                attempt=0
+                while [ "$attempt" -lt 10 ]; do
+                    pgrep -x 'Google Chrome' >/dev/null 2>&1 && break
+                    attempt=$((attempt + 1))
+                    sleep 1
+                done
+            elif [ "$process_status" -ne 0 ]; then
+                echo 'agent-chrome: Chrome process inspection unavailable; browser state unknown. Attempting normal connection.' >&2
+            fi
+        fi
+        ;;
+esac
 exec agent-browser --session dotfiles-chrome --auto-connect --pin-tab "$@"

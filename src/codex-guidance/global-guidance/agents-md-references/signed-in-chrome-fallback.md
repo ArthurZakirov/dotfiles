@@ -5,7 +5,9 @@
 Run `agent-chrome` with ordinary Agent Browser commands. If your shell lacks
 `~/.local/bin` in `PATH`, use `~/.local/bin/agent-chrome`. Use
 the installed Agent Browser skill for command syntax. The wrapper
-attaches to running Chrome with a fixed daemon session and strict tab pinning.
+opens ordinary macOS Chrome when process inspection confirms it is closed,
+then attaches with a fixed daemon session and strict tab pinning. It never
+restarts running Chrome or changes its profile, debugging flags, or settings.
 Omit session, connection, and state persistence options. Keep the
 daemon running when your task ends.
 
@@ -72,11 +74,25 @@ agent-chrome tab close example-task-01
 
 Use the current command's output and running or exited state to choose the next action.
 
-- **Chrome unavailable.** If the command reports that it found no running
-  debuggable Chrome, share that result and ask the user to open regular Chrome
-  and enable remote debugging at `chrome://inspect/#remote-debugging`. After
-  the user confirms setup and the previous attempt has ended, check the
-  connection with `agent-chrome tab list`.
+- **Discovery unavailable.** A “no running debuggable Chrome” result does not
+  prove Chrome is closed or debugging is disabled. Check whether process
+  inspection, discovery-file access, or localhost access was denied by the
+  command runtime. If the runtime supports an approved elevated retry and
+  permits requesting it, retry the read-only `agent-chrome tab list` through
+  that supported flow after the previous attempt ends. If elevation is
+  unavailable or denied, report discovery as blocked; do not claim Chrome is
+  absent. Never bypass policy, read profile/authentication data, use another
+  profile, or expose a new debugging port to recover.
+- **Chrome closed or launch failed.** On macOS the wrapper launches ordinary
+  Chrome with `open -a 'Google Chrome'` when process inspection confirms it is
+  absent. If launch fails, report the launch failure. If process inspection is
+  unavailable, browser state is unknown; the wrapper still attempts normal
+  connection. Do not repeatedly launch Chrome to fix a discovery restriction.
+- **Setup required.** Only after discovery is accessible and evidence indicates
+  debugging is disabled, ask the user to enable remote debugging at
+  `chrome://inspect/#remote-debugging`. The user handles settings. After setup
+  is confirmed and the previous attempt has ended, check the connection with
+  `agent-chrome tab list`.
 - **Approval pending.** Ask the user to review the Chrome prompt and click
   **Allow** if they approve. The user handles Chrome settings and approval.
   If the command is still waiting, let that same invocation finish after the
