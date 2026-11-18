@@ -69,6 +69,7 @@ jobs:
           while IFS= read -r -d '' script; do bash -n "$script"; done < <(find home src tests -type f -name '*.sh' -print0)
 
   profiles:
+    timeout-minutes: 30
     needs: changes
     if: ${{ needs.changes.outputs.profiles == 'true' }}
     # ARM64 hosted runners can fail to be acquired under capacity constraints.

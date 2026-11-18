@@ -26,6 +26,16 @@ def test_agent_chrome_lookup_after_apply(tmp_path, profile_factory):
     executable = home / ".local/bin/agent-chrome"
     assert executable.is_file() and os.access(executable, os.X_OK)
 
+    # Keep browser launch/process inspection inside the fixture boundary.
+    # This test owns executable lookup, not the host's real Chrome state.
+    pgrep = tmp_path / "pgrep"
+    pgrep.write_text("#!/bin/sh\nexit 0\n")
+    pgrep.chmod(0o755)
+    launch_log = tmp_path / "unexpected-chrome-launch"
+    opener = tmp_path / "open"
+    opener.write_text(f'#!/bin/sh\nprintf called > "{launch_log}"\nexit 99\n')
+    opener.chmod(0o755)
+
     # Replace the runtime and optional zsh dependencies with local fixtures.
     browser = tmp_path / "agent-browser"
     browser.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\"\n")
@@ -58,6 +68,7 @@ def test_agent_chrome_lookup_after_apply(tmp_path, profile_factory):
         env=env,
     )
     assert fallback.stdout.splitlines() == expected
+    assert not launch_log.exists()
 
 
 @pytest.mark.parametrize("profile", ["personal", "professional"])
