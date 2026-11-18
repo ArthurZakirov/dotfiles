@@ -1,12 +1,19 @@
 #!/bin/sh
 # Share an ordinary Chrome connection across Codex chats on this machine.
 # Documentation and shutdown commands must not launch a browser.
-# Ignore the JSON output flag for classification; forward all arguments intact.
+# Help/version flags take precedence anywhere, matching the CLI parser.
+# Ignore JSON for classification; forward every original argument intact.
 chrome_command=
 for chrome_arg do
-    [ "$chrome_arg" = --json ] && continue
-    chrome_command=$chrome_arg
-    break
+    case "$chrome_arg" in
+        --help|-h|--version|-V) chrome_command=help; break ;;
+        --json) ;;
+        *)
+            if [ -z "$chrome_command" ]; then
+                chrome_command=$chrome_arg
+            fi
+            ;;
+    esac
 done
 case "$chrome_command" in
     ''|help|--help|-h|--version|-V|version|skills|close|quit|exit) ;;

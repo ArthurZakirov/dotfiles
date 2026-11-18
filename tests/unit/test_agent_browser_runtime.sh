@@ -97,6 +97,14 @@ done
 output="$(CHROME_TEST_PROCESS=closed "$entrypoint" --json skills get core)"
 [[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab --json skills get core)" ]]
 test ! -f "$CHROME_TEST_LAUNCH"
+for metadata_flag in --help -h --version -V; do
+  CHROME_TEST_PROCESS=closed "$entrypoint" snapshot "$metadata_flag" >/dev/null
+  test ! -f "$CHROME_TEST_LAUNCH"
+  CHROME_TEST_PROCESS=closed "$entrypoint" --json tab list "$metadata_flag" >/dev/null
+  test ! -f "$CHROME_TEST_LAUNCH"
+  CHROME_TEST_PROCESS=closed "$entrypoint" snapshot -- "$metadata_flag" >/dev/null
+  test ! -f "$CHROME_TEST_LAUNCH"
+done
 CHROME_TEST_OS=Linux CHROME_TEST_PROCESS=closed "$entrypoint" tab list >/dev/null
 test ! -f "$CHROME_TEST_LAUNCH"
 
