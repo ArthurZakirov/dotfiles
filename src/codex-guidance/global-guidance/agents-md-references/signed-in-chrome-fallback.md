@@ -11,6 +11,12 @@ restarts running Chrome or changes its profile, debugging flags, or settings.
 Omit session, connection, and state persistence options. Keep the
 daemon running when your task ends.
 
+Automatic launch applies to browser commands after recognized global options.
+Help, version, skills, local management, and shutdown commands do not trigger
+it. The wrapper forwards every original argument unchanged. Unknown option
+prefixes and out-of-contract `--restore` overrides also bypass automatic launch;
+the CLI still receives and handles the invocation normally.
+
 The daemon shares its selected tab and snapshot references with other callers.
 Use a dedicated task tab, verify the selected tab, and take a fresh snapshot
 before acting. If you observe that another task is using the session,

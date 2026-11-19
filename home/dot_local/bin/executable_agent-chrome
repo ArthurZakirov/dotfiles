@@ -1,22 +1,50 @@
 #!/bin/sh
 # Share an ordinary Chrome connection across Codex chats on this machine.
-# Documentation and shutdown commands must not launch a browser.
-# Help/version flags take precedence anywhere, matching the CLI parser.
-# Ignore JSON for classification; forward every original argument intact.
+# Classify without changing the arguments forwarded to agent-browser.
+# Help/version take precedence anywhere, matching agent-browser 0.39's main.rs.
 chrome_command=
 for chrome_arg do
     case "$chrome_arg" in
         --help|-h|--version|-V) chrome_command=help; break ;;
-        --json) ;;
-        *)
-            if [ -z "$chrome_command" ]; then
-                chrome_command=$chrome_arg
-            fi
-            ;;
     esac
 done
+classify_chrome_command() {
+    # Match 0.39's flags.rs clean_args for global prefixes. A function keeps
+    # shift local: the final exec still receives the caller's original argv.
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --session|--restore-save|--restore-check-url|--restore-check-text|\
+            --restore-check-fn|--namespace|--headers|--executable-path|--cdp|\
+            --extension|--init-script|--enable|--profile|--state|--proxy|\
+            --proxy-bypass|--args|--user-agent|-p|--provider|--device|\
+            --session-name|--color-scheme|--download-path|--max-output|\
+            --allowed-domains|--action-policy|--confirm-actions|--config|\
+            --engine|--input-mode|--screenshot-dir|--screenshot-quality|\
+            --screenshot-format|--idle-timeout|--ca-cert|--model)
+                [ "$#" -ge 2 ] || return
+                shift 2
+                ;;
+            --json|--headed|--webgpu|--no-webmcp|--debug|\
+            --ignore-https-errors|--allow-file-access|--hide-scrollbars|\
+            --auto-connect|--pin-tab|--no-pin-tab|--no-ca-cert|--use-system-ca|\
+            --annotate|--content-boundaries|--confirm-interactive|\
+            --no-auto-dialog|-v|--verbose|-q|--quiet|--offline|--quick|--fix)
+                shift
+                case "${1-}" in true|false) shift ;; esac
+                ;;
+            # Restore overrides are outside the shared regular-Chrome flow.
+            # Unknown options likewise get no automatic OS launch side effect.
+            --restore|--restore=*|-*) return ;;
+            *) chrome_command=$1; return ;;
+        esac
+    done
+}
+if [ -z "$chrome_command" ]; then
+    classify_chrome_command "$@"
+fi
 case "$chrome_command" in
-    ''|help|--help|-h|--version|-V|version|skills|close|quit|exit) ;;
+    ''|help|version|skills|close|quit|exit|install|upgrade|doctor|dashboard|\
+    profiles|plugin|plugins|mcp|session) ;;
     *)
         if [ "$(uname -s)" = Darwin ]; then
             # pgrep exit 1 means absent only when process inspection succeeded.
@@ -30,10 +58,20 @@ case "$chrome_command" in
                 # Bound startup waiting; never kill/restart an existing Chrome.
                 attempt=0
                 while [ "$attempt" -lt 10 ]; do
-                    pgrep -x 'Google Chrome' >/dev/null 2>&1 && break
+                    process_error=$(pgrep -x 'Google Chrome' 2>&1 >/dev/null)
+                    process_status=$?
+                    [ "$process_status" -ne 0 ] || break
+                    if [ "$process_status" -ne 1 ] || [ -n "$process_error" ]; then
+                        echo 'agent-chrome: Chrome process inspection unavailable after launch; browser state unknown. Attempting normal connection.' >&2
+                        break
+                    fi
                     attempt=$((attempt + 1))
                     sleep 1
                 done
+                if [ "$attempt" -eq 10 ]; then
+                    echo 'agent-chrome: Chrome did not become observable after launch; connection not attempted.' >&2
+                    exit 1
+                fi
             elif [ "$process_status" -ne 0 ]; then
                 echo 'agent-chrome: Chrome process inspection unavailable; browser state unknown. Attempting normal connection.' >&2
             fi

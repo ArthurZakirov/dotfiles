@@ -46,6 +46,13 @@ case "${CHROME_TEST_PROCESS:-running}" in
   running) exit 0 ;;
   closed) [ -f "$CHROME_TEST_LAUNCH" ] && exit 0; exit 1 ;;
   never) exit 1 ;;
+  closed-denied)
+    if [ -f "$CHROME_TEST_LAUNCH" ]; then
+      echo 'process inspection denied after launch' >&2
+      exit 3
+    fi
+    exit 1
+    ;;
   denied) echo 'process inspection denied' >&2; exit 3 ;;
   denied-one) echo 'process inspection denied' >&2; exit 1 ;;
 esac
@@ -105,6 +112,58 @@ for metadata_flag in --help -h --version -V; do
   CHROME_TEST_PROCESS=closed "$entrypoint" snapshot -- "$metadata_flag" >/dev/null
   test ! -f "$CHROME_TEST_LAUNCH"
 done
+# Audit all installed 0.39 global prefix families, including optional booleans.
+# Each invocation must preserve argv; only browser work may launch Chrome.
+assert_launch_behavior() {
+  local should_launch="$1" output
+  shift
+  rm -f "$CHROME_TEST_LAUNCH"
+  output="$(CHROME_TEST_PROCESS=closed "$entrypoint" "$@")"
+  [[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab "$@")" ]]
+  if [[ "$should_launch" == yes ]]; then
+    test -f "$CHROME_TEST_LAUNCH"
+  else
+    test ! -f "$CHROME_TEST_LAUNCH"
+  fi
+}
+for flag in --json --headed --webgpu --no-webmcp --debug \
+  --ignore-https-errors --allow-file-access --hide-scrollbars --auto-connect \
+  --pin-tab --no-pin-tab --no-ca-cert --use-system-ca --annotate \
+  --content-boundaries --confirm-interactive --no-auto-dialog \
+  -v --verbose -q --quiet --offline --quick --fix; do
+  for value in absent true false; do
+    prefix=("$flag")
+    [[ "$value" == absent ]] || prefix+=("$value")
+    assert_launch_behavior no "${prefix[@]}" skills get core
+    assert_launch_behavior no "${prefix[@]}" quit
+    assert_launch_behavior yes "${prefix[@]}" tab list
+  done
+done
+for flag in --session --restore-save --restore-check-url --restore-check-text \
+  --restore-check-fn --namespace --headers --executable-path --cdp \
+  --extension --init-script --enable --profile --state --proxy --proxy-bypass \
+  --args --user-agent -p --provider --device --session-name --color-scheme \
+  --download-path --max-output --allowed-domains --action-policy \
+  --confirm-actions --config --engine --input-mode --screenshot-dir \
+  --screenshot-quality --screenshot-format --idle-timeout --ca-cert --model; do
+  # A command-shaped value is still an option value, never the actual command.
+  assert_launch_behavior no "$flag" 'value with space' skills get core
+  assert_launch_behavior yes "$flag" skills tab list
+  assert_launch_behavior no "$flag"
+done
+for command in install upgrade doctor dashboard profiles plugin plugins mcp session; do
+  assert_launch_behavior no --debug --max-output 100 "$command"
+done
+for command in open goto navigate press key scrollintoview scrollinto; do
+  assert_launch_behavior yes --debug false --max-output 100 "$command" example
+  assert_launch_behavior no --debug false --max-output 100 "$command" --help
+done
+assert_launch_behavior no --json false
+assert_launch_behavior no --restore skills get core
+assert_launch_behavior no --restore example-key skills get core
+assert_launch_behavior no --restore=example-key skills get core
+assert_launch_behavior no --unknown-future-option skills get core
+rm -f "$CHROME_TEST_LAUNCH"
 CHROME_TEST_OS=Linux CHROME_TEST_PROCESS=closed "$entrypoint" tab list >/dev/null
 test ! -f "$CHROME_TEST_LAUNCH"
 
@@ -122,6 +181,14 @@ echo tick >> "$CHROME_TEST_WAIT"
 STUB
 chmod +x "$trial/bin/sleep"
 export CHROME_TEST_WAIT="$trial/wait"
-CHROME_TEST_PROCESS=never "$entrypoint" tab list >/dev/null
+result=0
+CHROME_TEST_PROCESS=never "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error" || result=$?
+[[ "$result" == 1 ]]
+test ! -s "$trial/attempt"
+[[ "$(cat "$trial/error")" == *'did not become observable'* ]]
 [[ "$(wc -l < "$CHROME_TEST_WAIT" | tr -d ' ')" == 10 ]]
+rm -f "$CHROME_TEST_LAUNCH"
+CHROME_TEST_PROCESS=closed-denied "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error"
+[[ "$(cat "$trial/error")" == *'browser state unknown'* ]]
+[[ "$(cat "$trial/attempt")" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab tab list)" ]]
 echo 'Chrome entrypoint: closed launched, running reused, denied distinguished, launch failure bounded'
