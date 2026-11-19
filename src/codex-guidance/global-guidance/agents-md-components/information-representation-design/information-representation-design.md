@@ -6,6 +6,7 @@
 | When | Then |
 | --- | --- |
 | Writing, editing, reviewing, or sending **every user-facing chat reply or message** (including intermediate work-in-progress updates, partial answers, and final replies), and creating or modifying **any other human-readable text**—including documentation, Markdown, PR descriptions and reviews, tickets, emails, websites, articles, agent instructions or skills, and other human-readable outputs. | **Apply all four stages below** while composing or revising that message or artifact, and check the result before sending, saving, or publishing it. Within each stage, apply the rules relevant to the content and medium. |
+| An action creates or updates a field that people will read, regardless of the interface used to deliver it. | Before submitting the action, apply the four stages to the exact text destined for that field. Check its structure, formatting, and links in the destination’s supported format. If the transfer can alter them, inspect the preview or saved result when available and correct any loss. |
 
 **Writing process — four stages**
 
