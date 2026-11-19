@@ -25,6 +25,27 @@ echo 'Browser runtime: repeated installs skipped and explicit binary reused'
 mkdir -p "$trial/bin" "$trial/other-project"
 cat > "$trial/bin/agent-browser" <<'STUB'
 #!/bin/sh
+if [ "${CHROME_TEST_DIRECT:-0}" = 1 ]; then
+  printf '%s\n' "$*" >> "$CHROME_TEST_TRACE"
+  case "$*" in
+    *' connect '*)
+      [ "${CHROME_TEST_CONNECT_FAIL:-0}" = 0 ] || { echo 'connection refused' >&2; exit 1; }
+      touch "$CHROME_TEST_CONNECTED"
+      echo connected
+      exit 0
+      ;;
+    *'--auto-connect'*)
+      if [ ! -f "$CHROME_TEST_CONNECTED" ]; then
+        echo 'No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.' >&2
+        exit 1
+      fi
+      ;;
+  esac
+  if [ "${CHROME_TEST_VERIFY_FAIL:-0}" = 1 ]; then
+    echo 'tab access denied' >&2
+    exit 1
+  fi
+fi
 if [ "${CHROME_TEST_DISCOVERY_DENIED:-0}" = 1 ]; then
   echo 'No running debuggable Chrome found (discovery inaccessible)' >&2
   exit 7
@@ -94,7 +115,15 @@ cat > "$trial/bin/open" <<'STUB'
 [ "${CHROME_TEST_LAUNCH_FAIL:-0}" = 0 ] || exit 1
 touch "$CHROME_TEST_LAUNCH"
 STUB
-chmod +x "$trial/bin/uname" "$trial/bin/pgrep" "$trial/bin/open"
+cat > "$trial/bin/lsof" <<'STUB'
+#!/bin/sh
+[ "${CHROME_TEST_DIRECT:-0}" = 1 ] || exit 1
+printf '%s\n' "$*" > "$CHROME_TEST_LSOF_ARGS"
+[ "${CHROME_TEST_LSOF_FAIL:-0}" = 0 ] || exit 1
+printf '%s\n' "${CHROME_TEST_LISTENERS:-p123
+n127.0.0.1:9222}"
+STUB
+chmod +x "$trial/bin/uname" "$trial/bin/pgrep" "$trial/bin/open" "$trial/bin/lsof"
 export CHROME_TEST_LAUNCH="$trial/launched"
 
 expected="$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab tab new 'https://example.com/?q=with space')"
@@ -348,3 +377,58 @@ CHROME_TEST_CONNECT_BEFORE_LAUNCH=1 CHROME_TEST_PROCESS=closed-denied "$entrypoi
 [[ "$(cat "$trial/error")" == *'browser state unknown'* ]]
 [[ "$(cat "$trial/attempt")" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab tab list)" ]]
 echo 'Chrome entrypoint: closed launched, running reused, denied distinguished, launch failure bounded'
+
+# Running Chrome: auto-discovery fails, explicit connect succeeds, tabs verify.
+export CHROME_TEST_TRACE="$trial/direct-trace"
+export CHROME_TEST_CONNECTED="$trial/connected"
+export CHROME_TEST_LSOF_ARGS="$trial/lsof-args"
+export CHROME_TEST_DIRECT=1
+for args in plain json snapshot; do
+  rm -f "$CHROME_TEST_TRACE" "$CHROME_TEST_CONNECTED" "$CHROME_TEST_LAUNCH"
+  arguments=(tab list)
+  [[ "$args" != json ]] || arguments=(--json tab list)
+  [[ "$args" != snapshot ]] || arguments=(snapshot)
+  output="$("$entrypoint" "${arguments[@]}" 2> "$trial/error")" || { cat "$trial/error" >&2; exit 1; }
+  [[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --pin-tab "${arguments[@]}")" ]]
+  [[ "$(wc -l < "$CHROME_TEST_TRACE" | tr -d ' ')" == 4 ]]
+  [[ "$(sed -n '2p' "$CHROME_TEST_TRACE")" == '--session dotfiles-chrome --pin-tab connect 9222' ]]
+  [[ "$(sed -n '3p' "$CHROME_TEST_TRACE")" == '--session dotfiles-chrome --pin-tab tab list' ]]
+  [[ "$(cat "$CHROME_TEST_LSOF_ARGS")" == '-nP -a -c /^Google Chrome$/ -iTCP -sTCP:LISTEN -Fn' ]]
+  test ! -f "$CHROME_TEST_LAUNCH"
+done
+# Distinct processes/project directories reuse the connected daemon.
+output="$(cd "$trial/other-project" && "$entrypoint" tab list)"
+[[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab tab list)" ]]
+# Never replay a potentially mutating action, even after successful recovery.
+for action in click fill eval; do
+  rm -f "$CHROME_TEST_TRACE" "$CHROME_TEST_CONNECTED"
+  result=0
+  "$entrypoint" "$action" fixture > "$trial/attempt" 2> "$trial/error" || result=$?
+  [[ "$result" == 1 ]]
+  [[ "$(wc -l < "$CHROME_TEST_TRACE" | tr -d ' ')" == 3 ]]
+  [[ "$(cat "$trial/error")" == *'fresh snapshot before continuing'* ]]
+  test -f "$CHROME_TEST_CONNECTED"
+done
+# Only a unique Chrome-owned loopback port is eligible. No HTTP probe needed.
+for listeners in 'n0.0.0.0:9222' 'n*:9222' 'n192.168.1.10:9222' $'n127.0.0.1:9222\nn127.0.0.1:9333' 'n127.0.0.1:70000'; do
+  rm -f "$CHROME_TEST_TRACE" "$CHROME_TEST_CONNECTED"
+  result=0
+  CHROME_TEST_LISTENERS="$listeners" "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error" || result=$?
+  [[ "$result" == 1 ]]
+  [[ "$(wc -l < "$CHROME_TEST_TRACE" | tr -d ' ')" == 1 ]]
+  test ! -f "$CHROME_TEST_CONNECTED"
+done
+for failure in CHROME_TEST_LSOF_FAIL CHROME_TEST_CONNECT_FAIL CHROME_TEST_VERIFY_FAIL; do
+  rm -f "$CHROME_TEST_TRACE" "$CHROME_TEST_CONNECTED"
+  result=0
+  env "$failure=1" "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error" || result=$?
+  [[ "$result" == 1 ]]
+  test ! -f "$CHROME_TEST_LAUNCH"
+done
+for listeners in 'n[::1]:9333' $'n127.0.0.1:9222\nn[::1]:9222'; do
+  rm -f "$CHROME_TEST_TRACE" "$CHROME_TEST_CONNECTED"
+  CHROME_TEST_LISTENERS="$listeners" "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error"
+  [[ "$(wc -l < "$CHROME_TEST_TRACE" | tr -d ' ')" == 4 ]]
+done
+unset CHROME_TEST_DIRECT
+printf '%s\n' 'Chrome direct recovery: verified connection, safe reads, no write replay, ambiguous/remote ports rejected'

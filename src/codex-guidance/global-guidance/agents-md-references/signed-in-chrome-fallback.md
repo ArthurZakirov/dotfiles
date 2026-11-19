@@ -8,6 +8,8 @@ the installed Agent Browser skill for command syntax. The wrapper
 uses the normal CLI connection with a fixed daemon session and strict tab
 pinning. On macOS, only a known connection-discovery failure plus confirmed
 process absence triggers ordinary Chrome launch and one connection retry.
+When Chrome is running and automatic discovery fails, the wrapper can recover
+through a unique existing Chrome-owned loopback port and verify tab access.
 The CLI resolves its effective project, user, and environment settings first;
 rejected settings and action errors do not trigger launch. It never
 restarts running Chrome or changes its profile, debugging flags, or settings.
@@ -97,14 +99,34 @@ agent-chrome tab close example-task-01
 
 Use the current command's output and running or exited state to choose the next action.
 
+- **Automatic discovery failed.** When Chrome is running, the wrapper checks
+  its existing loopback listeners and tries `connect` if exactly one port is
+  verified. It then checks `tab list`. A failing `/json/version` HTTP request
+  alone does not establish that explicit connection will fail. The wrapper
+  repeats `tab list`, `--json tab list`, `snapshot`, and `get` reads after
+  successful recovery. For other commands it reports that the connection was
+  restored and exits with the original failure. Inspect the task tab and take
+  a fresh snapshot before deciding whether to repeat the original action.
+  If multiple ports remain possible, identify the intended Chrome instance
+  before choosing one. For a verified port such as `9222`, connect and check
+  tab access in order, inspecting each result.
+
+  ```sh
+  agent-chrome connect 9222
+  agent-chrome tab list
+  ```
+
+  Report an explicit connection failure or approval request from its actual
+  output. Involve the user when Chrome requires approval or the available
+  connection paths remain blocked.
 - **Discovery unavailable.** A “no running debuggable Chrome” result does not
   prove Chrome is closed or debugging is disabled. Check whether process
   inspection, discovery-file access, or localhost access was denied by the
   command runtime. If the runtime supports an approved elevated retry and
   permits requesting it, retry the read-only `agent-chrome tab list` through
   that supported flow after the previous attempt ends. If elevation is
-  unavailable or denied, report discovery as blocked; do not claim Chrome is
-  absent. Never bypass policy, read profile/authentication data, use another
+  unavailable or denied, inspect the wrapper's direct-connection result before
+  reporting which access remains blocked; do not claim Chrome is absent. Never bypass policy, read profile/authentication data, use another
   profile, or expose a new debugging port to recover.
 - **Chrome closed or launch failed.** On macOS the wrapper launches ordinary
   Chrome with `open -a 'Google Chrome'` when process inspection confirms it is
