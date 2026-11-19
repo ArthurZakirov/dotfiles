@@ -58,6 +58,56 @@ node -e '
 "$npm_config_prefix/bin/agent-browser" skills get electron >/dev/null
 peekaboo --version >/dev/null
 
+# Direct reads must work before any browser has been started. Use the actual
+# wrapper/CLI against loopback HTTP, with isolated daemon sockets and HOME.
+python3 - "$repo_root/home/dot_local/bin/executable_agent-chrome" <<'PYTHON'
+import http.server
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = b"# Fixture\n\nbrowserless-local-check\n"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/markdown")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+threading.Thread(target=server.serve_forever, daemon=True).start()
+cli = shutil.which("agent-browser")
+with tempfile.TemporaryDirectory(prefix="chrome-read-") as trial:
+    env = {"HOME": trial, "PATH": os.environ["PATH"],
+           "AGENT_BROWSER_SOCKET_DIR": trial + "/run", "TMPDIR": trial}
+    url = f"http://127.0.0.1:{server.server_port}/fixture"
+    scenarios = [
+        (["read", url], None),
+        (["batch", f"read {url}", f"read {url}"], None),
+        (["batch"], '[["read", "' + url + '"]]'),
+    ]
+    try:
+        for args, stdin in scenarios:
+            result = subprocess.run([sys.argv[1], *args], env=env, input=stdin,
+                                    text=True, capture_output=True, timeout=30)
+            assert result.returncode == 0, (args, result.stdout, result.stderr)
+            assert "browserless-local-check" in result.stdout, result.stdout
+    finally:
+        subprocess.run([cli, "--session", "dotfiles-chrome", "close"], env=env,
+                       text=True, capture_output=True, timeout=15)
+        server.shutdown()
+print("Real wrapper URL read and argv/stdin batches fetched without Chrome.")
+PYTHON
+
 # Real browser runtime and UI action, with no network services or personal profile.
 "$npm_config_prefix/bin/agent-browser" --session dotfiles-e2e open 'data:text/html,<button onclick="this.textContent=%27clicked%27">click me</button>'
 "$npm_config_prefix/bin/agent-browser" --session dotfiles-e2e snapshot | grep -q 'click me'

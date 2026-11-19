@@ -13,6 +13,14 @@ classify_chrome_command() {
     # shift local: the final exec still receives the caller's original argv.
     while [ "$#" -gt 0 ]; do
         case "$1" in
+            --llms|--filter|--timeout)
+                [ "$chrome_command" = read ] && [ "$#" -ge 2 ] || return
+                shift 2
+                ;;
+            --raw|--require-md|--outline)
+                [ "$chrome_command" = read ] || return
+                shift
+                ;;
             --session|--restore-save|--restore-check-url|--restore-check-text|\
             --restore-check-fn|--namespace|--headers|--executable-path|--cdp|\
             --extension|--init-script|--enable|--profile|--state|--proxy|\
@@ -36,15 +44,27 @@ classify_chrome_command() {
             # Unknown options likewise get no automatic OS launch side effect.
             --restore|--restore=*|-*) return ;;
             *)
-                if [ "$chrome_command" = state ]; then
-                    # state.rs dispatches these locally before daemon startup.
-                    case "$1" in
-                        list|show|clear|clean|rename) chrome_command=local-state ;;
-                    esac
+                if [ "$chrome_command" = read ]; then
+                    chrome_command=direct-read
                     return
                 fi
+                case "$chrome_command:$1" in
+                    # Local actions from state.rs and actions.rs skip_launch_action.
+                    state:list|state:show|state:clear|state:clean|state:rename|\
+                    auth:save|auth:show|auth:delete|auth:list|\
+                    webmcp:result|webmcp:cancel|network-har:stop)
+                        chrome_command=local-only
+                        return
+                        ;;
+                    network:har)
+                        chrome_command=network-har
+                        shift
+                        continue
+                        ;;
+                esac
+                [ -z "$chrome_command" ] || return
                 chrome_command=$1
-                [ "$chrome_command" = state ] || return
+                case "$chrome_command" in state|read|auth|webmcp|network) ;; *) return ;; esac
                 shift
                 ;;
         esac
@@ -53,9 +73,12 @@ classify_chrome_command() {
 if [ -z "$chrome_command" ]; then
     classify_chrome_command "$@"
 fi
+chrome_auto_connect=yes
 case "$chrome_command" in
-    ''|help|version|skills|close|quit|exit|install|upgrade|doctor|dashboard|\
-    profiles|plugin|plugins|mcp|session|read|batch|local-state) ;;
+    '') ;;
+    help|version|skills|close|quit|exit|install|upgrade|doctor|dashboard|\
+    profiles|plugin|plugins|mcp|session|direct-read|batch|local-only|\
+    device|stream|confirm|deny) chrome_auto_connect=no ;;
     *)
         if [ "$(uname -s)" = Darwin ]; then
             # pgrep exit 1 means absent only when process inspection succeeded.
@@ -89,4 +112,8 @@ case "$chrome_command" in
         fi
         ;;
 esac
+if [ "$chrome_auto_connect" = no ]; then
+    # An explicit attachment would make browserless/local work depend on Chrome.
+    exec agent-browser --session dotfiles-chrome --pin-tab "$@"
+fi
 exec agent-browser --session dotfiles-chrome --auto-connect --pin-tab "$@"

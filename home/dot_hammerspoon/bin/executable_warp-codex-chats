@@ -21,7 +21,6 @@ def open_tab(title, cwd, command, new_window=False):
     startup = "touch " + shlex.quote(str(ready)) + " && " + command
     contents = (
         f"name = {json.dumps(title, ensure_ascii=False)}\n"
-        f"title = {json.dumps(title, ensure_ascii=False)}\n"
         '[[panes]]\nid = "main"\ntype = "terminal"\n'
         f"directory = {json.dumps(cwd, ensure_ascii=False)}\n"
         f"commands = [{json.dumps(startup, ensure_ascii=False)}]\n"
@@ -65,8 +64,12 @@ def main():
         parser.error(f"Codex executable not found: {command[0]}")
     codex = [executable, *command[1:]]
 
+    interactive = [
+        *codex, "-c", "check_for_update_on_startup=false",
+        "-c", 'tui.terminal_title=["thread-name"]',
+    ]
     if args.new:
-        open_tab("Codex", os.getcwd(), shlex.join(codex))
+        open_tab("Codex", str(Path.home()), shlex.join(interactive))
         return
 
     requests = [
@@ -113,7 +116,7 @@ def main():
                         continue
                     seen.add(session)
                     title = " ".join((chat.get("name") or "Codex-Chat").split())
-                    command = shlex.join([*codex, "resume", session])
+                    command = shlex.join([*interactive, "resume", session])
                     tabs.append((title, cwd, command))
                     if len(tabs) == args.limit:
                         break

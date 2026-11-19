@@ -15,12 +15,16 @@ Automatic launch applies to browser commands after recognized global options.
 Help, version, skills, local management, and shutdown commands do not trigger
 it. Local `state list`, `show`, `clear`, `clean`, and `rename` operations also
 skip launch; `state save` and `state load` keep browser-launch behavior.
+Local daemon operations (`auth` storage, device listing, stream control,
+confirmation decisions, HAR stop, and WebMCP result/cancel) also skip launch and
+attachment. Browser operations such as `auth login` retain the normal path.
 The wrapper forwards every original argument unchanged. Unknown option
 prefixes and out-of-contract `--restore` overrides also bypass automatic launch;
 the CLI still receives and handles the invocation normally.
 
-`read` and `batch` also bypass automatic launch. This keeps direct URL reads
-browserless and preserves batch argv and stdin without a second batch parser.
+`read` with an explicit URL and `batch` bypass automatic launch and the
+wrapper's added `--auto-connect`. Active-tab `read` without a URL retains normal
+launch and attachment. Batch argv and stdin pass through without a second parser.
 For a batch that needs the browser, first use `agent-chrome tab list` to ensure
 ordinary Chrome is available, then submit the batch.
 

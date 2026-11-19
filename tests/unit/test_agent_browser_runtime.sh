@@ -109,7 +109,7 @@ for command in skills --help --version close quit exit; do
   test ! -f "$CHROME_TEST_LAUNCH"
 done
 output="$(CHROME_TEST_PROCESS=closed "$entrypoint" --json skills get core)"
-[[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab --json skills get core)" ]]
+[[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --pin-tab --json skills get core)" ]]
 test ! -f "$CHROME_TEST_LAUNCH"
 for metadata_flag in --help -h --version -V; do
   CHROME_TEST_PROCESS=closed "$entrypoint" snapshot "$metadata_flag" >/dev/null
@@ -126,7 +126,11 @@ assert_launch_behavior() {
   shift
   rm -f "$CHROME_TEST_LAUNCH"
   output="$(CHROME_TEST_PROCESS=closed "$entrypoint" "$@")"
-  [[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab "$@")" ]]
+  if [[ "$should_launch" == browserless ]]; then
+    [[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --pin-tab "$@")" ]]
+  else
+    [[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab "$@")" ]]
+  fi
   if [[ "$should_launch" == yes ]]; then
     test -f "$CHROME_TEST_LAUNCH"
   else
@@ -141,8 +145,8 @@ for flag in --json --headed --webgpu --no-webmcp --debug \
   for value in absent true false; do
     prefix=("$flag")
     [[ "$value" == absent ]] || prefix+=("$value")
-    assert_launch_behavior no "${prefix[@]}" skills get core
-    assert_launch_behavior no "${prefix[@]}" quit
+    assert_launch_behavior browserless "${prefix[@]}" skills get core
+    assert_launch_behavior browserless "${prefix[@]}" quit
     assert_launch_behavior yes "${prefix[@]}" tab list
   done
 done
@@ -154,33 +158,52 @@ for flag in --session --restore-save --restore-check-url --restore-check-text \
   --confirm-actions --config --engine --input-mode --screenshot-dir \
   --screenshot-quality --screenshot-format --idle-timeout --ca-cert --model; do
   # A command-shaped value is still an option value, never the actual command.
-  assert_launch_behavior no "$flag" 'value with space' skills get core
+  assert_launch_behavior browserless "$flag" 'value with space' skills get core
   assert_launch_behavior yes "$flag" skills tab list
   assert_launch_behavior no "$flag"
 done
 for command in install upgrade doctor dashboard profiles plugin plugins mcp session; do
-  assert_launch_behavior no --debug --max-output 100 "$command"
+  assert_launch_behavior browserless --debug --max-output 100 "$command"
 done
 for subcommand in list show clear clean rename; do
-  assert_launch_behavior no state "$subcommand" example
-  assert_launch_behavior no --debug state --json false "$subcommand" example
-  assert_launch_behavior no --max-output 100 state --max-output 20 "$subcommand" example
+  assert_launch_behavior browserless state "$subcommand" example
+  assert_launch_behavior browserless --debug state --json false "$subcommand" example
+  assert_launch_behavior browserless --max-output 100 state --max-output 20 "$subcommand" example
 done
 for subcommand in save load; do
   assert_launch_behavior yes state "$subcommand" example
   assert_launch_behavior yes --json false state --max-output 100 "$subcommand" example
 done
+for subcommand in save show delete list; do
+  assert_launch_behavior browserless --json auth "$subcommand" example
+done
+assert_launch_behavior yes auth login example
+for command in device stream confirm deny; do
+  assert_launch_behavior browserless "$command"
+done
+assert_launch_behavior browserless stream status
+assert_launch_behavior browserless webmcp result example
+assert_launch_behavior browserless --json webmcp cancel example
+assert_launch_behavior yes webmcp list
+assert_launch_behavior yes webmcp invoke example
+assert_launch_behavior browserless network har stop example.har
+assert_launch_behavior browserless network --json har --max-output 100 stop example.har
+assert_launch_behavior yes network har start
+assert_launch_behavior yes network requests
 for command in open goto navigate press key scrollintoview scrollinto; do
   assert_launch_behavior yes --debug false --max-output 100 "$command" example
-  assert_launch_behavior no --debug false --max-output 100 "$command" --help
+  assert_launch_behavior browserless --debug false --max-output 100 "$command" --help
 done
-assert_launch_behavior no read https://example.com
-assert_launch_behavior no --json read --raw https://example.com
-assert_launch_behavior no read
-assert_launch_behavior no batch 'read https://example.com' 'read https://example.org'
+assert_launch_behavior browserless read https://example.com
+assert_launch_behavior browserless --json read --raw https://example.com
+assert_launch_behavior yes read
+assert_launch_behavior yes read --filter 'text is not a URL'
+assert_launch_behavior browserless read --filter 'text with space' --timeout 1000 --raw https://example.com
+assert_launch_behavior browserless --max-output 100 read --json false --llms index https://example.com
+assert_launch_behavior browserless batch 'read https://example.com' 'read https://example.org'
 # Batch is passed through without inspecting or consuming stdin, including
 # mixed browser operations. Connect with tab list first when Chrome is closed.
-assert_launch_behavior no batch 'open https://example.com' snapshot
+assert_launch_behavior browserless batch 'open https://example.com' snapshot
 export CHROME_TEST_STDIN_COPY="$trial/stdin-copy"
 printf '%s' '[["read", "https://example.com"], ["read", "https://example.org"]]' > "$trial/stdin"
 CHROME_TEST_COPY_STDIN=1 CHROME_TEST_PROCESS=closed "$entrypoint" batch < "$trial/stdin" >/dev/null
