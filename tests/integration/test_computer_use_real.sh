@@ -62,6 +62,7 @@ peekaboo --version >/dev/null
 # wrapper/CLI against loopback HTTP, with isolated daemon sockets and HOME.
 python3 - "$repo_root/home/dot_local/bin/executable_agent-chrome" <<'PYTHON'
 import http.server
+import json
 import os
 from pathlib import Path
 import shutil
@@ -96,10 +97,11 @@ with tempfile.TemporaryDirectory(prefix="chrome-read-") as trial:
         (["batch", f"read {url}", f"read {url}"], None),
         (["batch"], '[["read", "' + url + '"]]'),
     ]
+    home_config = Path(trial) / ".agent-browser/config.json"
     try:
         for args, stdin in scenarios:
             result = subprocess.run([sys.argv[1], *args], env=env, input=stdin,
-                                    text=True, capture_output=True, timeout=30)
+                                    text=True, capture_output=True, timeout=30, cwd=trial)
             assert result.returncode == 0, (args, result.stdout, result.stderr)
             assert "browserless-local-check" in result.stdout, result.stdout
         # Rejected launch modes must reach the real CLI diagnostic without
@@ -120,13 +122,46 @@ with tempfile.TemporaryDirectory(prefix="chrome-read-") as trial:
                      ["snapshot", "--provider", "example"],
                      ["snapshot", "--ca-cert", "example.pem"]):
             result = subprocess.run([sys.argv[1], *args], env=env,
+                                    text=True, capture_output=True, timeout=15, cwd=trial)
+            assert result.returncode == 1, (args, result.stdout, result.stderr)
+            assert "--auto-connect" in result.stderr, result.stderr
+            assert not marker.exists(), args
+        # Effective settings are resolved by the real CLI, including private
+        # config origins; only synthetic fixtures are created in this test.
+        project = Path(trial) / "project"
+        project.mkdir()
+        (project / "agent-browser.json").write_text('{"webgpu": true}')
+        explicit = Path(trial) / "explicit.json"
+        explicit.write_text('{"webgpu": true}')
+        configured_cases = [
+            (["snapshot"], dict(env, AGENT_BROWSER_WEBGPU="1"), trial),
+            (["snapshot"], env, str(project)),
+            (["--config", str(explicit), "snapshot"], env, trial),
+        ]
+        for args, case_env, cwd in configured_cases:
+            result = subprocess.run([sys.argv[1], *args], env=case_env, cwd=cwd,
                                     text=True, capture_output=True, timeout=15)
             assert result.returncode == 1, (args, result.stdout, result.stderr)
             assert "--auto-connect" in result.stderr, result.stderr
             assert not marker.exists(), args
+        result = subprocess.run([sys.argv[1], "--json", "snapshot"],
+                                env=dict(env, AGENT_BROWSER_WEBGPU="1"), cwd=trial,
+                                text=True, capture_output=True, timeout=15)
+        assert result.returncode == 1, (result.stdout, result.stderr)
+        error = json.loads(result.stdout)
+        assert error["success"] is False and "--auto-connect" in error["error"]
+        assert not marker.exists()
+        home_config.parent.mkdir(parents=True, exist_ok=True)
+        home_config.write_text('{"webgpu": true}')
+        result = subprocess.run([sys.argv[1], "snapshot"], env=env, cwd=trial,
+                                text=True, capture_output=True, timeout=15)
+        assert result.returncode == 1, (result.stdout, result.stderr)
+        assert "--auto-connect" in result.stderr, result.stderr
+        assert not marker.exists()
     finally:
+        home_config.unlink(missing_ok=True)
         subprocess.run([cli, "--session", "dotfiles-chrome", "close"], env=env,
-                       text=True, capture_output=True, timeout=15)
+                       text=True, capture_output=True, timeout=15, cwd=trial)
         server.shutdown()
 print("Real wrapper: browserless fetches and rejected launch modes passed without Chrome.")
 PYTHON

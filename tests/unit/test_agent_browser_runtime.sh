@@ -29,10 +29,28 @@ if [ "${CHROME_TEST_DISCOVERY_DENIED:-0}" = 1 ]; then
   echo 'No running debuggable Chrome found (discovery inaccessible)' >&2
   exit 7
 fi
-printf '%s\n' "$@"
 if [ "${CHROME_TEST_COPY_STDIN:-0}" = 1 ]; then
   cat > "$CHROME_TEST_STDIN_COPY"
+  if [ -f "$CHROME_TEST_LAUNCH" ]; then
+    cp "$CHROME_TEST_STDIN_COPY" "$CHROME_TEST_STDIN_COPY.after"
+  else
+    cp "$CHROME_TEST_STDIN_COPY" "$CHROME_TEST_STDIN_COPY.before"
+  fi
 fi
+if [ "${CHROME_TEST_CONNECT_BEFORE_LAUNCH:-0}" = 1 ] && [ ! -f "$CHROME_TEST_LAUNCH" ]; then
+  case "${CHROME_TEST_JSON_DISCOVERY:-0}" in
+    1) echo '{"error":"No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.","success":false}' ;;
+    2) echo '{"success":false,"error":"No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp."}' ;;
+    3) printf '\033[31m✗\033[0m No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.\n' >&2 ;;
+    4) echo 'Error: No running debuggable Chrome found' >&2 ;;
+    *) echo 'No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.' >&2 ;;
+  esac
+  exit 1
+fi
+if [ -n "${BROWSER_TEST_ERROR:-}" ]; then
+  printf '%s\n' "$BROWSER_TEST_ERROR" >&2
+fi
+printf '%s\n' "$@"
 exit "${BROWSER_TEST_EXIT:-0}"
 STUB
 chmod +x "$trial/bin/agent-browser"
@@ -86,7 +104,9 @@ BROWSER_TEST_EXIT=42 "$entrypoint" click '@e1' > "$trial/attempt" || result=$?
 
 for state in running closed denied denied-one; do
   rm -f "$CHROME_TEST_LAUNCH"
-  CHROME_TEST_PROCESS="$state" "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error"
+  connect_before_launch=0
+  [[ "$state" != closed ]] || connect_before_launch=1
+  CHROME_TEST_CONNECT_BEFORE_LAUNCH="$connect_before_launch" CHROME_TEST_PROCESS="$state" "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error"
   [[ "$(cat "$trial/attempt")" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab tab list)" ]]
   if [[ "$state" == closed ]]; then
     test -f "$CHROME_TEST_LAUNCH"
@@ -99,7 +119,7 @@ for state in running closed denied denied-one; do
 done
 rm -f "$CHROME_TEST_LAUNCH"
 result=0
-CHROME_TEST_PROCESS=closed CHROME_TEST_LAUNCH_FAIL=1 "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error" || result=$?
+CHROME_TEST_CONNECT_BEFORE_LAUNCH=1 CHROME_TEST_PROCESS=closed CHROME_TEST_LAUNCH_FAIL=1 "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error" || result=$?
 [[ "$result" == 1 ]]
 test ! -s "$trial/attempt"
 for command in skills --help --version close quit exit; do
@@ -125,7 +145,9 @@ assert_launch_behavior() {
   local should_launch="$1" output
   shift
   rm -f "$CHROME_TEST_LAUNCH"
-  output="$(CHROME_TEST_PROCESS=closed "$entrypoint" "$@")"
+  local connect_before_launch=0
+  [[ "$should_launch" != yes ]] || connect_before_launch=1
+  output="$(CHROME_TEST_CONNECT_BEFORE_LAUNCH="$connect_before_launch" CHROME_TEST_PROCESS=closed "$entrypoint" "$@")"
   if [[ "$should_launch" == browserless ]]; then
     [[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --pin-tab "$@")" ]]
   else
@@ -227,6 +249,12 @@ assert_launch_behavior no snapshot --ca-cert example.pem
 assert_launch_behavior yes --ca-cert example.pem snapshot --no-ca-cert
 assert_launch_behavior no --no-ca-cert snapshot --ca-cert example.pem
 assert_launch_behavior yes --user-agent --webgpu snapshot
+rm -f "$CHROME_TEST_LAUNCH" "$CHROME_TEST_STDIN_COPY.before" "$CHROME_TEST_STDIN_COPY.after"
+printf 'console.log("fixture");\n\n' > "$trial/eval-input"
+CHROME_TEST_CONNECT_BEFORE_LAUNCH=1 CHROME_TEST_PROCESS=closed CHROME_TEST_COPY_STDIN=1 "$entrypoint" eval --stdin < "$trial/eval-input" > "$trial/eval-output"
+cmp "$trial/eval-input" "$CHROME_TEST_STDIN_COPY.before"
+cmp "$trial/eval-input" "$CHROME_TEST_STDIN_COPY.after"
+[[ "$(cat "$trial/eval-output")" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab eval --stdin)" ]]
 assert_launch_behavior no --json false
 assert_launch_behavior no --restore skills get core
 assert_launch_behavior no --restore example-key skills get core
@@ -235,6 +263,27 @@ assert_launch_behavior no --unknown-future-option skills get core
 rm -f "$CHROME_TEST_LAUNCH"
 CHROME_TEST_OS=Linux CHROME_TEST_PROCESS=closed "$entrypoint" tab list >/dev/null
 test ! -f "$CHROME_TEST_LAUNCH"
+
+# Known JSON/plain/colored diagnostics recover without leaking a first response.
+for json_shape in 1 2 3 4; do
+  rm -f "$CHROME_TEST_LAUNCH"
+  arguments=(tab list)
+  [[ "$json_shape" -gt 2 ]] || arguments=(--json tab list)
+  output="$(CHROME_TEST_JSON_DISCOVERY="$json_shape" CHROME_TEST_CONNECT_BEFORE_LAUNCH=1 CHROME_TEST_PROCESS=closed "$entrypoint" "${arguments[@]}")"
+  [[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab "${arguments[@]}")" ]]
+  test -f "$CHROME_TEST_LAUNCH"
+done
+
+# Action errors, including quoted discovery words, must not trigger a retry.
+for error in 'selector was not found' 'Evaluation failed: No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.'; do
+  rm -f "$CHROME_TEST_LAUNCH"
+  result=0
+  CHROME_TEST_PROCESS=closed BROWSER_TEST_EXIT=1 BROWSER_TEST_ERROR="$error" "$entrypoint" click '@e1' > "$trial/attempt" 2> "$trial/error" || result=$?
+  [[ "$result" == 1 ]]
+  [[ "$(cat "$trial/error")" == "$error" ]]
+  [[ "$(cat "$trial/attempt")" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab click '@e1')" ]]
+  test ! -f "$CHROME_TEST_LAUNCH"
+done
 
 # A running Chrome with inaccessible discovery must not cause another launch.
 rm -f "$CHROME_TEST_LAUNCH"
@@ -251,17 +300,17 @@ STUB
 chmod +x "$trial/bin/sleep"
 export CHROME_TEST_WAIT="$trial/wait"
 result=0
-CHROME_TEST_PROCESS=never "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error" || result=$?
+CHROME_TEST_CONNECT_BEFORE_LAUNCH=1 CHROME_TEST_PROCESS=never "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error" || result=$?
 [[ "$result" == 1 ]]
 test ! -s "$trial/attempt"
 [[ "$(cat "$trial/error")" == *'did not become observable'* ]]
 [[ "$(wc -l < "$CHROME_TEST_WAIT" | tr -d ' ')" == 10 ]]
 rm -f "$CHROME_TEST_LAUNCH" "$CHROME_TEST_WAIT"
-CHROME_TEST_PROCESS=final-wait "$entrypoint" tab list > "$trial/attempt"
+CHROME_TEST_CONNECT_BEFORE_LAUNCH=1 CHROME_TEST_PROCESS=final-wait "$entrypoint" tab list > "$trial/attempt"
 [[ "$(wc -l < "$CHROME_TEST_WAIT" | tr -d ' ')" == 10 ]]
 [[ "$(cat "$trial/attempt")" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab tab list)" ]]
 rm -f "$CHROME_TEST_LAUNCH"
-CHROME_TEST_PROCESS=closed-denied "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error"
+CHROME_TEST_CONNECT_BEFORE_LAUNCH=1 CHROME_TEST_PROCESS=closed-denied "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error"
 [[ "$(cat "$trial/error")" == *'browser state unknown'* ]]
 [[ "$(cat "$trial/attempt")" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab tab list)" ]]
 echo 'Chrome entrypoint: closed launched, running reused, denied distinguished, launch failure bounded'

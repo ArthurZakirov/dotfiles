@@ -5,8 +5,11 @@
 Run `agent-chrome` with ordinary Agent Browser commands. If your shell lacks
 `~/.local/bin` in `PATH`, use `~/.local/bin/agent-chrome`. Use
 the installed Agent Browser skill for command syntax. The wrapper
-opens ordinary macOS Chrome when process inspection confirms it is closed,
-then attaches with a fixed daemon session and strict tab pinning. It never
+uses the normal CLI connection with a fixed daemon session and strict tab
+pinning. On macOS, only a known connection-discovery failure plus confirmed
+process absence triggers ordinary Chrome launch and one connection retry.
+The CLI resolves its effective project, user, and environment settings first;
+rejected settings and action errors do not trigger launch. It never
 restarts running Chrome or changes its profile, debugging flags, or settings.
 Omit session, connection, and state persistence options. Keep the
 daemon running when your task ends.
@@ -20,15 +23,15 @@ confirmation decisions, HAR stop, and WebMCP result/cancel) also skip launch and
 attachment. Browser operations such as `auth login` retain the normal path.
 The wrapper forwards every original argument unchanged. Unknown option
 prefixes and out-of-contract `--restore` overrides also bypass automatic launch;
-the CLI still receives and handles the invocation normally. Visible CDP,
-provider, custom CA, and enabled WebGPU modes that conflict with automatic
-attachment also skip OS launch and leave diagnostics to the CLI.
+the CLI still receives and handles the invocation normally.
 
 `read` with an explicit URL and `batch` bypass automatic launch and the
 wrapper's added `--auto-connect`. Active-tab `read` without a URL retains normal
 launch and attachment. Batch argv and stdin pass through without a second parser.
-For a batch that needs the browser, first use `agent-chrome tab list` to ensure
-ordinary Chrome is available, then submit the batch.
+For a browser batch or interactive `chat`, first use `agent-chrome tab list` to
+ensure ordinary Chrome is available. Batch stdin passes through unchanged;
+interactive chat streams directly through the CLI. `eval --stdin` is preserved
+across an automatic connection retry.
 
 The daemon shares its selected tab and snapshot references with other callers.
 Use a dedicated task tab, verify the selected tab, and take a fresh snapshot
