@@ -203,6 +203,104 @@ PYTHON
 "$npm_config_prefix/bin/agent-browser" --session dotfiles-e2e snapshot | grep -q 'clicked'
 "$npm_config_prefix/bin/agent-browser" --session dotfiles-e2e close
 
+# Real CDP recovery with an isolated browser, daemon and page. The OS identity
+# shim maps Google Chrome to this fixture process; socket inspection and CLI
+# connect/list/snapshot use real implementations. Auto-discovery failure alone
+# is injected, so the test cannot attach to the user's browser.
+python3 - "$repo_root/home/dot_local/bin/executable_agent-chrome" <<'CHROME_RECOVERY'
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+cli = shutil.which("agent-browser")
+runtimes = list((Path.home() / ".agent-browser/browsers").glob(
+    "chrome-*/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"))
+runtimes += [Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")]
+browser = next(path for path in runtimes if path.is_file())
+with tempfile.TemporaryDirectory(prefix="chrome-recovery-", ignore_cleanup_errors=True) as scratch:
+    trial = Path(scratch)
+    profile = trial / "profile"
+    mode_bin = trial / "bin"
+    mode_bin.mkdir()
+    env = {"HOME": scratch, "PATH": str(mode_bin) + os.pathsep + os.environ["PATH"],
+           "TMPDIR": scratch, "AGENT_BROWSER_SOCKET_DIR": str(trial / "run"),
+           "CHROME_FIXTURE_CLI": cli, "CHROME_FIXTURE_TRACE": str(trial / "trace")}
+    page = trial / "page.html"
+    page.write_text("<title>Recovery fixture</title><h1>Recovered fixture page</h1>")
+    process = subprocess.Popen(
+        [str(browser), "--headless=new", "--no-first-run", "--no-default-browser-check",
+         "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1",
+         f"--user-data-dir={profile}", page.as_uri()],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    env["CHROME_FIXTURE_PID"] = str(process.pid)
+    scripts = {
+        "pgrep": '#!/bin/sh\nkill -0 "$CHROME_FIXTURE_PID"\n',
+        "lsof": '#!/bin/sh\nexec /usr/sbin/lsof -nP -a -p "$CHROME_FIXTURE_PID" -iTCP -sTCP:LISTEN -Fn\n',
+        "open": '#!/bin/sh\necho unexpected-launch >&2\nexit 99\n',
+        "agent-browser": '''#!/bin/sh
+printf '%s\\n' "$*" >> "$CHROME_FIXTURE_TRACE"
+case " $* " in
+    *" --auto-connect "*)
+        echo 'No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.' >&2
+        exit 1
+        ;;
+esac
+exec "$CHROME_FIXTURE_CLI" "$@"
+''',
+    }
+    for name, script in scripts.items():
+        path = mode_bin / name
+        path.write_text(script)
+        path.chmod(0o755)
+    def run(args):
+        return subprocess.run([sys.argv[1], *args], env=env, cwd=scratch,
+                              text=True, capture_output=True, timeout=30)
+    try:
+        for _ in range(100):
+            if (profile / "DevToolsActivePort").is_file():
+                break
+            assert process.poll() is None, "fixture browser exited before CDP startup"
+            time.sleep(0.1)
+        else:
+            raise AssertionError("fixture CDP startup timed out")
+        result = run(["tab", "list"])
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "Recovery fixture" in result.stdout, result.stdout
+        assert "verified tab access" in result.stderr, result.stderr
+        selected = subprocess.run([cli, "--session", "dotfiles-chrome", "open", page.as_uri()],
+                                  env=env, cwd=scratch, text=True,
+                                  capture_output=True, timeout=15)
+        assert selected.returncode == 0, (selected.stdout, selected.stderr)
+        result = run(["snapshot"])
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "Recovered fixture page" in result.stdout, result.stdout
+        # A possible write must stop after connect+verification, before replay.
+        result = run(["eval", "document.title = 'unexpected write'"])
+        assert result.returncode == 1, (result.stdout, result.stderr)
+        assert "original command was not repeated" in result.stderr, result.stderr
+        title = subprocess.run([cli, "--session", "dotfiles-chrome", "get", "title"],
+                               env=env, cwd=scratch, text=True,
+                               capture_output=True, timeout=15)
+        assert title.returncode == 0 and "Recovery fixture" in title.stdout, title.stdout
+        trace = (trial / "trace").read_text().splitlines()
+        assert sum(" connect " in line for line in trace) == 3, trace
+        assert not any("unexpected write" in line and "--auto-connect" not in line for line in trace), trace
+    finally:
+        subprocess.run([cli, "--session", "dotfiles-chrome", "close"], env=env,
+                       cwd=scratch, text=True, capture_output=True, timeout=15)
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+print("Real CDP recovery passed: discovery failure, connect, tabs, snapshot, write not replayed.")
+CHROME_RECOVERY
+
 # Repeated apply must not duplicate skills or damage the browser runtime.
 /bin/bash "$trial/run_after_40-ensure-peekaboo-skill.sh"
 /bin/bash "$trial/run_after_50-ensure-agent-browser.sh"
