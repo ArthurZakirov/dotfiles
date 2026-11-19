@@ -1,3 +1,213 @@
 #!/bin/sh
-# Share an existing Chrome connection across Codex chats on this machine.
-exec agent-browser --session dotfiles-chrome --auto-connect --pin-tab "$@"
+# Share an ordinary Chrome connection across Codex chats on this machine.
+# Classify without changing the arguments forwarded to agent-browser.
+# The CLI retains its own help/version and end-of-options semantics.
+chrome_command=
+chrome_stdin=no
+chrome_global_value_flag() {
+    case "$1" in
+        --session|--restore-save|--restore-check-url|--restore-check-text|\
+        --restore-check-fn|--namespace|--headers|--executable-path|--cdp|--cdp-headers|\
+        --extension|--init-script|--enable|--profile|--state|--proxy|\
+        --proxy-bypass|--args|--user-agent|-p|--provider|--device|\
+        --session-name|--color-scheme|--download-path|--max-output|\
+        --allowed-domains|--capture|--action-policy|--confirm-actions|--config|\
+        --engine|--input-mode|--screenshot-dir|--screenshot-quality|\
+        --screenshot-format|--idle-timeout|--ca-cert|--model) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+classify_chrome_command() {
+    # Recognize documented global prefix arity (0.39 and 0.43). A function keeps
+    # shift local: the final exec still receives the caller's original argv.
+    while [ "$#" -gt 0 ]; do
+        if chrome_global_value_flag "$1"; then
+            [ "$#" -ge 2 ] || return
+            shift 2
+            continue
+        fi
+        case "$1" in
+            --stdin)
+                [ "$chrome_command" != eval ] || chrome_stdin=yes
+                return
+                ;;
+            --llms|--filter|--timeout)
+                [ "$chrome_command" = read ] && [ "$#" -ge 2 ] || return
+                shift 2
+                ;;
+            --raw|--require-md|--outline)
+                [ "$chrome_command" = read ] || return
+                shift
+                ;;
+            --json|--headed|--webgpu|--no-webmcp|--debug|\
+            --ignore-https-errors|--allow-file-access|--hide-scrollbars|\
+            --auto-connect|--pin-tab|--no-pin-tab|--no-ca-cert|--use-system-ca|\
+            --annotate|--content-boundaries|--confirm-interactive|\
+            --no-auto-dialog|-v|--verbose|-q|--quiet|--offline|--quick|--fix)
+                shift
+                case "${1-}" in true|false) shift ;; esac
+                ;;
+            # Restore overrides are outside the shared regular-Chrome flow.
+            # Unknown options likewise get no automatic OS launch side effect.
+            --restore|--restore=*|-*) return ;;
+            *)
+                if [ "$chrome_command" = read ]; then
+                    chrome_command=direct-read
+                    return
+                fi
+                case "$chrome_command:$1" in
+                    # Local actions from state.rs and actions.rs skip_launch_action.
+                    state:list|state:show|state:clear|state:clean|state:rename|\
+                    auth:save|auth:show|auth:delete|auth:list|\
+                    webmcp:result|webmcp:cancel|network-har:stop)
+                        chrome_command=local-only
+                        return
+                        ;;
+                    network:har)
+                        chrome_command=network-har
+                        shift
+                        continue
+                        ;;
+                esac
+                [ -z "$chrome_command" ] || return
+                chrome_command=$1
+                case "$chrome_command" in state|read|auth|webmcp|network|eval) ;; *) return ;; esac
+                shift
+                ;;
+        esac
+    done
+}
+if [ -z "$chrome_command" ]; then
+    classify_chrome_command "$@"
+fi
+case "$chrome_command" in
+    help|version|skills|close|quit|exit|install|upgrade|doctor|dashboard|\
+    profiles|plugin|plugins|mcp|session|direct-read|batch|local-only|\
+    device|stream|confirm|deny|connect)
+        exec agent-browser --session dotfiles-chrome --pin-tab "$@"
+        ;;
+    ''|chat)
+        # Interactive chat and unknown prefixes stay entirely with the CLI.
+        exec agent-browser --session dotfiles-chrome --auto-connect --pin-tab "$@"
+        ;;
+esac
+# A possible metadata request must not consume piped input before the CLI
+# decides whether the flag is help or a literal (this differs across versions).
+if [ "$chrome_stdin" = yes ]; then
+    for chrome_arg do
+        case "$chrome_arg" in
+            --help|-h|--version|-V)
+                exec agent-browser --session dotfiles-chrome --auto-connect --pin-tab "$@"
+                ;;
+        esac
+    done
+fi
+if [ "$(uname -s)" != Darwin ]; then
+    exec agent-browser --session dotfiles-chrome --auto-connect --pin-tab "$@"
+fi
+process_error=$(pgrep -x 'Google Chrome' 2>&1 >/dev/null)
+process_status=$?
+if [ "$process_status" -eq 0 ]; then
+    exec agent-browser --session dotfiles-chrome --auto-connect --pin-tab "$@"
+fi
+if [ "$process_status" -ne 1 ] || [ -n "$process_error" ]; then
+    echo 'agent-chrome: Chrome process inspection unavailable; browser state unknown. Attempting normal connection.' >&2
+    exec agent-browser --session dotfiles-chrome --auto-connect --pin-tab "$@"
+fi
+
+# Let the CLI resolve private project/user/env config and validate the command.
+# Buffer only when Chrome is confirmed absent; retry only known discovery errors.
+chrome_trial=$(mktemp -d) || exit 1
+trap 'rm -rf "$chrome_trial"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+if [ "$chrome_stdin" = yes ]; then
+    if ! cat > "$chrome_trial/stdin"; then
+        echo 'agent-chrome: could not buffer stdin; command not attempted.' >&2
+        exit 1
+    fi
+    exec < "$chrome_trial/stdin"
+fi
+agent-browser --session dotfiles-chrome --auto-connect --pin-tab "$@" > "$chrome_trial/stdout" 2> "$chrome_trial/stderr"
+chrome_result=$?
+replay_chrome_result() {
+    cat "$chrome_trial/stdout"
+    cat "$chrome_trial/stderr" >&2
+    exit "$chrome_result"
+}
+retry_chrome_connection() {
+    if [ "$chrome_stdin" = yes ]; then
+        exec < "$chrome_trial/stdin"
+    fi
+    rm -rf "$chrome_trial"
+    trap - EXIT HUP INT TERM
+    exec agent-browser --session dotfiles-chrome --auto-connect --pin-tab "$@"
+}
+[ "$chrome_result" -eq 1 ] || replay_chrome_result
+# Match complete known CLI diagnostics, not action errors quoting those words.
+chrome_discovery=no
+if [ -s "$chrome_trial/stdout" ]; then
+    # Native macOS JSON parsing accepts extra response fields without confusing
+    # nested action data with the top-level error. Never print parsed data here.
+    chrome_success=$(plutil -extract success raw -expect bool -o - "$chrome_trial/stdout" 2>/dev/null)
+    if [ "$chrome_success" = false ]; then
+        chrome_error=$(plutil -extract error raw -expect string -o - "$chrome_trial/stdout" 2>/dev/null)
+        chrome_error=${chrome_error#Auto-launch failed: }
+        case "$chrome_error" in
+            'No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.'|'No running debuggable Chrome found') chrome_discovery=yes ;;
+        esac
+    fi
+fi
+if [ "$chrome_discovery" = no ] && ! awk '
+    BEGIN {
+        native = "No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp."
+        legacy = "No running debuggable Chrome found"
+    }
+    {
+        line = $0
+        gsub(/\033\[[0-9;]*m/, "", line)
+        sub(/^[^[:alnum:]{]* /, "", line)
+        sub(/^Error: /, "", line)
+        for (i = 1; i <= 4; i++) {
+            message = i % 2 == 1 ? native : legacy
+            if (i > 2) message = "Auto-launch failed: " message
+            if (line == message ||
+                line == "{\"error\":\"" message "\",\"success\":false}" ||
+                line == "{\"success\":false,\"error\":\"" message "\"}") found = 1
+        }
+    }
+    END { exit !found }
+' "$chrome_trial/stdout" "$chrome_trial/stderr"; then
+    replay_chrome_result
+fi
+# Another caller may have started Chrome while discovery was failing.
+process_error=$(pgrep -x 'Google Chrome' 2>&1 >/dev/null)
+process_status=$?
+[ "$process_status" -ne 0 ] || retry_chrome_connection "$@"
+if [ "$process_status" -ne 1 ] || [ -n "$process_error" ]; then
+    echo 'agent-chrome: Chrome process inspection unavailable; browser state unknown.' >&2
+    replay_chrome_result
+fi
+if ! open -a 'Google Chrome'; then
+    echo 'agent-chrome: ordinary Chrome launch failed; retry not attempted.' >&2
+    exit 1
+fi
+# Bound startup waiting, including a probe after the final wait interval.
+attempt=0
+while [ "$attempt" -le 10 ]; do
+    process_error=$(pgrep -x 'Google Chrome' 2>&1 >/dev/null)
+    process_status=$?
+    [ "$process_status" -ne 0 ] || break
+    if [ "$process_status" -ne 1 ] || [ -n "$process_error" ]; then
+        echo 'agent-chrome: Chrome process inspection unavailable after launch; browser state unknown. Attempting normal connection.' >&2
+        break
+    fi
+    if [ "$attempt" -eq 10 ]; then
+        echo 'agent-chrome: Chrome did not become observable after launch; retry not attempted.' >&2
+        exit 1
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+done
+retry_chrome_connection "$@"

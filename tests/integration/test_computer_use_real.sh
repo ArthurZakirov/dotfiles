@@ -58,6 +58,144 @@ node -e '
 "$npm_config_prefix/bin/agent-browser" skills get electron >/dev/null
 peekaboo --version >/dev/null
 
+# Direct reads must work before any browser has been started. Use the actual
+# wrapper/CLI against loopback HTTP, with isolated daemon sockets and HOME.
+python3 - "$repo_root/home/dot_local/bin/executable_agent-chrome" <<'PYTHON'
+import http.server
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = b"# Fixture\n\nbrowserless-local-check\n"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/markdown")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+threading.Thread(target=server.serve_forever, daemon=True).start()
+cli = shutil.which("agent-browser")
+with tempfile.TemporaryDirectory(prefix="chrome-read-") as trial:
+    env = {"HOME": trial, "PATH": os.environ["PATH"],
+           "AGENT_BROWSER_SOCKET_DIR": trial + "/run", "TMPDIR": trial}
+    url = f"http://127.0.0.1:{server.server_port}/fixture"
+    scenarios = [
+        (["read", url], None),
+        (["batch", f"read {url}", f"read {url}"], None),
+        (["batch"], '[["read", "' + url + '"]]'),
+    ]
+    home_config = Path(trial) / ".agent-browser/config.json"
+    try:
+        for args, stdin in scenarios:
+            result = subprocess.run([sys.argv[1], *args], env=env, input=stdin,
+                                    text=True, capture_output=True, timeout=30, cwd=trial)
+            assert result.returncode == 0, (args, result.stdout, result.stderr)
+            assert "browserless-local-check" in result.stdout, result.stdout
+        # Rejected launch modes must reach the real CLI diagnostic without
+        # asking Launch Services to open Chrome. OS commands stay isolated.
+        mode_bin = Path(trial) / "bin"
+        mode_bin.mkdir()
+        for name, body in {
+            "pgrep": "#!/bin/sh\nexit 1\n",
+            "open": '#!/bin/sh\n: > "$CHROME_MODE_LAUNCH_MARKER"\nexit 99\n',
+        }.items():
+            command = mode_bin / name
+            command.write_text(body)
+            command.chmod(0o755)
+        marker = Path(trial) / "unexpected-launch"
+        env.update(PATH=str(mode_bin) + os.pathsep + env["PATH"],
+                   CHROME_MODE_LAUNCH_MARKER=str(marker))
+        for args in (["--webgpu", "snapshot"], ["snapshot", "--cdp", "9222"],
+                     ["snapshot", "--provider", "example"],
+                     ["snapshot", "--ca-cert", "example.pem"]):
+            result = subprocess.run([sys.argv[1], *args], env=env,
+                                    text=True, capture_output=True, timeout=15, cwd=trial)
+            assert result.returncode == 1, (args, result.stdout, result.stderr)
+            assert "--auto-connect" in result.stderr, result.stderr
+            assert not marker.exists(), args
+        # Effective settings are resolved by the real CLI, including private
+        # config origins; only synthetic fixtures are created in this test.
+        project = Path(trial) / "project"
+        project.mkdir()
+        (project / "agent-browser.json").write_text('{"webgpu": true}')
+        explicit = Path(trial) / "explicit.json"
+        explicit.write_text('{"webgpu": true}')
+        project_probe = subprocess.run(
+            [cli, "--session", "dotfiles-chrome", "--auto-connect", "--json", "snapshot"],
+            env=env, cwd=project, text=True, capture_output=True, timeout=15)
+        assert project_probe.returncode == 1, (project_probe.stdout, project_probe.stderr)
+        project_untrusted = "automatic project config is untrusted" in project_probe.stderr
+        configured_cases = [
+            (["snapshot"], dict(env, AGENT_BROWSER_WEBGPU="1"), trial),
+            (["snapshot"], env, str(project)),
+            (["--config", str(explicit), "snapshot"], env, trial),
+        ]
+        for args, case_env, cwd in configured_cases:
+            result = subprocess.run([sys.argv[1], *args], env=case_env, cwd=cwd,
+                                    text=True, capture_output=True, timeout=15)
+            assert result.returncode == 1, (args, result.stdout, result.stderr)
+            if cwd == str(project) and project_untrusted:
+                # Newer CLIs intentionally ignore this untrusted launch setting.
+                # The now-compatible command must reach ordinary Chrome recovery.
+                assert marker.exists(), result.stderr
+                assert "ordinary Chrome launch failed" in result.stderr, result.stderr
+                marker.unlink()
+            else:
+                assert "--auto-connect" in result.stderr, result.stderr
+                assert not marker.exists(), args
+        result = subprocess.run([sys.argv[1], "--json", "snapshot"],
+                                env=dict(env, AGENT_BROWSER_WEBGPU="1"), cwd=trial,
+                                text=True, capture_output=True, timeout=15)
+        assert result.returncode == 1, (result.stdout, result.stderr)
+        error = json.loads(result.stdout)
+        assert error["success"] is False and "--auto-connect" in error["error"]
+        assert not marker.exists()
+        result = subprocess.run([sys.argv[1], "--json", "snapshot"], env=env, cwd=project,
+                                text=True, capture_output=True, timeout=15)
+        assert result.returncode == 1, (result.stdout, result.stderr)
+        if project_untrusted:
+            assert marker.exists(), (result.stdout, result.stderr)
+            assert result.stdout == "", result.stdout
+            assert "ordinary Chrome launch failed" in result.stderr, result.stderr
+            marker.unlink()
+        else:
+            error = json.loads(result.stdout)
+            assert error["success"] is False and "--auto-connect" in error["error"]
+            assert not marker.exists()
+        result = subprocess.run([sys.argv[1], "eval", "--stdin", "--help"], env=env,
+                                cwd=trial, input="not JavaScript", text=True,
+                                capture_output=True, timeout=15)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "eval" in result.stdout.lower(), result.stdout
+        assert not marker.exists()
+        home_config.parent.mkdir(parents=True, exist_ok=True)
+        home_config.write_text('{"webgpu": true}')
+        result = subprocess.run([sys.argv[1], "snapshot"], env=env, cwd=trial,
+                                text=True, capture_output=True, timeout=15)
+        assert result.returncode == 1, (result.stdout, result.stderr)
+        assert "--auto-connect" in result.stderr, result.stderr
+        assert not marker.exists()
+    finally:
+        home_config.unlink(missing_ok=True)
+        subprocess.run([cli, "--session", "dotfiles-chrome", "close"], env=env,
+                       text=True, capture_output=True, timeout=15, cwd=trial)
+        server.shutdown()
+print("Real wrapper: browserless fetches and rejected launch modes passed without Chrome.")
+PYTHON
+
 # Real browser runtime and UI action, with no network services or personal profile.
 "$npm_config_prefix/bin/agent-browser" --session dotfiles-e2e open 'data:text/html,<button onclick="this.textContent=%27clicked%27">click me</button>'
 "$npm_config_prefix/bin/agent-browser" --session dotfiles-e2e snapshot | grep -q 'click me'

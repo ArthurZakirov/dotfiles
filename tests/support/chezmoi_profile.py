@@ -11,6 +11,9 @@ import os
 import subprocess
 
 
+COMMAND_TIMEOUT_SECONDS = 30
+
+
 @dataclass(frozen=True)
 class RenderedProfile:
     name: str
@@ -31,10 +34,12 @@ class ChezmoiProfileFixture:
 
     @staticmethod
     def run(
-        *args: str, env: Optional[Mapping[str, str]] = None
+        *args: str,
+        env: Optional[Mapping[str, str]] = None,
+        timeout: float = COMMAND_TIMEOUT_SECONDS,
     ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            args, check=True, text=True, capture_output=True, env=env
+            args, check=True, text=True, capture_output=True, env=env, timeout=timeout
         )
 
     def chezmoi(self, config: Path, *args: str) -> str:
@@ -43,10 +48,12 @@ class ChezmoiProfileFixture:
             "--config", str(config), *args,
         ).stdout
 
-    def chezmoi_bytes(self, config: Path, *args: str) -> bytes:
+    def chezmoi_bytes(
+        self, config: Path, *args: str, timeout: float = COMMAND_TIMEOUT_SECONDS
+    ) -> bytes:
         return subprocess.run(
             ("chezmoi", "--source", str(self.repository), "--config", str(config), *args),
-            check=True, capture_output=True,
+            check=True, capture_output=True, timeout=timeout,
         ).stdout
 
     def render(self, profile: str) -> RenderedProfile:
