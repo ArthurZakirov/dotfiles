@@ -133,6 +133,11 @@ with tempfile.TemporaryDirectory(prefix="chrome-read-") as trial:
         (project / "agent-browser.json").write_text('{"webgpu": true}')
         explicit = Path(trial) / "explicit.json"
         explicit.write_text('{"webgpu": true}')
+        project_probe = subprocess.run(
+            [cli, "--session", "dotfiles-chrome", "--auto-connect", "--json", "snapshot"],
+            env=env, cwd=project, text=True, capture_output=True, timeout=15)
+        assert project_probe.returncode == 1, (project_probe.stdout, project_probe.stderr)
+        project_untrusted = "automatic project config is untrusted" in project_probe.stderr
         configured_cases = [
             (["snapshot"], dict(env, AGENT_BROWSER_WEBGPU="1"), trial),
             (["snapshot"], env, str(project)),
@@ -142,14 +147,39 @@ with tempfile.TemporaryDirectory(prefix="chrome-read-") as trial:
             result = subprocess.run([sys.argv[1], *args], env=case_env, cwd=cwd,
                                     text=True, capture_output=True, timeout=15)
             assert result.returncode == 1, (args, result.stdout, result.stderr)
-            assert "--auto-connect" in result.stderr, result.stderr
-            assert not marker.exists(), args
+            if cwd == str(project) and project_untrusted:
+                # Newer CLIs intentionally ignore this untrusted launch setting.
+                # The now-compatible command must reach ordinary Chrome recovery.
+                assert marker.exists(), result.stderr
+                assert "ordinary Chrome launch failed" in result.stderr, result.stderr
+                marker.unlink()
+            else:
+                assert "--auto-connect" in result.stderr, result.stderr
+                assert not marker.exists(), args
         result = subprocess.run([sys.argv[1], "--json", "snapshot"],
                                 env=dict(env, AGENT_BROWSER_WEBGPU="1"), cwd=trial,
                                 text=True, capture_output=True, timeout=15)
         assert result.returncode == 1, (result.stdout, result.stderr)
         error = json.loads(result.stdout)
         assert error["success"] is False and "--auto-connect" in error["error"]
+        assert not marker.exists()
+        result = subprocess.run([sys.argv[1], "--json", "snapshot"], env=env, cwd=project,
+                                text=True, capture_output=True, timeout=15)
+        assert result.returncode == 1, (result.stdout, result.stderr)
+        if project_untrusted:
+            assert marker.exists(), (result.stdout, result.stderr)
+            assert result.stdout == "", result.stdout
+            assert "ordinary Chrome launch failed" in result.stderr, result.stderr
+            marker.unlink()
+        else:
+            error = json.loads(result.stdout)
+            assert error["success"] is False and "--auto-connect" in error["error"]
+            assert not marker.exists()
+        result = subprocess.run([sys.argv[1], "eval", "--stdin", "--help"], env=env,
+                                cwd=trial, input="not JavaScript", text=True,
+                                capture_output=True, timeout=15)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "eval" in result.stdout.lower(), result.stdout
         assert not marker.exists()
         home_config.parent.mkdir(parents=True, exist_ok=True)
         home_config.write_text('{"webgpu": true}')

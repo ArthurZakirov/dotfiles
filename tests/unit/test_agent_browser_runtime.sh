@@ -43,9 +43,15 @@ if [ "${CHROME_TEST_CONNECT_BEFORE_LAUNCH:-0}" = 1 ] && [ ! -f "$CHROME_TEST_LAU
     2) echo '{"success":false,"error":"No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp."}' ;;
     3) printf '\033[31m✗\033[0m No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.\n' >&2 ;;
     4) echo 'Error: No running debuggable Chrome found' >&2 ;;
+    5) echo '✗ Auto-launch failed: No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.' >&2 ;;
+    6) echo '{"error":"Auto-launch failed: No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.","settings":{"applied":false},"success":false}' ;;
     *) echo 'No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.' >&2 ;;
   esac
   exit 1
+fi
+if [ -n "${BROWSER_TEST_JSON_ERROR:-}" ]; then
+  printf '%s\n' "$BROWSER_TEST_JSON_ERROR"
+  exit "${BROWSER_TEST_EXIT:-1}"
 fi
 if [ -n "${BROWSER_TEST_ERROR:-}" ]; then
   printf '%s\n' "$BROWSER_TEST_ERROR" >&2
@@ -177,10 +183,10 @@ for flag in --json --headed --webgpu --no-webmcp --debug \
   done
 done
 for flag in --session --restore-save --restore-check-url --restore-check-text \
-  --restore-check-fn --namespace --headers --executable-path --cdp \
+  --restore-check-fn --namespace --headers --executable-path --cdp --cdp-headers \
   --extension --init-script --enable --profile --state --proxy --proxy-bypass \
   --args --user-agent -p --provider --device --session-name --color-scheme \
-  --download-path --max-output --allowed-domains --action-policy \
+  --download-path --max-output --allowed-domains --capture --action-policy \
   --confirm-actions --config --engine --input-mode --screenshot-dir \
   --screenshot-quality --screenshot-format --idle-timeout --ca-cert --model; do
   # A command-shaped value is still an option value, never the actual command.
@@ -221,8 +227,14 @@ assert_launch_behavior yes network har start
 assert_launch_behavior yes network requests
 for command in open goto navigate press key scrollintoview scrollinto; do
   assert_launch_behavior yes --debug false --max-output 100 "$command" example
-  assert_launch_behavior browserless --debug false --max-output 100 "$command" --help
+  assert_launch_behavior no --debug false --max-output 100 "$command" --help
 done
+assert_launch_behavior browserless connect 9222
+output="$(CHROME_TEST_PROCESS=running "$entrypoint" connect 9222)"
+[[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --pin-tab connect 9222)" ]]
+assert_launch_behavior browserless --json connect ws://example.invalid/devtools/browser/test
+assert_launch_behavior yes fill '#input' -- --help
+assert_launch_behavior yes --user-agent --help snapshot
 assert_launch_behavior browserless read https://example.com
 assert_launch_behavior browserless --json read --raw https://example.com
 assert_launch_behavior yes read
@@ -265,10 +277,10 @@ CHROME_TEST_OS=Linux CHROME_TEST_PROCESS=closed "$entrypoint" tab list >/dev/nul
 test ! -f "$CHROME_TEST_LAUNCH"
 
 # Known JSON/plain/colored diagnostics recover without leaking a first response.
-for json_shape in 1 2 3 4; do
+for json_shape in 1 2 3 4 5 6; do
   rm -f "$CHROME_TEST_LAUNCH"
   arguments=(tab list)
-  [[ "$json_shape" -gt 2 ]] || arguments=(--json tab list)
+  if [[ "$json_shape" -le 2 || "$json_shape" == 6 ]]; then arguments=(--json tab list); fi
   output="$(CHROME_TEST_JSON_DISCOVERY="$json_shape" CHROME_TEST_CONNECT_BEFORE_LAUNCH=1 CHROME_TEST_PROCESS=closed "$entrypoint" "${arguments[@]}")"
   [[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab "${arguments[@]}")" ]]
   test -f "$CHROME_TEST_LAUNCH"
@@ -284,6 +296,28 @@ for error in 'selector was not found' 'Evaluation failed: No running Chrome inst
   [[ "$(cat "$trial/attempt")" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab click '@e1')" ]]
   test ! -f "$CHROME_TEST_LAUNCH"
 done
+
+rm -f "$CHROME_TEST_LAUNCH"
+json_error='{"success":false,"error":"action failed","data":{"error":"No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp."}}'
+result=0
+CHROME_TEST_PROCESS=closed BROWSER_TEST_JSON_ERROR="$json_error" "$entrypoint" --json eval example > "$trial/attempt" || result=$?
+[[ "$result" == 1 ]]
+[[ "$(cat "$trial/attempt")" == "$json_error" ]]
+test ! -f "$CHROME_TEST_LAUNCH"
+mkdir "$trial/failed-cat"
+printf '#!/bin/sh\nexit 1\n' > "$trial/failed-cat/cat"
+chmod +x "$trial/failed-cat/cat"
+result=0
+PATH="$trial/failed-cat:$PATH" CHROME_TEST_PROCESS=closed "$entrypoint" eval --stdin < "$trial/eval-input" > "$trial/attempt" 2> "$trial/error" || result=$?
+[[ "$result" == 1 ]]
+test ! -s "$trial/attempt"
+[[ "$(cat "$trial/error")" == *'could not buffer stdin'* ]]
+test ! -f "$CHROME_TEST_LAUNCH"
+
+# Help must reach the CLI without buffering stdin or launching Chrome.
+PATH="$trial/failed-cat:$PATH" CHROME_TEST_PROCESS=closed "$entrypoint" eval --stdin --help < "$trial/eval-input" > "$trial/attempt"
+[[ "$(cat "$trial/attempt")" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab eval --stdin --help)" ]]
+test ! -f "$CHROME_TEST_LAUNCH"
 
 # A running Chrome with inaccessible discovery must not cause another launch.
 rm -f "$CHROME_TEST_LAUNCH"

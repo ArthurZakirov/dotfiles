@@ -18,7 +18,8 @@ daemon running when your task ends.
 
 Automatic launch applies to browser commands after recognized global options.
 Help, version, skills, local management, and shutdown commands do not trigger
-it. Local `state list`, `show`, `clear`, `clean`, and `rename` operations also
+it. An explicitly requested `connect` is passed through without added
+auto-connect; it is outside this shared-session workflow. Local `state list`, `show`, `clear`, `clean`, and `rename` operations also
 skip launch; `state save` and `state load` keep browser-launch behavior.
 Local daemon operations (`auth` storage, device listing, stream control,
 confirmation decisions, HAR stop, and WebMCP result/cancel) also skip launch and
