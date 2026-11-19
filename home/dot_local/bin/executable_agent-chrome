@@ -44,7 +44,7 @@ if [ -z "$chrome_command" ]; then
 fi
 case "$chrome_command" in
     ''|help|version|skills|close|quit|exit|install|upgrade|doctor|dashboard|\
-    profiles|plugin|plugins|mcp|session) ;;
+    profiles|plugin|plugins|mcp|session|read|batch) ;;
     *)
         if [ "$(uname -s)" = Darwin ]; then
             # pgrep exit 1 means absent only when process inspection succeeded.
@@ -57,7 +57,7 @@ case "$chrome_command" in
                 fi
                 # Bound startup waiting; never kill/restart an existing Chrome.
                 attempt=0
-                while [ "$attempt" -lt 10 ]; do
+                while [ "$attempt" -le 10 ]; do
                     process_error=$(pgrep -x 'Google Chrome' 2>&1 >/dev/null)
                     process_status=$?
                     [ "$process_status" -ne 0 ] || break
@@ -65,13 +65,13 @@ case "$chrome_command" in
                         echo 'agent-chrome: Chrome process inspection unavailable after launch; browser state unknown. Attempting normal connection.' >&2
                         break
                     fi
+                    if [ "$attempt" -eq 10 ]; then
+                        echo 'agent-chrome: Chrome did not become observable after launch; connection not attempted.' >&2
+                        exit 1
+                    fi
                     attempt=$((attempt + 1))
                     sleep 1
                 done
-                if [ "$attempt" -eq 10 ]; then
-                    echo 'agent-chrome: Chrome did not become observable after launch; connection not attempted.' >&2
-                    exit 1
-                fi
             elif [ "$process_status" -ne 0 ]; then
                 echo 'agent-chrome: Chrome process inspection unavailable; browser state unknown. Attempting normal connection.' >&2
             fi

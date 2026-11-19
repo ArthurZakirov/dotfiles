@@ -30,6 +30,9 @@ if [ "${CHROME_TEST_DISCOVERY_DENIED:-0}" = 1 ]; then
   exit 7
 fi
 printf '%s\n' "$@"
+if [ "${CHROME_TEST_COPY_STDIN:-0}" = 1 ]; then
+  cat > "$CHROME_TEST_STDIN_COPY"
+fi
 exit "${BROWSER_TEST_EXIT:-0}"
 STUB
 chmod +x "$trial/bin/agent-browser"
@@ -46,6 +49,10 @@ case "${CHROME_TEST_PROCESS:-running}" in
   running) exit 0 ;;
   closed) [ -f "$CHROME_TEST_LAUNCH" ] && exit 0; exit 1 ;;
   never) exit 1 ;;
+  final-wait)
+    [ -f "$CHROME_TEST_WAIT" ] && [ "$(wc -l < "$CHROME_TEST_WAIT")" -ge 10 ] && exit 0
+    exit 1
+    ;;
   closed-denied)
     if [ -f "$CHROME_TEST_LAUNCH" ]; then
       echo 'process inspection denied after launch' >&2
@@ -158,6 +165,18 @@ for command in open goto navigate press key scrollintoview scrollinto; do
   assert_launch_behavior yes --debug false --max-output 100 "$command" example
   assert_launch_behavior no --debug false --max-output 100 "$command" --help
 done
+assert_launch_behavior no read https://example.com
+assert_launch_behavior no --json read --raw https://example.com
+assert_launch_behavior no read
+assert_launch_behavior no batch 'read https://example.com' 'read https://example.org'
+# Batch is passed through without inspecting or consuming stdin, including
+# mixed browser operations. Connect with tab list first when Chrome is closed.
+assert_launch_behavior no batch 'open https://example.com' snapshot
+export CHROME_TEST_STDIN_COPY="$trial/stdin-copy"
+printf '%s' '[["read", "https://example.com"], ["read", "https://example.org"]]' > "$trial/stdin"
+CHROME_TEST_COPY_STDIN=1 CHROME_TEST_PROCESS=closed "$entrypoint" batch < "$trial/stdin" >/dev/null
+cmp "$trial/stdin" "$CHROME_TEST_STDIN_COPY"
+test ! -f "$CHROME_TEST_LAUNCH"
 assert_launch_behavior no --json false
 assert_launch_behavior no --restore skills get core
 assert_launch_behavior no --restore example-key skills get core
@@ -187,6 +206,10 @@ CHROME_TEST_PROCESS=never "$entrypoint" tab list > "$trial/attempt" 2> "$trial/e
 test ! -s "$trial/attempt"
 [[ "$(cat "$trial/error")" == *'did not become observable'* ]]
 [[ "$(wc -l < "$CHROME_TEST_WAIT" | tr -d ' ')" == 10 ]]
+rm -f "$CHROME_TEST_LAUNCH" "$CHROME_TEST_WAIT"
+CHROME_TEST_PROCESS=final-wait "$entrypoint" tab list > "$trial/attempt"
+[[ "$(wc -l < "$CHROME_TEST_WAIT" | tr -d ' ')" == 10 ]]
+[[ "$(cat "$trial/attempt")" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab tab list)" ]]
 rm -f "$CHROME_TEST_LAUNCH"
 CHROME_TEST_PROCESS=closed-denied "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error"
 [[ "$(cat "$trial/error")" == *'browser state unknown'* ]]

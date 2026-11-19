@@ -19,6 +19,11 @@ it. The wrapper forwards every original argument unchanged. Unknown option
 prefixes and out-of-contract `--restore` overrides also bypass automatic launch;
 the CLI still receives and handles the invocation normally.
 
+`read` and `batch` also bypass automatic launch. This keeps direct URL reads
+browserless and preserves batch argv and stdin without a second batch parser.
+For a batch that needs the browser, first use `agent-chrome tab list` to ensure
+ordinary Chrome is available, then submit the batch.
+
 The daemon shares its selected tab and snapshot references with other callers.
 Use a dedicated task tab, verify the selected tab, and take a fresh snapshot
 before acting. If you observe that another task is using the session,
