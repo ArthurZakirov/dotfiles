@@ -147,7 +147,11 @@ for flag in --json --headed --webgpu --no-webmcp --debug \
     [[ "$value" == absent ]] || prefix+=("$value")
     assert_launch_behavior browserless "${prefix[@]}" skills get core
     assert_launch_behavior browserless "${prefix[@]}" quit
-    assert_launch_behavior yes "${prefix[@]}" tab list
+    if [[ "$flag" == --webgpu && "$value" != false ]]; then
+      assert_launch_behavior no "${prefix[@]}" tab list
+    else
+      assert_launch_behavior yes "${prefix[@]}" tab list
+    fi
   done
 done
 for flag in --session --restore-save --restore-check-url --restore-check-text \
@@ -159,7 +163,10 @@ for flag in --session --restore-save --restore-check-url --restore-check-text \
   --screenshot-quality --screenshot-format --idle-timeout --ca-cert --model; do
   # A command-shaped value is still an option value, never the actual command.
   assert_launch_behavior browserless "$flag" 'value with space' skills get core
-  assert_launch_behavior yes "$flag" skills tab list
+  case "$flag" in
+    --cdp|-p|--provider|--ca-cert) assert_launch_behavior no "$flag" skills tab list ;;
+    *) assert_launch_behavior yes "$flag" skills tab list ;;
+  esac
   assert_launch_behavior no "$flag"
 done
 for command in install upgrade doctor dashboard profiles plugin plugins mcp session; do
@@ -209,6 +216,17 @@ printf '%s' '[["read", "https://example.com"], ["read", "https://example.org"]]'
 CHROME_TEST_COPY_STDIN=1 CHROME_TEST_PROCESS=closed "$entrypoint" batch < "$trial/stdin" >/dev/null
 cmp "$trial/stdin" "$CHROME_TEST_STDIN_COPY"
 test ! -f "$CHROME_TEST_LAUNCH"
+assert_launch_behavior no snapshot --webgpu
+assert_launch_behavior no snapshot --webgpu true
+assert_launch_behavior yes snapshot --webgpu false
+assert_launch_behavior yes --webgpu snapshot --webgpu false
+assert_launch_behavior no --webgpu false snapshot --webgpu true
+assert_launch_behavior no snapshot --cdp 9222
+assert_launch_behavior no snapshot --provider example
+assert_launch_behavior no snapshot --ca-cert example.pem
+assert_launch_behavior yes --ca-cert example.pem snapshot --no-ca-cert
+assert_launch_behavior no --no-ca-cert snapshot --ca-cert example.pem
+assert_launch_behavior yes --user-agent --webgpu snapshot
 assert_launch_behavior no --json false
 assert_launch_behavior no --restore skills get core
 assert_launch_behavior no --restore example-key skills get core

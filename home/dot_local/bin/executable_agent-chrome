@@ -8,10 +8,71 @@ for chrome_arg do
         --help|-h|--version|-V) chrome_command=help; break ;;
     esac
 done
+chrome_global_value_flag() {
+    case "$1" in
+        --session|--restore-save|--restore-check-url|--restore-check-text|\
+        --restore-check-fn|--namespace|--headers|--executable-path|--cdp|\
+        --extension|--init-script|--enable|--profile|--state|--proxy|\
+        --proxy-bypass|--args|--user-agent|-p|--provider|--device|\
+        --session-name|--color-scheme|--download-path|--max-output|\
+        --allowed-domains|--action-policy|--confirm-actions|--config|\
+        --engine|--input-mode|--screenshot-dir|--screenshot-quality|\
+        --screenshot-format|--idle-timeout|--ca-cert|--model) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+# Preflight only visible CLI modes rejected by incompatible_launch_mode_error.
+# Scan past the command too, honoring option values and last boolean overrides.
+chrome_launch_compatible=yes
+check_chrome_launch_mode() {
+    chrome_webgpu=no
+    chrome_ca_cert=no
+    chrome_external_mode=no
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --webgpu)
+                chrome_webgpu=yes
+                shift
+                case "${1-}" in
+                    false) chrome_webgpu=no; shift ;;
+                    true) shift ;;
+                esac
+                ;;
+            --no-ca-cert)
+                shift
+                case "${1-}" in
+                    false) shift ;;
+                    true) chrome_ca_cert=no; shift ;;
+                    *) chrome_ca_cert=no ;;
+                esac
+                ;;
+            *)
+                if chrome_global_value_flag "$1" && [ "$#" -ge 2 ]; then
+                    case "$1" in
+                        --cdp|-p|--provider) chrome_external_mode=yes ;;
+                        --ca-cert) chrome_ca_cert=yes ;;
+                    esac
+                    shift 2
+                else
+                    shift
+                fi
+                ;;
+        esac
+    done
+    if [ "$chrome_external_mode" = yes ] || [ "$chrome_ca_cert" = yes ] || [ "$chrome_webgpu" = yes ]; then
+        chrome_launch_compatible=no
+    fi
+}
+check_chrome_launch_mode "$@"
 classify_chrome_command() {
     # Match 0.39's flags.rs clean_args for global prefixes. A function keeps
     # shift local: the final exec still receives the caller's original argv.
     while [ "$#" -gt 0 ]; do
+        if chrome_global_value_flag "$1"; then
+            [ "$#" -ge 2 ] || return
+            shift 2
+            continue
+        fi
         case "$1" in
             --llms|--filter|--timeout)
                 [ "$chrome_command" = read ] && [ "$#" -ge 2 ] || return
@@ -20,17 +81,6 @@ classify_chrome_command() {
             --raw|--require-md|--outline)
                 [ "$chrome_command" = read ] || return
                 shift
-                ;;
-            --session|--restore-save|--restore-check-url|--restore-check-text|\
-            --restore-check-fn|--namespace|--headers|--executable-path|--cdp|\
-            --extension|--init-script|--enable|--profile|--state|--proxy|\
-            --proxy-bypass|--args|--user-agent|-p|--provider|--device|\
-            --session-name|--color-scheme|--download-path|--max-output|\
-            --allowed-domains|--action-policy|--confirm-actions|--config|\
-            --engine|--input-mode|--screenshot-dir|--screenshot-quality|\
-            --screenshot-format|--idle-timeout|--ca-cert|--model)
-                [ "$#" -ge 2 ] || return
-                shift 2
                 ;;
             --json|--headed|--webgpu|--no-webmcp|--debug|\
             --ignore-https-errors|--allow-file-access|--hide-scrollbars|\
@@ -80,7 +130,7 @@ case "$chrome_command" in
     profiles|plugin|plugins|mcp|session|direct-read|batch|local-only|\
     device|stream|confirm|deny) chrome_auto_connect=no ;;
     *)
-        if [ "$(uname -s)" = Darwin ]; then
+        if [ "$(uname -s)" = Darwin ] && [ "$chrome_launch_compatible" = yes ]; then
             # pgrep exit 1 means absent only when process inspection succeeded.
             process_error=$(pgrep -x 'Google Chrome' 2>&1 >/dev/null)
             process_status=$?

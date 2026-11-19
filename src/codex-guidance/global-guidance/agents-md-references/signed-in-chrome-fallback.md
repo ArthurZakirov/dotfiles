@@ -20,7 +20,9 @@ confirmation decisions, HAR stop, and WebMCP result/cancel) also skip launch and
 attachment. Browser operations such as `auth login` retain the normal path.
 The wrapper forwards every original argument unchanged. Unknown option
 prefixes and out-of-contract `--restore` overrides also bypass automatic launch;
-the CLI still receives and handles the invocation normally.
+the CLI still receives and handles the invocation normally. Visible CDP,
+provider, custom CA, and enabled WebGPU modes that conflict with automatic
+attachment also skip OS launch and leave diagnostics to the CLI.
 
 `read` with an explicit URL and `batch` bypass automatic launch and the
 wrapper's added `--auto-connect`. Active-tab `read` without a URL retains normal

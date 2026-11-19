@@ -63,6 +63,7 @@ peekaboo --version >/dev/null
 python3 - "$repo_root/home/dot_local/bin/executable_agent-chrome" <<'PYTHON'
 import http.server
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -101,11 +102,33 @@ with tempfile.TemporaryDirectory(prefix="chrome-read-") as trial:
                                     text=True, capture_output=True, timeout=30)
             assert result.returncode == 0, (args, result.stdout, result.stderr)
             assert "browserless-local-check" in result.stdout, result.stdout
+        # Rejected launch modes must reach the real CLI diagnostic without
+        # asking Launch Services to open Chrome. OS commands stay isolated.
+        mode_bin = Path(trial) / "bin"
+        mode_bin.mkdir()
+        for name, body in {
+            "pgrep": "#!/bin/sh\nexit 1\n",
+            "open": '#!/bin/sh\n: > "$CHROME_MODE_LAUNCH_MARKER"\nexit 99\n',
+        }.items():
+            command = mode_bin / name
+            command.write_text(body)
+            command.chmod(0o755)
+        marker = Path(trial) / "unexpected-launch"
+        env.update(PATH=str(mode_bin) + os.pathsep + env["PATH"],
+                   CHROME_MODE_LAUNCH_MARKER=str(marker))
+        for args in (["--webgpu", "snapshot"], ["snapshot", "--cdp", "9222"],
+                     ["snapshot", "--provider", "example"],
+                     ["snapshot", "--ca-cert", "example.pem"]):
+            result = subprocess.run([sys.argv[1], *args], env=env,
+                                    text=True, capture_output=True, timeout=15)
+            assert result.returncode == 1, (args, result.stdout, result.stderr)
+            assert "--auto-connect" in result.stderr, result.stderr
+            assert not marker.exists(), args
     finally:
         subprocess.run([cli, "--session", "dotfiles-chrome", "close"], env=env,
                        text=True, capture_output=True, timeout=15)
         server.shutdown()
-print("Real wrapper URL read and argv/stdin batches fetched without Chrome.")
+print("Real wrapper: browserless fetches and rejected launch modes passed without Chrome.")
 PYTHON
 
 # Real browser runtime and UI action, with no network services or personal profile.
