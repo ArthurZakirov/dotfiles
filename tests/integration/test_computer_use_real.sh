@@ -269,7 +269,9 @@ exec "$CHROME_FIXTURE_CLI" "$@"
             raise AssertionError("fixture CDP startup timed out")
         result = run(["tab", "list"])
         assert result.returncode == 0, (result.stdout, result.stderr)
-        assert "Recovery fixture" in result.stdout, result.stdout
+        # CDP discovery precedes page rendering. Verify tab identity here;
+        # snapshot content and the fully loaded title are checked below.
+        assert page.as_uri() in result.stdout, result.stdout
         assert "verified tab access" in result.stderr, result.stderr
         selected = subprocess.run([cli, "--session", "dotfiles-chrome", "open", page.as_uri()],
                                   env=env, cwd=scratch, text=True,
