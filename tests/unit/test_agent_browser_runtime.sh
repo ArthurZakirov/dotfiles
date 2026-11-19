@@ -161,6 +161,15 @@ done
 for command in install upgrade doctor dashboard profiles plugin plugins mcp session; do
   assert_launch_behavior no --debug --max-output 100 "$command"
 done
+for subcommand in list show clear clean rename; do
+  assert_launch_behavior no state "$subcommand" example
+  assert_launch_behavior no --debug state --json false "$subcommand" example
+  assert_launch_behavior no --max-output 100 state --max-output 20 "$subcommand" example
+done
+for subcommand in save load; do
+  assert_launch_behavior yes state "$subcommand" example
+  assert_launch_behavior yes --json false state --max-output 100 "$subcommand" example
+done
 for command in open goto navigate press key scrollintoview scrollinto; do
   assert_launch_behavior yes --debug false --max-output 100 "$command" example
   assert_launch_behavior no --debug false --max-output 100 "$command" --help

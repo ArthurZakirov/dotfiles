@@ -35,7 +35,18 @@ classify_chrome_command() {
             # Restore overrides are outside the shared regular-Chrome flow.
             # Unknown options likewise get no automatic OS launch side effect.
             --restore|--restore=*|-*) return ;;
-            *) chrome_command=$1; return ;;
+            *)
+                if [ "$chrome_command" = state ]; then
+                    # state.rs dispatches these locally before daemon startup.
+                    case "$1" in
+                        list|show|clear|clean|rename) chrome_command=local-state ;;
+                    esac
+                    return
+                fi
+                chrome_command=$1
+                [ "$chrome_command" = state ] || return
+                shift
+                ;;
         esac
     done
 }
@@ -44,7 +55,7 @@ if [ -z "$chrome_command" ]; then
 fi
 case "$chrome_command" in
     ''|help|version|skills|close|quit|exit|install|upgrade|doctor|dashboard|\
-    profiles|plugin|plugins|mcp|session|read|batch) ;;
+    profiles|plugin|plugins|mcp|session|read|batch|local-state) ;;
     *)
         if [ "$(uname -s)" = Darwin ]; then
             # pgrep exit 1 means absent only when process inspection succeeded.

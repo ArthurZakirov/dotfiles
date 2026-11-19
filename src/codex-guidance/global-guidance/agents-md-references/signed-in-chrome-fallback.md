@@ -13,7 +13,9 @@ daemon running when your task ends.
 
 Automatic launch applies to browser commands after recognized global options.
 Help, version, skills, local management, and shutdown commands do not trigger
-it. The wrapper forwards every original argument unchanged. Unknown option
+it. Local `state list`, `show`, `clear`, `clean`, and `rename` operations also
+skip launch; `state save` and `state load` keep browser-launch behavior.
+The wrapper forwards every original argument unchanged. Unknown option
 prefixes and out-of-contract `--restore` overrides also bypass automatic launch;
 the CLI still receives and handles the invocation normally.
 
