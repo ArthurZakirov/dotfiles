@@ -82,8 +82,13 @@ if [ -z "$chrome_command" ]; then
 fi
 case "$chrome_command" in
     help|version|skills|close|quit|exit|install|upgrade|doctor|dashboard|\
-    profiles|plugin|plugins|mcp|session|direct-read|batch|local-only|\
-    device|stream|confirm|deny|connect)
+    profiles|plugin|plugins|mcp|session|direct-read|batch|local-only|device|stream|confirm|deny)
+        exec agent-browser --session dotfiles-chrome --pin-tab "$@"
+        ;;
+    connect)
+        if [ "$(uname -s)" = Darwin ]; then
+            exec python3 "$(dirname "$0")/../lib/agent_chrome.py" connect no "$@"
+        fi
         exec agent-browser --session dotfiles-chrome --pin-tab "$@"
         ;;
     ''|chat)
@@ -105,151 +110,4 @@ fi
 if [ "$(uname -s)" != Darwin ]; then
     exec agent-browser --session dotfiles-chrome --auto-connect --pin-tab "$@"
 fi
-process_error=$(pgrep -x 'Google Chrome' 2>&1 >/dev/null)
-process_status=$?
-if [ "$process_status" -gt 1 ] || [ -n "$process_error" ]; then
-    echo 'agent-chrome: Chrome process inspection unavailable; browser state unknown. Attempting normal connection.' >&2
-fi
-
-# Let the CLI resolve private project/user/env config and validate the command.
-# Capture the result so running Chrome can also recover from discovery failure.
-# Retry only complete known discovery errors after the CLI resolves settings.
-chrome_trial=$(mktemp -d) || exit 1
-trap 'rm -rf "$chrome_trial"' EXIT
-trap 'exit 129' HUP
-trap 'exit 130' INT
-trap 'exit 143' TERM
-if [ "$chrome_stdin" = yes ]; then
-    if ! cat > "$chrome_trial/stdin"; then
-        echo 'agent-chrome: could not buffer stdin; command not attempted.' >&2
-        exit 1
-    fi
-    exec < "$chrome_trial/stdin"
-fi
-agent-browser --session dotfiles-chrome --auto-connect --pin-tab "$@" > "$chrome_trial/stdout" 2> "$chrome_trial/stderr"
-chrome_result=$?
-replay_chrome_result() {
-    cat "$chrome_trial/stdout"
-    cat "$chrome_trial/stderr" >&2
-    exit "$chrome_result"
-}
-retry_chrome_connection() {
-    if [ "$chrome_stdin" = yes ]; then
-        exec < "$chrome_trial/stdin"
-    fi
-    rm -rf "$chrome_trial"
-    trap - EXIT HUP INT TERM
-    exec agent-browser --session dotfiles-chrome --auto-connect --pin-tab "$@"
-}
-[ "$chrome_result" -eq 1 ] || replay_chrome_result
-# Match complete known CLI diagnostics, not action errors quoting those words.
-chrome_discovery=no
-if [ -s "$chrome_trial/stdout" ]; then
-    # Native macOS JSON parsing accepts extra response fields without confusing
-    # nested action data with the top-level error. Never print parsed data here.
-    chrome_success=$(plutil -extract success raw -expect bool -o - "$chrome_trial/stdout" 2>/dev/null)
-    if [ "$chrome_success" = false ]; then
-        chrome_error=$(plutil -extract error raw -expect string -o - "$chrome_trial/stdout" 2>/dev/null)
-        chrome_error=${chrome_error#Auto-launch failed: }
-        case "$chrome_error" in
-            'No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.'|'No running debuggable Chrome found') chrome_discovery=yes ;;
-        esac
-    fi
-fi
-if [ "$chrome_discovery" = no ] && ! awk '
-    BEGIN {
-        native = "No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp."
-        legacy = "No running debuggable Chrome found"
-    }
-    {
-        line = $0
-        gsub(/\033\[[0-9;]*m/, "", line)
-        sub(/^[^[:alnum:]{]* /, "", line)
-        sub(/^Error: /, "", line)
-        for (i = 1; i <= 4; i++) {
-            message = i % 2 == 1 ? native : legacy
-            if (i > 2) message = "Auto-launch failed: " message
-            if (line == message ||
-                line == "{\"error\":\"" message "\",\"success\":false}" ||
-                line == "{\"success\":false,\"error\":\"" message "\"}") found = 1
-        }
-    }
-    END { exit !found }
-' "$chrome_trial/stdout" "$chrome_trial/stderr"; then
-    replay_chrome_result
-fi
-# Another caller may have started Chrome while discovery was failing.
-process_error=$(pgrep -x 'Google Chrome' 2>&1 >/dev/null)
-process_status=$?
-if [ "$process_status" -eq 0 ]; then
-    # Inspect only existing Chrome-owned loopback listeners. A discovery HTTP
-    # endpoint can return 404 even though the CLI's explicit connect works.
-    # Require one unambiguous port; never guess among browser instances.
-    if ! lsof -nP -a -c '/^Google Chrome$/' -iTCP -sTCP:LISTEN -Fn > "$chrome_trial/listeners" 2> "$chrome_trial/listener-error"; then
-        echo 'agent-chrome: could not verify an existing Chrome loopback listener; automatic recovery stopped.' >&2
-        replay_chrome_result
-    fi
-    chrome_ports=$(awk '
-        /^n127\.0\.0\.1:[0-9]+$/ || /^n\[::1\]:[0-9]+$/ {
-            sub(/^.*:/, "")
-            if ($0 + 0 > 0 && $0 + 0 <= 65535) print $0
-        }
-    ' "$chrome_trial/listeners" | sort -un)
-    case "$chrome_ports" in
-        ''|*'
-'*)
-            echo 'agent-chrome: no unique Chrome loopback port verified; automatic recovery stopped.' >&2
-            replay_chrome_result
-            ;;
-    esac
-    if ! agent-browser --session dotfiles-chrome --pin-tab connect "$chrome_ports" > "$chrome_trial/connect-out" 2> "$chrome_trial/connect-error"; then
-        cat "$chrome_trial/connect-out"
-        cat "$chrome_trial/connect-error" >&2
-        echo 'agent-chrome: explicit Chrome connection failed; original command was not repeated.' >&2
-        exit 1
-    fi
-    if ! agent-browser --session dotfiles-chrome --pin-tab tab list > "$chrome_trial/tabs-out" 2> "$chrome_trial/tabs-error"; then
-        cat "$chrome_trial/tabs-out"
-        cat "$chrome_trial/tabs-error" >&2
-        echo 'agent-chrome: explicit connection could not list tabs; original command was not repeated.' >&2
-        exit 1
-    fi
-    echo 'agent-chrome: recovered the existing Chrome connection and verified tab access.' >&2
-    # Replay only these read-only entry points. For every other operation the
-    # caller must inspect state before deciding whether to repeat its action.
-    case "$chrome_command:$*" in
-        snapshot:*|get:*|tab:'tab list'|tab:'--json tab list')
-            rm -rf "$chrome_trial"
-            trap - EXIT HUP INT TERM
-            exec agent-browser --session dotfiles-chrome --pin-tab "$@"
-            ;;
-    esac
-    echo 'agent-chrome: original command was not repeated. Inspect the task tab with a fresh snapshot before continuing.' >&2
-    replay_chrome_result
-fi
-if [ "$process_status" -ne 1 ] || [ -n "$process_error" ]; then
-    echo 'agent-chrome: Chrome process inspection unavailable; browser state unknown.' >&2
-    replay_chrome_result
-fi
-if ! open -a 'Google Chrome'; then
-    echo 'agent-chrome: ordinary Chrome launch failed; retry not attempted.' >&2
-    exit 1
-fi
-# Bound startup waiting, including a probe after the final wait interval.
-attempt=0
-while [ "$attempt" -le 10 ]; do
-    process_error=$(pgrep -x 'Google Chrome' 2>&1 >/dev/null)
-    process_status=$?
-    [ "$process_status" -ne 0 ] || break
-    if [ "$process_status" -ne 1 ] || [ -n "$process_error" ]; then
-        echo 'agent-chrome: Chrome process inspection unavailable after launch; browser state unknown. Attempting normal connection.' >&2
-        break
-    fi
-    if [ "$attempt" -eq 10 ]; then
-        echo 'agent-chrome: Chrome did not become observable after launch; retry not attempted.' >&2
-        exit 1
-    fi
-    attempt=$((attempt + 1))
-    sleep 1
-done
-retry_chrome_connection "$@"
+exec python3 "$(dirname "$0")/../lib/agent_chrome.py" "$chrome_command" "$chrome_stdin" "$@"

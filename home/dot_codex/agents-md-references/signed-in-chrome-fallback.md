@@ -4,39 +4,16 @@
 
 ## Attach and select a tab
 
-Run `agent-chrome` with ordinary Agent Browser commands. If your shell lacks
-`~/.local/bin` in `PATH`, use `~/.local/bin/agent-chrome`. Use
-the installed Agent Browser skill for command syntax. The wrapper
-uses the normal CLI connection with a fixed daemon session and strict tab
-pinning. On macOS, only a known connection-discovery failure plus confirmed
-process absence triggers ordinary Chrome launch and one connection retry.
-When Chrome is running and automatic discovery fails, the wrapper can recover
-through a unique existing Chrome-owned loopback port and verify tab access.
-The CLI resolves its effective project, user, and environment settings first;
-rejected settings and action errors do not trigger launch. It never
-restarts running Chrome or changes its profile, debugging flags, or settings.
-Omit session, connection, and state persistence options. Keep the
-daemon running when your task ends.
+Start with a read-only check in the same shell context you will use for the task.
 
-Automatic launch applies to browser commands after recognized global options.
-Help, version, skills, local management, and shutdown commands do not trigger
-it. An explicitly requested `connect` is passed through without added
-auto-connect; it is outside this shared-session workflow. Local `state list`, `show`, `clear`, `clean`, and `rename` operations also
-skip launch; `state save` and `state load` keep browser-launch behavior.
-Local daemon operations (`auth` storage, device listing, stream control,
-confirmation decisions, HAR stop, and WebMCP result/cancel) also skip launch and
-attachment. Browser operations such as `auth login` retain the normal path.
-The wrapper forwards every original argument unchanged. Unknown option
-prefixes and out-of-contract `--restore` overrides also bypass automatic launch;
-the CLI still receives and handles the invocation normally.
+```sh
+agent-chrome tab list
+```
 
-`read` with an explicit URL and `batch` bypass automatic launch and the
-wrapper's added `--auto-connect`. Active-tab `read` without a URL retains normal
-launch and attachment. Batch argv and stdin pass through without a second parser.
-For a browser batch or interactive `chat`, first use `agent-chrome tab list` to
-ensure ordinary Chrome is available. Batch stdin passes through unchanged;
-interactive chat streams directly through the CLI. `eval --stdin` is preserved
-across an automatic connection retry.
+Continue when the command lists tabs. The wrapper handles Chrome startup,
+connection reuse and recovery. Omit session, connection and state persistence
+flags. Use the installed Agent Browser skill for subcommand syntax. If
+`agent-chrome` is missing from `PATH`, use `~/.local/bin/agent-chrome`.
 
 The daemon shares its selected tab and snapshot references with other callers.
 Use a dedicated task tab, verify the selected tab, and take a fresh snapshot
@@ -91,7 +68,7 @@ and inspect each command's result before continuing.
 
 ## Close the task tab
 
-When the task is done, close only the task tab you opened.
+When the task is done, close only the task tab you opened. Leave the shared session running.
 
 ```sh
 agent-chrome tab close example-task-01
@@ -101,55 +78,31 @@ agent-chrome tab close example-task-01
 
 Use the current command's output and running or exited state to choose the next action.
 
-- **Automatic discovery failed.** When Chrome is running, the wrapper checks
-  its existing loopback listeners and tries `connect` if exactly one port is
-  verified. It then checks `tab list`. A failing `/json/version` HTTP request
-  alone does not establish that explicit connection will fail. The wrapper
-  repeats `tab list`, `--json tab list`, `snapshot`, and `get` reads after
-  successful recovery. For other commands it reports that the connection was
-  restored and exits with the original failure. Inspect the task tab and take
-  a fresh snapshot before deciding whether to repeat the original action.
-  If multiple ports remain possible, identify the intended Chrome instance
-  before choosing one. For a verified port such as `9222`, connect and check
-  tab access in order, inspecting each result.
+- **Tabs listed or recovery succeeded.** Continue through `agent-chrome`.
+  If the wrapper says the original action was not repeated, inspect the page
+  before deciding whether that action is still needed.
+- **Chrome is waiting for approval.** Ask the user to review Chrome’s prompt.
+  While the command is running, wait for that same command to finish.
+- **Previous connection awaiting confirmation.** Stop browser attempts.
+  After the user confirms the previous dialog is resolved and authorizes
+  another attempt, run this read-only check once.
 
   ```sh
-  agent-chrome connect 9222
-  agent-chrome tab list
+  AGENT_CHROME_RETRY_AFTER_APPROVAL=1 agent-chrome tab list
   ```
 
-  Report an explicit connection failure or approval request from its actual
-  output. Involve the user when Chrome requires approval or the available
-  connection paths remain blocked.
-- **Discovery unavailable.** A “no running debuggable Chrome” result does not
-  prove Chrome is closed or debugging is disabled. Check whether process
-  inspection, discovery-file access, or localhost access was denied by the
-  command runtime. If the runtime supports an approved elevated retry and
-  permits requesting it, retry the read-only `agent-chrome tab list` through
-  that supported flow after the previous attempt ends. If elevation is
-  unavailable or denied, inspect the wrapper's direct-connection result before
-  reporting which access remains blocked; do not claim Chrome is absent. Never bypass policy, read profile/authentication data, use another
-  profile, or expose a new debugging port to recover.
-- **Chrome closed or launch failed.** On macOS the wrapper launches ordinary
-  Chrome with `open -a 'Google Chrome'` when process inspection confirms it is
-  absent. If launch fails, report the launch failure. If process inspection is
-  unavailable, browser state is unknown; the wrapper still attempts normal
-  connection. Do not repeatedly launch Chrome to fix a discovery restriction.
-- **Setup required.** Only after discovery is accessible and evidence indicates
-  debugging is disabled, ask the user to enable remote debugging at
-  `chrome://inspect/#remote-debugging`. The user handles settings. After setup
-  is confirmed and the previous attempt has ended, check the connection with
-  `agent-chrome tab list`.
-- **Approval pending.** Ask the user to review the Chrome prompt and click
-  **Allow** if they approve. The user handles Chrome settings and approval.
-  If the command is still waiting, let that same invocation finish after the
-  user clicks **Allow** and inspect its result. If the attempt ended while
-  waiting for approval, retry with the read-only `agent-chrome tab list`
-  after the user confirms approval.
-- **Connection interrupted.** After Chrome or the daemon recovers and the
-  previous command has ended, check the connection with
-  `agent-chrome tab list`. If a write may have run before the
-  interruption, verify its outcome before deciding whether to repeat it.
+- **Access denied before connecting.** If the runtime reports that process,
+  listener or localhost inspection was denied, use the runtime’s supported
+  permission flow for one read-only `agent-chrome tab list`. A Chrome timeout
+  or pending approval is handled by the preceding rule.
+- **Chrome unavailable.** The wrapper opens ordinary Chrome when it confirms
+  the app is closed. Report its specific failure if it cannot launch or
+  identify Chrome. Ask the user to enable `chrome://inspect/#remote-debugging`
+  only when there is evidence debugging is disabled. The user handles this
+  setting and Chrome’s approval. Avoid manual port guesses, alternate tools
+  and further attachment attempts after a failed connection.
+- **Interrupted action.** Once access is restored, verify the result in the
+  task tab before repeating any operation that could already have taken effect.
 - **Pinned tab gone.** If the command reports `tab_gone`, run
   `agent-chrome tab new <url>` to bind a fresh task tab, then take
   a new snapshot.
