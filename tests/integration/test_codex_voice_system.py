@@ -282,7 +282,7 @@ def test_warp_releases_option_arrows_on_fresh_and_existing_installs(isolated_voi
     target = home / ".warp/keybindings.yaml"
     apply = [
         "chezmoi", "--source", str(source), "--config", str(home.parent / "chezmoi.toml"),
-        "--destination", str(home), "apply", "--force", str(target),
+        "--destination", str(home), "apply", "--force", str(target.parent),
     ]
     command(*apply, env=env)
     assert "terminal:select_bookmark_up: none" in target.read_text()
