@@ -125,9 +125,14 @@ def run_locked(state_file, command, args, stdin):
     if endpoint:
         # Use the same launch identity as connect <port>. Switching back to
         # auto-connect would cause agent-browser to replace the live connection.
-        result = invoke([*CLI, "--cdp", endpoint[1], "--pin-tab"], args, stdin)
+        prefix = [*CLI, "--cdp", endpoint[1], "--pin-tab"]
     else:
-        result = invoke(AUTO, args, stdin)
+        prefix = AUTO
+    if command == "chat":
+        # exec preserves the caller's terminal and releases the non-inheritable
+        # lock descriptor, so a long interactive chat cannot starve other tasks.
+        os.execvp(prefix[0], [*prefix, *args])
+    result = invoke(prefix, args, stdin)
     if approval_uncertain(result):
         save({"pending": True, "endpoint": endpoint})
         report("command timed out or approval may be pending. No new connection attempted.")

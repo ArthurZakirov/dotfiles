@@ -85,13 +85,16 @@ case "$chrome_command" in
     profiles|plugin|plugins|mcp|session|direct-read|batch|local-only|device|stream|confirm|deny)
         exec agent-browser --session dotfiles-chrome --pin-tab "$@"
         ;;
-    connect)
+    connect|chat)
         if [ "$(uname -s)" = Darwin ]; then
-            exec python3 "$(dirname "$0")/../lib/agent_chrome.py" connect no "$@"
+            exec python3 "$(dirname "$0")/../lib/agent_chrome.py" "$chrome_command" no "$@"
         fi
-        exec agent-browser --session dotfiles-chrome --pin-tab "$@"
+        if [ "$chrome_command" = connect ]; then
+            exec agent-browser --session dotfiles-chrome --pin-tab "$@"
+        fi
+        exec agent-browser --session dotfiles-chrome --auto-connect --pin-tab "$@"
         ;;
-    ''|chat)
+    '')
         # Interactive chat and unknown prefixes stay entirely with the CLI.
         exec agent-browser --session dotfiles-chrome --auto-connect --pin-tab "$@"
         ;;

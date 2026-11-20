@@ -395,6 +395,10 @@ done
 output="$(cd "$trial/other-project" && "$entrypoint" tab new https://example.org)"
 [[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --cdp 9222 --pin-tab tab new https://example.org)" ]]
 [[ "$(wc -l < "$CHROME_TEST_TRACE" | tr -d ' ')" == 1 ]]
+# Interactive chat inherits stdin and uses the verified connection too.
+printf 'interactive-input' | CHROME_TEST_COPY_STDIN=1 CHROME_TEST_STDIN_COPY="$trial/chat-input" "$entrypoint" chat > "$trial/chat-command"
+[[ "$(cat "$trial/chat-input")" == interactive-input ]]
+[[ "$(cat "$trial/chat-command")" == "$(printf '%s\n' --session dotfiles-chrome --cdp 9222 --pin-tab chat)" ]]
 # Never replay a potentially mutating action, even after successful recovery.
 for action in click fill eval; do
   rm -f "$HOME/Library/Caches/agent-chrome/connection.json" "$CHROME_TEST_TRACE" "$CHROME_TEST_CONNECTED"
@@ -431,6 +435,7 @@ rm -f "$HOME/Library/Caches/agent-chrome/connection.json" "$CHROME_TEST_CONNECTE
 if CHROME_TEST_CONNECT_FAIL=1 "$entrypoint" tab list > /dev/null 2>&1; then exit 1; fi
 before="$(wc -l < "$CHROME_TEST_TRACE")"
 if "$entrypoint" connect 9222 >/dev/null 2>&1; then exit 1; fi
+if "$entrypoint" chat </dev/null >/dev/null 2>&1; then exit 1; fi
 if (cd "$trial/other-project" && "$entrypoint" tab new https://example.org) > /dev/null 2> "$trial/error"; then exit 1; fi
 [[ "$(wc -l < "$CHROME_TEST_TRACE")" == "$before" ]]
 [[ "$(cat "$trial/error")" == *'awaiting confirmation'* ]]
