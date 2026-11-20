@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+import json
+import sys
+
+original = sys.stdin.read()
+config = json.loads(original) if original.strip() else {"speech_rate": 1.8}
+navigation = {
+    "paragraph_navigation": True,
+    "previous_paragraph_shortcut": "alt-up",
+    "next_paragraph_shortcut": "alt-down",
+}
+if all(config.get(key) == value for key, value in navigation.items()):
+    sys.stdout.write(original)
+else:
+    config.update(navigation)
+    print(json.dumps(config, ensure_ascii=False, indent=2))

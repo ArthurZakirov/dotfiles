@@ -1,0 +1,20 @@
+#!/usr/bin/ruby
+require "yaml"
+
+original = STDIN.read
+bindings = YAML.safe_load(original) || {}
+raise "Expected a Warp keybinding map" unless bindings.is_a?(Hash)
+
+# Preserve custom bookmark shortcuts if they already leave Option-arrows free.
+defaults = {
+  "terminal:select_bookmark_up" => "alt-up",
+  "terminal:select_bookmark_down" => "alt-down"
+}
+changed = false
+defaults.each_key do |action|
+  if !bindings.key?(action) || defaults.value?(bindings[action])
+    bindings[action] = "none"
+    changed = true
+  end
+end
+print changed ? YAML.dump(bindings) : original
