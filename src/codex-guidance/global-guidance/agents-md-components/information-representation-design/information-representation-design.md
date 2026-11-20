@@ -445,6 +445,7 @@ When an answer locates, explains, or proposes changing repository code, inspect 
 
 Use exact identifiers wherever they occur, including in prose:
 
+- **Referent.** When a sentence points to a concrete technical object, identify it from the source before drafting. Name a file by its actual filename or unambiguous path (for example, `home/dot_codex/AGENTS.md.tmpl`). For an executable, use the literal command (for example, `codex`); use the product name when discussing the product.
 - **Spelling.** Copy the source identifier with its case, spacing and punctuation. If unavailable, state the gap.
 - **Presentation.** Use inline code for literal identifiers and link located symbols. Add a plain-language explanation when helpful.
 
