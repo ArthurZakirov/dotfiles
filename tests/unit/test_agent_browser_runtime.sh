@@ -433,5 +433,19 @@ if (cd "$trial/other-project" && "$entrypoint" tab new https://example.org) > /d
 [[ "$(wc -l < "$CHROME_TEST_TRACE")" == "$before" ]]
 [[ "$(cat "$trial/error")" == *'awaiting confirmation'* ]]
 AGENT_CHROME_RETRY_AFTER_APPROVAL=1 "$entrypoint" tab list >/dev/null
+# Page-level timeouts must leave the browser usable in the next chat.
+if BROWSER_TEST_EXIT=1 BROWSER_TEST_ERROR='Wait timed out after 1000ms' "$entrypoint" wait example >/dev/null 2>&1; then exit 1; fi
+"$entrypoint" tab list >/dev/null
+# Two callers arriving together may perform only one cold recovery.
+rm -f "$HOME/Library/Caches/agent-chrome/connection.json" "$CHROME_TEST_CONNECTED"
+: > "$CHROME_TEST_TRACE"
+"$entrypoint" tab list >/dev/null 2>"$trial/first" &
+first=$!
+(cd "$trial/other-project" && "$entrypoint" tab list >/dev/null 2>"$trial/second") &
+second=$!
+wait "$first"
+wait "$second"
+[[ "$(grep -c ' connect ' "$CHROME_TEST_TRACE")" == 1 ]]
+[[ "$(grep -c -- '--auto-connect' "$CHROME_TEST_TRACE")" == 1 ]]
 unset CHROME_TEST_DIRECT
 printf '%s\n' 'Chrome direct recovery: verified connection, safe reads, no write replay, ambiguous/remote ports rejected'

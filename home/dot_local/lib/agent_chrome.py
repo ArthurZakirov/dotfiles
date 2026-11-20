@@ -44,8 +44,15 @@ def discovery_failed(result):
 
 
 def approval_uncertain(result):
-    return result.returncode != 0 and re.search(
-        r"timeout|timed out|approval pending", diagnostic(result), re.IGNORECASE
+    if result.returncode == 0:
+        return False
+    # A wait for a DOM element can time out on a perfectly healthy connection.
+    # Only connection/setup diagnostics are relevant to Chrome approval here.
+    message = diagnostic(result).lower()
+    if "approval pending" in message:
+        return True
+    return ("timeout" in message or "timed out" in message) and any(
+        hint in message for hint in ("connect", "attach", "websocket", "devtools", "browser launch")
     )
 
 
@@ -97,7 +104,7 @@ def run_locked(state_file, command, args, stdin):
         if result.returncode == 0:
             verified = listener()
             save({"endpoint": verified} if verified and args[-1] == verified[1] else {})
-        elif approval_uncertain(result):
+        else:
             save({"pending": True})
         return output(result)
     if process == "unknown":
