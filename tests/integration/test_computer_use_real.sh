@@ -257,7 +257,8 @@ exec "$CHROME_FIXTURE_CLI" "$@"
         path.write_text(script)
         path.chmod(0o755)
     def run(args):
-        return subprocess.run([sys.argv[1], *args], env=env, cwd=scratch,
+        project = Path(tempfile.mkdtemp(dir=scratch))
+        return subprocess.run([sys.argv[1], *args], env=env, cwd=project,
                               text=True, capture_output=True, timeout=30)
     try:
         for _ in range(100):
@@ -273,24 +274,28 @@ exec "$CHROME_FIXTURE_CLI" "$@"
         # snapshot content and the fully loaded title are checked below.
         assert page.as_uri() in result.stdout, result.stdout
         assert "verified tab access" in result.stderr, result.stderr
-        selected = subprocess.run([cli, "--session", "dotfiles-chrome", "open", page.as_uri()],
-                                  env=env, cwd=scratch, text=True,
-                                  capture_output=True, timeout=15)
+        def chrome_peers():
+            sockets = subprocess.check_output(
+                ["/usr/sbin/lsof", "-nP", "-a", "-p", str(process.pid),
+                 "-iTCP", "-sTCP:ESTABLISHED", "-Fn"], text=True)
+            port = (profile / "DevToolsActivePort").read_text().splitlines()[0]
+            return {line for line in sockets.splitlines() if f":{port}->" in line}
+
+        peers = chrome_peers()
+        assert peers, "Chrome has no established debugging connection"
+        # Each command runs in a fresh process, as it would in a new chat.
+        selected = run(["tab", "new", page.as_uri()])
         assert selected.returncode == 0, (selected.stdout, selected.stderr)
         result = run(["snapshot"])
-        assert result.returncode == 0, (result.stdout, result.stderr)
-        assert "Recovered fixture page" in result.stdout, result.stdout
-        # A possible write must stop after connect+verification, before replay.
-        result = run(["eval", "document.title = 'unexpected write'"])
-        assert result.returncode == 1, (result.stdout, result.stderr)
-        assert "original command was not repeated" in result.stderr, result.stderr
-        title = subprocess.run([cli, "--session", "dotfiles-chrome", "get", "title"],
-                               env=env, cwd=scratch, text=True,
-                               capture_output=True, timeout=15)
-        assert title.returncode == 0 and "Recovery fixture" in title.stdout, title.stdout
+        assert result.returncode == 0 and "Recovered fixture page" in result.stdout, result
+        result = run(["eval", "document.title = 'Updated once'"])
+        assert result.returncode == 0, result
+        title = run(["get", "title"])
+        assert title.returncode == 0 and "Updated once" in title.stdout, title
+        assert chrome_peers() == peers, "Chrome connection replaced between tasks"
         trace = (trial / "trace").read_text().splitlines()
-        assert sum(" connect " in line for line in trace) == 3, trace
-        assert not any("unexpected write" in line and "--auto-connect" not in line for line in trace), trace
+        assert sum(" connect " in line for line in trace) == 1, trace
+        assert sum("--auto-connect" in line for line in trace) == 1, trace
     finally:
         subprocess.run([cli, "--session", "dotfiles-chrome", "close"], env=env,
                        cwd=scratch, text=True, capture_output=True, timeout=15)
@@ -300,7 +305,7 @@ exec "$CHROME_FIXTURE_CLI" "$@"
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=5)
-print("Real CDP recovery passed: discovery failure, connect, tabs, snapshot, write not replayed.")
+print("Real CDP recovery passed: discovery failure, one attachment shared across tab creation, snapshot and edit.")
 CHROME_RECOVERY
 
 # Repeated apply must not duplicate skills or damage the browser runtime.

@@ -18,10 +18,11 @@ def test_agent_chrome_lookup_after_apply(tmp_path, profile_factory):
     rendered = profile_factory.render("professional")
     home = tmp_path / "home"
     (home / ".local/bin").mkdir(parents=True)
+    (home / ".local/lib").mkdir()
     profile_factory.run(
         "chezmoi", "--source", str(ROOT / "home"), "--config", str(rendered.config),
         "--destination", str(home), "apply", "--exclude", "scripts",
-        str(home / ".zshrc"), str(home / ".local/bin/agent-chrome"),
+        str(home / ".zshrc"), str(home / ".local/bin/agent-chrome"), str(home / ".local/lib/agent_chrome.py"),
     )
     executable = home / ".local/bin/agent-chrome"
     assert executable.is_file() and os.access(executable, os.X_OK)

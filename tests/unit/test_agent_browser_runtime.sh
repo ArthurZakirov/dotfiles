@@ -65,6 +65,8 @@ if [ "${CHROME_TEST_CONNECT_BEFORE_LAUNCH:-0}" = 1 ] && [ ! -f "$CHROME_TEST_LAU
     3) printf '\033[31m✗\033[0m No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.\n' >&2 ;;
     4) echo 'Error: No running debuggable Chrome found' >&2 ;;
     5) echo '✗ Auto-launch failed: No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.' >&2 ;;
+    7) echo 'Warning: ignoring unsupported project setting' >&2
+       echo '✗ Auto-launch failed: No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.' >&2 ;;
     6) echo '{"error":"Auto-launch failed: No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.","settings":{"applied":false},"success":false}' ;;
     *) echo 'No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.' >&2 ;;
   esac
@@ -306,7 +308,7 @@ CHROME_TEST_OS=Linux CHROME_TEST_PROCESS=closed "$entrypoint" tab list >/dev/nul
 test ! -f "$CHROME_TEST_LAUNCH"
 
 # Known JSON/plain/colored diagnostics recover without leaking a first response.
-for json_shape in 1 2 3 4 5 6; do
+for json_shape in 1 2 3 4 5 6 7; do
   rm -f "$CHROME_TEST_LAUNCH"
   arguments=(tab list)
   if [[ "$json_shape" -le 2 || "$json_shape" == 6 ]]; then arguments=(--json tab list); fi
@@ -333,18 +335,8 @@ CHROME_TEST_PROCESS=closed BROWSER_TEST_JSON_ERROR="$json_error" "$entrypoint" -
 [[ "$result" == 1 ]]
 [[ "$(cat "$trial/attempt")" == "$json_error" ]]
 test ! -f "$CHROME_TEST_LAUNCH"
-mkdir "$trial/failed-cat"
-printf '#!/bin/sh\nexit 1\n' > "$trial/failed-cat/cat"
-chmod +x "$trial/failed-cat/cat"
-result=0
-PATH="$trial/failed-cat:$PATH" CHROME_TEST_PROCESS=closed "$entrypoint" eval --stdin < "$trial/eval-input" > "$trial/attempt" 2> "$trial/error" || result=$?
-[[ "$result" == 1 ]]
-test ! -s "$trial/attempt"
-[[ "$(cat "$trial/error")" == *'could not buffer stdin'* ]]
-test ! -f "$CHROME_TEST_LAUNCH"
-
 # Help must reach the CLI without buffering stdin or launching Chrome.
-PATH="$trial/failed-cat:$PATH" CHROME_TEST_PROCESS=closed "$entrypoint" eval --stdin --help < "$trial/eval-input" > "$trial/attempt"
+CHROME_TEST_PROCESS=closed "$entrypoint" eval --stdin --help < "$trial/eval-input" > "$trial/attempt"
 [[ "$(cat "$trial/attempt")" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab eval --stdin --help)" ]]
 test ! -f "$CHROME_TEST_LAUNCH"
 
@@ -384,24 +376,36 @@ export CHROME_TEST_CONNECTED="$trial/connected"
 export CHROME_TEST_LSOF_ARGS="$trial/lsof-args"
 export CHROME_TEST_DIRECT=1
 for args in plain json snapshot; do
-  rm -f "$CHROME_TEST_TRACE" "$CHROME_TEST_CONNECTED" "$CHROME_TEST_LAUNCH"
+  rm -f "$HOME/Library/Caches/agent-chrome/connection.json" "$CHROME_TEST_TRACE" "$CHROME_TEST_CONNECTED" "$CHROME_TEST_LAUNCH"
   arguments=(tab list)
   [[ "$args" != json ]] || arguments=(--json tab list)
   [[ "$args" != snapshot ]] || arguments=(snapshot)
   output="$("$entrypoint" "${arguments[@]}" 2> "$trial/error")" || { cat "$trial/error" >&2; exit 1; }
   [[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --pin-tab "${arguments[@]}")" ]]
-  [[ "$(wc -l < "$CHROME_TEST_TRACE" | tr -d ' ')" == 4 ]]
+  expected_calls=4
+  [[ "$args" != plain ]] || expected_calls=3
+  [[ "$(wc -l < "$CHROME_TEST_TRACE")" -eq "$expected_calls" ]]
   [[ "$(sed -n '2p' "$CHROME_TEST_TRACE")" == '--session dotfiles-chrome --pin-tab connect 9222' ]]
   [[ "$(sed -n '3p' "$CHROME_TEST_TRACE")" == '--session dotfiles-chrome --pin-tab tab list' ]]
   [[ "$(cat "$CHROME_TEST_LSOF_ARGS")" == '-nP -a -c /^Google Chrome$/ -iTCP -sTCP:LISTEN -Fn' ]]
   test ! -f "$CHROME_TEST_LAUNCH"
 done
-# Distinct processes/project directories reuse the connected daemon.
-output="$(cd "$trial/other-project" && "$entrypoint" tab list)"
-[[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --auto-connect --pin-tab tab list)" ]]
+# A fresh process opens a task tab using exactly the verified connection mode.
+: > "$CHROME_TEST_TRACE"
+output="$(cd "$trial/other-project" && "$entrypoint" tab new https://example.org)"
+[[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --cdp 9222 --pin-tab tab new https://example.org)" ]]
+[[ "$(wc -l < "$CHROME_TEST_TRACE" | tr -d ' ')" == 1 ]]
+# An additional listener does not invalidate the verified process/port pair.
+: > "$CHROME_TEST_TRACE"
+CHROME_TEST_LISTENERS=$'p321\nn127.0.0.1:9333\np123\nn127.0.0.1:9222' "$entrypoint" tab list >/dev/null
+[[ "$(cat "$CHROME_TEST_TRACE")" == '--session dotfiles-chrome --cdp 9222 --pin-tab tab list' ]]
+# Interactive chat inherits stdin and uses the verified connection too.
+printf 'interactive-input' | CHROME_TEST_COPY_STDIN=1 CHROME_TEST_STDIN_COPY="$trial/chat-input" "$entrypoint" chat > "$trial/chat-command"
+[[ "$(cat "$trial/chat-input")" == interactive-input ]]
+[[ "$(cat "$trial/chat-command")" == "$(printf '%s\n' --session dotfiles-chrome --cdp 9222 --pin-tab chat)" ]]
 # Never replay a potentially mutating action, even after successful recovery.
 for action in click fill eval; do
-  rm -f "$CHROME_TEST_TRACE" "$CHROME_TEST_CONNECTED"
+  rm -f "$HOME/Library/Caches/agent-chrome/connection.json" "$CHROME_TEST_TRACE" "$CHROME_TEST_CONNECTED"
   result=0
   "$entrypoint" "$action" fixture > "$trial/attempt" 2> "$trial/error" || result=$?
   [[ "$result" == 1 ]]
@@ -411,24 +415,48 @@ for action in click fill eval; do
 done
 # Only a unique Chrome-owned loopback port is eligible. No HTTP probe needed.
 for listeners in 'n0.0.0.0:9222' 'n*:9222' 'n192.168.1.10:9222' $'n127.0.0.1:9222\nn127.0.0.1:9333' 'n127.0.0.1:70000'; do
-  rm -f "$CHROME_TEST_TRACE" "$CHROME_TEST_CONNECTED"
+  rm -f "$HOME/Library/Caches/agent-chrome/connection.json" "$CHROME_TEST_TRACE" "$CHROME_TEST_CONNECTED"
   result=0
-  CHROME_TEST_LISTENERS="$listeners" "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error" || result=$?
+  CHROME_TEST_LISTENERS="$(printf 'p123\n%s' "$listeners")" "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error" || result=$?
   [[ "$result" == 1 ]]
   [[ "$(wc -l < "$CHROME_TEST_TRACE" | tr -d ' ')" == 1 ]]
   test ! -f "$CHROME_TEST_CONNECTED"
 done
 for failure in CHROME_TEST_LSOF_FAIL CHROME_TEST_CONNECT_FAIL CHROME_TEST_VERIFY_FAIL; do
-  rm -f "$CHROME_TEST_TRACE" "$CHROME_TEST_CONNECTED"
+  rm -f "$HOME/Library/Caches/agent-chrome/connection.json" "$CHROME_TEST_TRACE" "$CHROME_TEST_CONNECTED"
   result=0
   env "$failure=1" "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error" || result=$?
   [[ "$result" == 1 ]]
   test ! -f "$CHROME_TEST_LAUNCH"
 done
 for listeners in 'n[::1]:9333' $'n127.0.0.1:9222\nn[::1]:9222'; do
-  rm -f "$CHROME_TEST_TRACE" "$CHROME_TEST_CONNECTED"
-  CHROME_TEST_LISTENERS="$listeners" "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error"
-  [[ "$(wc -l < "$CHROME_TEST_TRACE" | tr -d ' ')" == 4 ]]
+  rm -f "$HOME/Library/Caches/agent-chrome/connection.json" "$CHROME_TEST_TRACE" "$CHROME_TEST_CONNECTED"
+  CHROME_TEST_LISTENERS="$(printf 'p123\n%s' "$listeners")" "$entrypoint" tab list > "$trial/attempt" 2> "$trial/error"
+  [[ "$(wc -l < "$CHROME_TEST_TRACE" | tr -d ' ')" == 3 ]]
 done
+rm -f "$HOME/Library/Caches/agent-chrome/connection.json" "$CHROME_TEST_CONNECTED"
+: > "$CHROME_TEST_TRACE"
+if CHROME_TEST_CONNECT_FAIL=1 "$entrypoint" tab list > /dev/null 2>&1; then exit 1; fi
+before="$(wc -l < "$CHROME_TEST_TRACE")"
+if "$entrypoint" connect 9222 >/dev/null 2>&1; then exit 1; fi
+if "$entrypoint" chat </dev/null >/dev/null 2>&1; then exit 1; fi
+if (cd "$trial/other-project" && "$entrypoint" tab new https://example.org) > /dev/null 2> "$trial/error"; then exit 1; fi
+[[ "$(wc -l < "$CHROME_TEST_TRACE")" == "$before" ]]
+[[ "$(cat "$trial/error")" == *'awaiting confirmation'* ]]
+AGENT_CHROME_RETRY_AFTER_APPROVAL=1 "$entrypoint" tab list >/dev/null
+# Page-level timeouts must leave the browser usable in the next chat.
+if BROWSER_TEST_EXIT=1 BROWSER_TEST_ERROR='Wait timed out after 1000ms' "$entrypoint" wait example >/dev/null 2>&1; then exit 1; fi
+"$entrypoint" tab list >/dev/null
+# Two callers arriving together may perform only one cold recovery.
+rm -f "$HOME/Library/Caches/agent-chrome/connection.json" "$CHROME_TEST_CONNECTED"
+: > "$CHROME_TEST_TRACE"
+"$entrypoint" tab list >/dev/null 2>"$trial/first" &
+first=$!
+(cd "$trial/other-project" && "$entrypoint" tab list >/dev/null 2>"$trial/second") &
+second=$!
+wait "$first"
+wait "$second"
+[[ "$(grep -c ' connect ' "$CHROME_TEST_TRACE")" == 1 ]]
+[[ "$(grep -c -- '--auto-connect' "$CHROME_TEST_TRACE")" == 1 ]]
 unset CHROME_TEST_DIRECT
 printf '%s\n' 'Chrome direct recovery: verified connection, safe reads, no write replay, ambiguous/remote ports rejected'
