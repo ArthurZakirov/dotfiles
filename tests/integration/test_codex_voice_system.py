@@ -25,7 +25,7 @@ INSTALLER = Path(".local/bin/codex-voice-install")
 HOOK = Path("run_after_45-install-codex-voice.sh.tmpl")
 PACKAGE = Path(".local/share/codex-voice")
 VOICE_CONFIG = Path(".config/codex-voice/config.json")
-VOICE_CONFIG_SOURCE = Path("dot_config/codex-voice/create_config.json")
+VOICE_CONFIG_SOURCE = Path("dot_config/codex-voice/modify_config.json")
 
 
 def command(*args: str, env: dict[str, str], timeout: int = 45) -> str:
@@ -63,8 +63,7 @@ def isolated_voice(tmp_path: Path) -> tuple[Path, dict[str, str], str, str]:
             target = target.with_name("executable_" + target.name)
         shutil.copy2(original, target)
 
-    # Chezmoi's create_ prefix provisions an initial default without overwriting
-    # the user's chosen speed on later applies.
+    # Manage paragraph navigation while preserving unrelated Voice settings.
     config_source = source / VOICE_CONFIG_SOURCE
     config_source.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(SOURCE / VOICE_CONFIG_SOURCE, config_source)
@@ -195,7 +194,12 @@ if not executable.is_file():
     )
     assert (home / ".local/share/codex-voice-install-calls").read_text() == "installed\n"
     voice_config = home / VOICE_CONFIG
-    assert json.loads(voice_config.read_text()) == {"speech_rate": 1.8}
+    navigation = {
+        "paragraph_navigation": True,
+        "previous_paragraph_shortcut": "alt-up",
+        "next_paragraph_shortcut": "alt-down",
+    }
+    assert json.loads(voice_config.read_text()) == {"speech_rate": 1.8, **navigation}
     voice_config.write_text('{"speech_rate": 1.4}\n')
 
     # Subsequent applies execute the same hook but do not reinstall the binary.
@@ -203,7 +207,7 @@ if not executable.is_file():
     assert (home / ".local/share/codex-voice-install-calls").read_text() == (
         "installed\nreused\n"
     )
-    assert json.loads(voice_config.read_text()) == {"speech_rate": 1.4}
+    assert json.loads(voice_config.read_text()) == {"speech_rate": 1.4, **navigation}
     assert python_log.read_text().splitlines().count(str(home / INSTALLER)) == 2
     assert (home / ".local/share/codex-voice-experiment/keep-me.txt").read_text() == (
         "previous-build"
@@ -267,3 +271,31 @@ def test_chezmoi_installs_pinned_release_and_launches_real_cli(
     assert f"Codex Voice already installed: {tag}" in second
     assert (home / PACKAGE / "codex-voice-install.json").read_bytes() == initial_receipt
     assert not list((home / PACKAGE).parent.glob("codex-voice.backup-*"))
+
+
+def test_warp_releases_option_arrows_on_fresh_and_existing_installs(isolated_voice):
+    home, env, _, _ = isolated_voice
+    source = home.parent / "source"
+    relative = Path("dot_warp/modify_keybindings.yaml")
+    (source / relative.parent).mkdir()
+    shutil.copy2(SOURCE / relative, source / relative)
+    target = home / ".warp/keybindings.yaml"
+    apply = [
+        "chezmoi", "--source", str(source), "--config", str(home.parent / "chezmoi.toml"),
+        "--destination", str(home), "apply", "--force", str(target),
+    ]
+    command(*apply, env=env)
+    assert "terminal:select_bookmark_up: none" in target.read_text()
+    assert "terminal:select_bookmark_down: none" in target.read_text()
+    target.write_text(
+        '"terminal:select_bookmark_up": alt-up\n'
+        '"terminal:select_bookmark_down": ctrl-shift-down\n'
+        '"terminal:find": cmd-f\n'
+    )
+    command(*apply, env=env)
+    updated = target.read_text()
+    assert "terminal:select_bookmark_up: none" in updated
+    assert "terminal:select_bookmark_down: ctrl-shift-down" in updated
+    assert "terminal:find: cmd-f" in updated
+    command(*apply, env=env)
+    assert target.read_text() == updated
