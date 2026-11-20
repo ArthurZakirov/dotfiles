@@ -66,7 +66,7 @@ def chrome_process():
     return "running" if result.returncode == 0 else "closed"
 
 
-def listener():
+def listeners():
     result = subprocess.run(["lsof", "-nP", "-a", "-c", "/^Google Chrome$/",
                              "-iTCP", "-sTCP:LISTEN", "-Fn"], capture_output=True)
     if result.returncode:
@@ -79,7 +79,12 @@ def listener():
         match = re.fullmatch(r"n(?:127\.0\.0\.1|\[::1\]):([0-9]+)", line)
         if pid and match and 0 < int(match[1]) <= 65535:
             endpoints.add((pid, str(int(match[1]))))
-    return list(endpoints.pop()) if len(endpoints) == 1 else None
+    return endpoints
+
+
+def unique_listener():
+    endpoints = listeners()
+    return list(endpoints.pop()) if endpoints and len(endpoints) == 1 else None
 
 
 def run_locked(state_file, command, args, stdin):
@@ -105,7 +110,7 @@ def run_locked(state_file, command, args, stdin):
     if command == "connect":
         result = invoke(DIRECT, args)
         if result.returncode == 0:
-            verified = listener()
+            verified = unique_listener()
             save({"endpoint": verified} if verified and args[-1] == verified[1] else {})
         else:
             save({"pending": True})
@@ -115,11 +120,11 @@ def run_locked(state_file, command, args, stdin):
 
     endpoint = state.get("endpoint")
     if endpoint:
-        current = listener()
-        if current is None:
+        current = listeners()
+        if not current or (tuple(endpoint) not in current and len(current) != 1):
             report("previous Chrome listener could not be verified. No new connection attempted.")
             return 1
-        if current != endpoint:
+        if tuple(endpoint) not in current:
             endpoint = None
             save({})
     if endpoint:
@@ -167,7 +172,7 @@ def run_locked(state_file, command, args, stdin):
                 save({"pending": True})
             return output(result)
 
-    endpoint = listener()
+    endpoint = unique_listener()
     if endpoint is None:
         report("no unique Chrome loopback port verified; automatic recovery stopped.")
         return output(result)

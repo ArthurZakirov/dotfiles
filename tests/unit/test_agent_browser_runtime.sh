@@ -395,6 +395,10 @@ done
 output="$(cd "$trial/other-project" && "$entrypoint" tab new https://example.org)"
 [[ "$output" == "$(printf '%s\n' --session dotfiles-chrome --cdp 9222 --pin-tab tab new https://example.org)" ]]
 [[ "$(wc -l < "$CHROME_TEST_TRACE" | tr -d ' ')" == 1 ]]
+# An additional listener does not invalidate the verified process/port pair.
+: > "$CHROME_TEST_TRACE"
+CHROME_TEST_LISTENERS=$'p321\nn127.0.0.1:9333\np123\nn127.0.0.1:9222' "$entrypoint" tab list >/dev/null
+[[ "$(cat "$CHROME_TEST_TRACE")" == '--session dotfiles-chrome --cdp 9222 --pin-tab tab list' ]]
 # Interactive chat inherits stdin and uses the verified connection too.
 printf 'interactive-input' | CHROME_TEST_COPY_STDIN=1 CHROME_TEST_STDIN_COPY="$trial/chat-input" "$entrypoint" chat > "$trial/chat-command"
 [[ "$(cat "$trial/chat-input")" == interactive-input ]]
