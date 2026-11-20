@@ -35,7 +35,7 @@ Use these **four structural decisions recursively**. They are complementary ways
 <a id="structure-1"></a>
 ### S1 — Define the parent contract
 
-Identify the questions a reader needs answered and group the corresponding material. For every parent heading, list lead-in, or other grouping, identify the semantic type of its immediate children. The following are **illustrative categories, not an exhaustive taxonomy**:
+Before choosing content, reconstruct the reading situation: who opens this text, what brought them here, and what will they decide or do with it? Derive the questions from that situation. Select the material that answers them and omit details that serve only the writer’s account of the work. For example, a reviewer deciding whether to merge may need evidence, a dependency or a route through a complex diff. Include each only when it helps that review. For every parent heading, list lead-in, or other grouping, identify the semantic type of its immediate children. The following are **illustrative categories, not an exhaustive taxonomy**:
 
 - **Steps:** actions or stages in a specified order.
 - **Principles:** independent guidelines, each with supporting detail.
@@ -128,6 +128,7 @@ For each meaningful block, identify the reader question it answers. Give it a **
 
 Apply these **answer-labeling rules**:
 
+- **Purpose:** Choose the heading’s job before its wording. For a reader already committed to a task, use recognizable navigation labels, direct questions or concise answers. For someone deciding whether to read at all, surface a concrete benefit, consequential risk or credible result supported by the text. A portfolio reader assessing engineering ability may look for “What made the project difficult?”; fragmented ownership is evidence within that answer. Read the headings alone: can this reader find what they need or judge why reading is worthwhile?
 - **Length:** Aim for one to three words when that remains accurate; use a longer name where needed.
 - **Medium:** Give independently navigable answers real Markdown headings at the appropriate level (for example, `###` in chat), with a blank line and the answer underneath. For compact peers, use a vertical bullet list with optional bold labels. Stacked paragraphs with same-line bold labels provide too little separation for distinct answers. On a surface without headings, use its native section or list formatting.
 - **Containment:** Keep details underneath the item they explain rather than promoting them to sibling items.
