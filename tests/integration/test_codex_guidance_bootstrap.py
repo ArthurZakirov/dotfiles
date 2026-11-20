@@ -119,7 +119,7 @@ def test_information_representation_guidance_is_always_rendered(tmp_path):
     guidance = (tmp_path / ".codex/AGENTS.md").read_text()
 
     assert guidance.count('<a id="information-representation-design"></a>') == 1
-    assert "Whenever you write, edit, review or send any text, in any interface." in guidance
+    assert "whenever you write, edit, review or send any text, in any interface." in guidance
     assert "**Apply all four stages below**" in guidance
     assert "Choose representations supported by the destination." in guidance
     assert "do not skip the process for short replies" not in guidance
