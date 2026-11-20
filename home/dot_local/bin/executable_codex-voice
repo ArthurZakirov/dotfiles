@@ -17,4 +17,4 @@ for arg in "$@"; do
     exec "$binary" "${display[@]}" "$@"
   fi
 done
-exec "$binary" --no-daemon "${display[@]}" "$@"
+exec "$binary" "${display[@]}" --no-daemon "$@"

@@ -59,6 +59,16 @@ export CHEZMOI_SOURCE_PATH={{ .chezmoi.sourceDir | quote }}
 export EDITOR="code --wait"
 # WORKFLOW COMMANDS & ALIASES
 # ------------------------------------------------------
+{{ if .codexVoice.enabled -}}
+function codex {
+  if [[ "${1:-}" == voice ]]; then
+    shift
+    "$HOME/.local/bin/codex-voice" "$@"
+  else
+    command codex "$@"
+  fi
+}
+{{ end -}}
 alias sync-systemsmith="npx --yes skills add ArthurZakirov/SystemSmith --global --agent codex --skill '*' --yes"
 
 {{ if eq .profile "personal" -}}
