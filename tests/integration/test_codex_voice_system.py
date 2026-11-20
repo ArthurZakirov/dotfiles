@@ -119,12 +119,13 @@ def test_chezmoi_launcher_forwards_flags_and_sets_verbatim_speech(
 
     output = command(str(home / LAUNCHER), "--no-daemon", env=env)
 
-    assert output.strip() == "1:--no-daemon"
-    assert command(str(home / LAUNCHER), env=env).strip() == "1:--no-daemon"
-    assert command(str(home / LAUNCHER), "resume", "--last", env=env).strip() == "1:--no-daemon resume --last"
-    assert command(str(home / LAUNCHER), "--", "--no-daemon", env=env).strip() == "1:--no-daemon -- --no-daemon"
-    assert command(str(home / LAUNCHER), "--remote", "ws://localhost:9999", env=env).strip() == "1:--remote ws://localhost:9999"
-    assert command(str(home / LAUNCHER), "--remote=ws://localhost:9999", env=env).strip() == "1:--remote=ws://localhost:9999"
+    prefix = '1:-c tui.fullscreen_transcript=true -c tui.alternate_screen="always" '
+    assert output.strip() == prefix + "--no-daemon"
+    assert command(str(home / LAUNCHER), env=env).strip() == prefix + "--no-daemon"
+    assert command(str(home / LAUNCHER), "resume", "--last", env=env).strip() == prefix + "--no-daemon resume --last"
+    assert command(str(home / LAUNCHER), "--", "--no-daemon", env=env).strip() == prefix + "--no-daemon -- --no-daemon"
+    assert command(str(home / LAUNCHER), "--remote", "ws://localhost:9999", env=env).strip() == prefix + "--remote ws://localhost:9999"
+    assert command(str(home / LAUNCHER), "--remote=ws://localhost:9999", env=env).strip() == prefix + "--remote=ws://localhost:9999"
     binary.write_text(
         '#!/bin/sh\nprintf "%s\\n" "$CODEX_STATUS_LINE_COMMANDS"\n'
     )
@@ -247,7 +248,7 @@ def test_chezmoi_installs_pinned_release_and_launches_real_cli(
     assert len(manifest["sha256"]) > 0
 
     launcher = str(home / LAUNCHER)
-    assert "codex-cli 0.166.0" in command(launcher, "--version", env=env)
+    assert command(launcher, "--version", env=env).strip() == "codex-cli " + tag.removeprefix("voice-v").split("-r")[0]
     assert "Usage:" in command(launcher, "--no-daemon", "--help", env=env)
     for relative in (
         "bin/codex-code-mode-host", "bin/codex-exec-server", "codex-path/rg",

@@ -10,10 +10,11 @@ export CODEX_STATUS_LINE_COMMANDS='[{"label":"AGENTS","command":"codex-agents-st
 # Keep the Voice session on this package's embedded server, rather than a
 # separately installed shared daemon that may run a different build.
 binary="$HOME/.local/share/codex-voice/bin/codex"
+display=(-c 'tui.fullscreen_transcript=true' -c 'tui.alternate_screen="always"')
 for arg in "$@"; do
   [[ "$arg" != -- ]] || break
   if [[ "$arg" == --no-daemon || "$arg" == --remote || "$arg" == --remote=* ]]; then
-    exec "$binary" "$@"
+    exec "$binary" "${display[@]}" "$@"
   fi
 done
-exec "$binary" --no-daemon "$@"
+exec "$binary" "${display[@]}" --no-daemon "$@"
