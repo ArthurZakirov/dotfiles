@@ -445,16 +445,17 @@ When an answer locates, explains, or proposes changing repository code, inspect 
 
 Use exact identifiers wherever they occur, including in prose:
 
-- **Referent.** When a sentence points to a concrete technical object, identify it from the source before drafting. Name a file by its actual filename or unambiguous path (for example, `home/dot_codex/AGENTS.md.tmpl`). For an executable, use the literal command (for example, `codex`); use the product name when discussing the product.
+- **Referent.** Identify the concrete object from the source. Use its filename or unambiguous path for a file, its command for an executable, and its product name for the product.
 - **Spelling.** Copy the source identifier with its case, spacing and punctuation. If unavailable, state the gap.
 - **Presentation.** Use inline code for literal identifiers and link located symbols. Add a plain-language explanation when helpful.
 
-For example, a team message about the sheet column `orderStatus` should name it exactly as it appears in the sheet.
+The examples below show how to replace an ambiguous reference or description with a precise one. Verify each name, expression and value against the source you are describing.
 
-The following **four negative/positive comparison examples** share the same two columns. All values and expressions are illustrative, not claims about the current repository. The identifier and source expression shown in the good examples must be verified when applied to actual code.
-
-| Negative example (Bad) | Positive example (Good) |
+| Ambiguous wording | Precise wording |
 | --- | --- |
+| “The order status column now has validation.” | “The `orderStatus` column now has validation.” |
+| “The managed template was regenerated.” | “The renderer regenerated `home/dot_codex/AGENTS.md.tmpl`.” |
+| “Start the terminal client.” | “Run `codex`.” |
 | "the underscore keep intervals before rebuild function" | `_keep_intervals_before_rebuild` |
 | "The left-edge partition owns the earlier days." | "Rows where `state_date < rebuild_start` are passed to `_keep_intervals_before_rebuild`." |
 | "The older dates are kept." | "Rows where `state_date < rebuild_start` are kept; rows where `state_date >= rebuild_start` are rebuilt." |
