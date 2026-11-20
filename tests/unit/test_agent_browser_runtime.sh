@@ -65,6 +65,8 @@ if [ "${CHROME_TEST_CONNECT_BEFORE_LAUNCH:-0}" = 1 ] && [ ! -f "$CHROME_TEST_LAU
     3) printf '\033[31m✗\033[0m No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.\n' >&2 ;;
     4) echo 'Error: No running debuggable Chrome found' >&2 ;;
     5) echo '✗ Auto-launch failed: No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.' >&2 ;;
+    7) echo 'Warning: ignoring unsupported project setting' >&2
+       echo '✗ Auto-launch failed: No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.' >&2 ;;
     6) echo '{"error":"Auto-launch failed: No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.","settings":{"applied":false},"success":false}' ;;
     *) echo 'No running Chrome instance found. Launch Chrome with --remote-debugging-port or use --cdp.' >&2 ;;
   esac
@@ -306,7 +308,7 @@ CHROME_TEST_OS=Linux CHROME_TEST_PROCESS=closed "$entrypoint" tab list >/dev/nul
 test ! -f "$CHROME_TEST_LAUNCH"
 
 # Known JSON/plain/colored diagnostics recover without leaking a first response.
-for json_shape in 1 2 3 4 5 6; do
+for json_shape in 1 2 3 4 5 6 7; do
   rm -f "$CHROME_TEST_LAUNCH"
   arguments=(tab list)
   if [[ "$json_shape" -le 2 || "$json_shape" == 6 ]]; then arguments=(--json tab list); fi

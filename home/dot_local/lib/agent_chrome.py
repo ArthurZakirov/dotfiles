@@ -39,8 +39,11 @@ def diagnostic(result):
 
 def discovery_failed(result):
     message = re.sub(r"\x1b\[[0-9;]*m", "", diagnostic(result))
-    message = re.sub(r"^(?:✗ |Error: )?(?:Auto-launch failed: )?", "", message)
-    return result.returncode == 1 and message in DISCOVERY_ERRORS
+    # Newer versions can print a project-config warning before the diagnostic.
+    lines = message.splitlines()
+    return result.returncode == 1 and bool(lines) and re.sub(
+        r"^(?:✗ |Error: )?(?:Auto-launch failed: )?", "", lines[-1]
+    ) in DISCOVERY_ERRORS
 
 
 def approval_uncertain(result):
