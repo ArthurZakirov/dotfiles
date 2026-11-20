@@ -443,11 +443,13 @@ When an answer locates, explains, or proposes changing repository code, inspect 
 <a id="exact-identifiers"></a>
 #### C1 — Use exact identifiers and concrete operations
 
-Use exact identifiers wherever they occur, including in prose:
+Apply these steps whenever prose refers to a specific technical object.
 
-- **Referent.** Identify the concrete object from the source. Use its filename or unambiguous path for a file, its command for an executable, and its product name for the product.
-- **Spelling.** Copy the source identifier with its case, spacing and punctuation. If unavailable, state the gap.
-- **Presentation.** Use inline code for literal identifiers and link located symbols. Add a plain-language explanation when helpful.
+1. **Identify the object.** Use the task and its source to establish which object the statement concerns. For example, determine whether a user needs to recognize a product or invoke its executable. If the source leaves the object ambiguous, state what is unresolved.
+2. **Write its identifier.** Once the object is known, apply these rules:
+   - **Name selection.** Use the product name for a product, the command for an executable, or the filename or unambiguous path for a file.
+   - **Spelling.** Copy the identifier from the source, preserving case, spacing and punctuation. If its exact spelling is unavailable, say so.
+   - **Presentation.** Use inline code for literal identifiers and link located symbols. Add a plain-language explanation when helpful.
 
 The examples below show how to replace an ambiguous reference or description with a precise one. Verify each name, expression and value against the source you are describing.
 
