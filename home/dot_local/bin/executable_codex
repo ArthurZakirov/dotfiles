@@ -1,0 +1,26 @@
+#!/bin/bash
+# codex-voice-dispatch-v1
+# Make the two-word Voice command available to terminals and direct process launches.
+if [[ ${1:-} == voice ]]; then
+  shift
+  exec "$HOME/.local/bin/codex-voice" "$@"
+fi
+
+previous="$HOME/.local/bin/.codex-before-voice-dispatch"
+if [[ -f "$previous" && -x "$previous" && ! "$previous" -ef "$0" ]]; then
+  exec "$previous" "$@"
+fi
+
+# Preserve the user's choice of upstream Codex according to PATH. A repeated
+# directory or symlink to this dispatcher must never recurse.
+remaining_path="$PATH:"
+while [[ -n "$remaining_path" ]]; do
+  directory=${remaining_path%%:*}
+  remaining_path=${remaining_path#*:}
+  candidate="${directory:-.}/codex"
+  if [[ -f "$candidate" && -x "$candidate" && ! "$candidate" -ef "$0" ]]; then
+    exec "$candidate" "$@"
+  fi
+done
+echo 'codex: upstream Codex executable not found on PATH' >&2
+exit 127

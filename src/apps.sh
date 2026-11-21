@@ -28,6 +28,12 @@ install_missing_cask() {
 install_missing_cli_cask() {
   local command_name="$1" cask="$2"
   if command -v "$command_name" >/dev/null 2>&1; then
+    if [[ "$command_name" == codex && "$(command -v codex)" == "$HOME/.local/bin/codex" ]] &&
+       head -c 96 "$HOME/.local/bin/codex" | grep -Fq '# codex-voice-dispatch-v1' &&
+       ! "$HOME/.local/bin/codex" --version >/dev/null 2>&1; then
+      install_missing_cask "$cask"
+      return
+    fi
     echo "Already installed: $command_name"
     return 0
   fi
