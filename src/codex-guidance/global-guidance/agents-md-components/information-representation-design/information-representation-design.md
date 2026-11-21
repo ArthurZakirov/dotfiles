@@ -3,14 +3,11 @@
 
 ## 🎯 Applicability
 
-| When | Then |
-| --- | --- |
-| Writing, editing, reviewing, or sending **every user-facing chat reply or message** (including intermediate work-in-progress updates, partial answers, and final replies), and creating or modifying **any other human-readable text**—including documentation, Markdown, PR descriptions and reviews, tickets, emails, websites, articles, agent instructions or skills, and other human-readable outputs. | **Apply all four stages below** while composing or revising that message or artifact, and check the result before sending, saving, or publishing it. Within each stage, apply the rules relevant to the content and medium. |
-| An action creates or updates a field that people will read, regardless of the interface used to deliver it. | Before submitting the action, apply the four stages to the exact text destined for that field. Check its structure, formatting, and links in the destination’s supported format. If the transfer can alter them, inspect the preview or saved result when available and correct any loss. |
+**Apply all four stages below** whenever you write, edit, review or send any text, in any interface. Start with the first draft and check the result before delivery. Choose representations supported by the destination. Preserve required syntax, schemas, literal values and verbatim material.
 
-**Writing process — four stages**
+### Writing process — four stages
 
-For **each chat message or other human-readable text covered by the condition above**, follow these four stages to create, edit, review, and present that specific output. These are activities in the writing process, **not mandatory headings in the output** or a fixed hierarchy of information.
+For **every text**, follow these four stages to create, edit, review, and present that specific output. These are activities in the writing process, **not mandatory headings in the output** or a fixed hierarchy of information.
 
 1. **[🧭 Stage 1 — Structure the reader's route](#stage-1).** Define the questions each part answers and the semantic relationship of its children.
 2. **[🗂️ Stage 2 — Choose a representation inside each section](#stage-2).** Select structures and content formats suited to each relationship.
@@ -18,6 +15,16 @@ For **each chat message or other human-readable text covered by the condition ab
 4. **[🔗 Stage 4 — Anchor sources and recurring references](#stage-4).** Make inspectable sources and repeated references stable and navigable where relevant.
 
 Revisit earlier stages whenever a later choice creates new semantic groups.
+
+### Updating existing text
+
+Review the result in this order:
+
+1. **Read the destination.** Identify its organizing principle and what readers currently see.
+2. **Integrate the update.** Place new material under the reader question it answers. Preserve required chronology, evidence and other authors’ contributions.
+3. **Check the whole result.** Before saving, check the exact text, structure and links. If transfer or rendering can change them, inspect the saved field or preview and correct any loss.
+
+For a running record, put the current state where readers can find it and group earlier work by milestone. If history is immutable, add a concise linked summary where supported.
 
 <a id="stage-1"></a>
 ## 🧭 Stage 1 — Structure the reader's route
@@ -34,7 +41,15 @@ Use these **four structural decisions recursively**. They are complementary ways
 <a id="structure-1"></a>
 ### S1 — Define the parent contract
 
-Identify the questions a reader needs answered and group the corresponding material. For every parent heading, list lead-in, or other grouping, identify the semantic type of its immediate children. The following are **illustrative categories, not an exhaustive taxonomy**:
+Choose content from the reading situation:
+
+1. Identify who opens the text, why they are there, and what they need to decide or do.
+2. Derive the reader’s questions, their number and their order. Keep material that helps answer them.
+3. Group the answers and identify what the immediate children of each group represent.
+
+For example, a reviewer deciding whether to merge may need behavioral evidence, a dependency or a route through a complex diff. Include each when it helps that decision.
+
+Common roles for children of a group include:
 
 - **Steps:** actions or stages in a specified order.
 - **Principles:** independent guidelines, each with supporting detail.
@@ -127,11 +142,22 @@ For each meaningful block, identify the reader question it answers. Give it a **
 
 Apply these **answer-labeling rules**:
 
+- **Purpose:** Choose a label that helps this reader locate an answer or decide whether it is worth reading.
 - **Length:** Aim for one to three words when that remains accurate; use a longer name where needed.
-- **Medium:** Choose a heading, bold lead-in, list label, or another appropriate level.
+- **Medium:** Give independently navigable answers headings with the text underneath. For compact peers, use a vertical list. Use equivalent native formatting when Markdown headings are unavailable.
 - **Containment:** Keep details underneath the item they explain rather than promoting them to sibling items.
-- **Peer consistency:** Apply S1's structural-consistency rule to all peer items, regardless of their semantic type.
+- **Peer consistency:** Keep sibling labels at the same level of abstraction and use parallel grammatical forms. Choose each question word for its meaning, such as “Who decides?” and “When is the decision due?”
 - **Semantic type:** When introducing a standalone instruction, example, reason, or qualification, identify that role before its topic. A bold action phrase alone is not a sufficient label when the reader cannot tell why it appears.
+
+#### Heading choices by reading situation
+
+| Reader’s task | What the heading should do |
+| --- | --- |
+| Carry out an assigned task | Name the action or answer so the reader can navigate directly to it. |
+| Assess a candidate’s engineering ability | Surface the evaluation question, such as “What made the project difficult?” Explain fragmented ownership as evidence underneath. |
+| Decide whether to read voluntarily | Offer a concrete benefit, consequential risk or credible result supported by the text. |
+
+Read the headings alone to check whether the intended reader can find the needed answer or judge why to continue.
 
 #### Comparison example — identifying a rule group
 
@@ -220,9 +246,10 @@ These convey the substance within the chosen layout. They are **not competing al
 | Information to communicate | Content representation |
 | --- | --- |
 | Reasoning, explanation, consequences | Prose |
-| Exact expression, identifier, command, or implementation | Inline code or code fence |
+| Exact expression, identifier, command, or implementation | Inline code or code fence (see [C1](#exact-identifiers)) |
 | Relationships, dependencies, topology, or process flow | Diagram |
 | Quantitative comparison or trend | Chart |
+
 
 **Examples of composable representations:**
 
@@ -255,6 +282,11 @@ Apply these **three prose-and-list rules** to the formats used in the current do
 #### T1 — Frame each list
 
 Use a short label or lead-in to say what its children represent and why the reader needs them.
+
+Choose the lead-in according to the relationship:
+
+- **Shared sentence stem.** Write it once and let each bullet complete it grammatically.
+- **Examples of one claim.** State the claim once, identify the following items as examples, then give each example its own bullet.
 
 **Available forms and their roles:**
 
@@ -294,7 +326,7 @@ Review these in priority order; read the description before each diff:
 
 Follow these **grouping rules**:
 
-- **Expose separate peers.** When a sentence or paragraph contains independently scannable items, use bullets, rows, or other suitable containers if doing so improves recognition. Keep inseparable pairs such as "staged versus unstaged changes" together; there is no fixed item-count threshold.
+- **Expose separate peers.** Give independently checkable requirements, behaviors or outcomes their own list items. Check comma-separated clauses for hidden peers. Keep each condition with its consequence and each action with its qualifications.
 - **Separate different semantic types.** When adjacent items serve different purposes, give each type its own accurately named group, whether the types are changes, steps, reasons, alternatives, evidence, constraints, examples, decisions, or anything else. These are **examples, not a closed list**; derive the categories from the content.
 - **Keep connected material together.** Do not create a new group merely because two sentences differ in wording. Split when readers need to recognize a change in semantic role, not simply to increase the number of headings.
 
@@ -342,7 +374,7 @@ Follow these **paragraph-writing rules**:
 - **Identify the purpose.** Start with an identifying lead-in or point so the reader knows what the paragraph contributes.
 - **Explain the meaning.** Elaborate when a short label cannot communicate the relevant detail.
 - **Support the point.** Include evidence, an example, a consequence, or context when it helps the reader understand the item.
-- **Separate changed roles.** Start a new paragraph or list item when the purpose changes; identify the new role when it is not already clear from the parent section.
+- **Separate changed roles.** Check every sentence against the question its heading promises to answer. Move a different answer into its own labeled section or peer list item. A proposed check belongs under “Next step”; a causal explanation belongs under “Cause”.
 
 Keep genuinely connected causal reasoning in prose. A new sentence does not automatically require a separate paragraph.
 
@@ -404,18 +436,28 @@ In a code architecture diagram, use actual identifiers (for example, `_keep_inte
 
 ### 💻 Code and commands
 
-Apply the following four **code rules** when presenting inspected source or executable commands.
+Apply the following four **code rules** when presenting technical identifiers, inspected source or executable commands.
 
 When an answer locates, explains, or proposes changing repository code, inspect the relevant source before drafting its description. Compare the final explanation against the actual symbols, expressions, and observed behavior.
 
+<a id="exact-identifiers"></a>
 #### C1 — Use exact identifiers and concrete operations
 
-Copy the original spelling of any inspected identifier: every character, including punctuation and underscores. Use inline backticks for literal code; use verified links when referring to a located symbol.
+Apply these steps whenever prose refers to a specific technical object.
 
-The following **four negative/positive comparison examples** share the same two columns. All values and expressions are illustrative, not claims about the current repository. The identifier and source expression shown in the good examples must be verified when applied to actual code.
+1. **Identify the object.** Use the task and its source to establish which object the statement concerns. For example, determine whether a user needs to recognize a product or invoke its executable. If the source leaves the object ambiguous, state what is unresolved.
+2. **Write its identifier.** Once the object is known, apply these rules:
+   - **Name selection.** Use the product name for a product, the command for an executable, or the filename or unambiguous path for a file.
+   - **Spelling.** Copy the identifier from the source, preserving case, spacing and punctuation. If its exact spelling is unavailable, say so.
+   - **Presentation.** Use inline code for literal identifiers and link located symbols. Add a plain-language explanation when helpful.
 
-| Negative example (Bad) | Positive example (Good) |
+The examples below show how to replace an ambiguous reference or description with a precise one. Verify each name, expression and value against the source you are describing.
+
+| Ambiguous wording | Precise wording |
 | --- | --- |
+| “The order status column now has validation.” | “The `orderStatus` column now has validation.” |
+| “The managed template was regenerated.” | “The renderer regenerated `home/dot_codex/AGENTS.md.tmpl`.” |
+| “Start the terminal client.” | “Run `codex`.” |
 | "the underscore keep intervals before rebuild function" | `_keep_intervals_before_rebuild` |
 | "The left-edge partition owns the earlier days." | "Rows where `state_date < rebuild_start` are passed to `_keep_intervals_before_rebuild`." |
 | "The older dates are kept." | "Rows where `state_date < rebuild_start` are kept; rows where `state_date >= rebuild_start` are rebuilt." |
@@ -482,7 +524,9 @@ When the draft names a file, symbol, or other inspectable artifact, locate its r
 
 Apply these **source-link rules**:
 
-- **Link label:** Use the symbol or filename as the visible label.
+- **Point of use:** Link an object where readers need it, including when an earlier message already linked it.
+- **Link label:** Use the recognizable PR number, symbol, filename or other object name.
+- **Reference collections:** Put each independently actionable link on its own line. Use Markdown bullets for unordered references and a numbered list for meaningful order. Avoid inline chains joined by `·`, `•` or `|`.
 - **Location:** Put the file path and line anchor in the destination rather than an unnecessarily long displayed phrase.
 - **Literal identifiers:** Keep link labels plain text and use adjacent inline code for exact symbol spelling when needed.
 - **Identifier fidelity:** Preserve the real identifier even when its name is long.
