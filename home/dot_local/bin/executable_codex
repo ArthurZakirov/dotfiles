@@ -1,8 +1,14 @@
 #!/bin/bash
+# codex-voice-dispatch-v1
 # Make the two-word Voice command available to terminals and direct process launches.
 if [[ ${1:-} == voice ]]; then
   shift
   exec "$HOME/.local/bin/codex-voice" "$@"
+fi
+
+previous="$HOME/.local/bin/.codex-before-voice-dispatch"
+if [[ -f "$previous" && -x "$previous" && ! "$previous" -ef "$0" ]]; then
+  exec "$previous" "$@"
 fi
 
 # Preserve the user's choice of upstream Codex according to PATH. A repeated

@@ -3,5 +3,20 @@ set -euo pipefail
 
 DOTFILES_ROOT={{ .chezmoi.workingTree | quote }}
 DOTFILES_PROFILE={{ .profile | quote }}
+# Preserve an existing upstream CLI before chezmoi places the dispatcher at
+# this path. Keeping a relative symlink alongside its original preserves its target.
+existing="$HOME/.local/bin/codex"
+previous="$HOME/.local/bin/.codex-before-voice-dispatch"
+if [[ -f "$existing" && -x "$existing" ]] &&
+   ! head -c 96 "$existing" | grep -Fq '# codex-voice-dispatch-v1'; then
+  if [[ -e "$previous" || -L "$previous" ]]; then
+    if [[ ! "$existing" -ef "$previous" ]]; then
+      echo "Cannot preserve $existing because $previous already contains another installation." >&2
+      exit 1
+    fi
+  else
+    ln -P "$existing" "$previous"
+  fi
+fi
 source "$DOTFILES_ROOT/src/shell-setup.sh"
 main "$@"
