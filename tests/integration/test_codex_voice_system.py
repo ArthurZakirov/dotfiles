@@ -97,6 +97,26 @@ def isolated_voice(tmp_path: Path) -> tuple[Path, dict[str, str], str, str]:
     return home, env, hook, tag
 
 
+def test_two_word_voice_command_works_without_shell_functions(tmp_path):
+    managed = tmp_path / ".local/bin"
+    upstream = tmp_path / "upstream"
+    managed.mkdir(parents=True)
+    upstream.mkdir()
+    dispatcher = managed / "codex"
+    shutil.copyfile(SOURCE / "dot_local/bin/executable_codex", dispatcher)
+    dispatcher.chmod(0o755)
+    for exe, label in [(managed / "codex-voice", "fork"), (upstream / "codex", "upstream")]:
+        exe.write_text(f'#!/bin/sh\nprintf "%s\\n" {label} "$@"\n')
+        exe.chmod(0o755)
+    env = {**os.environ, "HOME": str(tmp_path), "PATH": f"{managed}:{managed}:{upstream}"}
+    assert command("codex", "voice", "resume", "my chat", env=env).splitlines() == [
+        "fork", "resume", "my chat"
+    ]
+    assert command("codex", "exec", "my prompt", env=env).splitlines() == [
+        "upstream", "exec", "my prompt"
+    ]
+
+
 def test_chezmoi_launcher_forwards_flags_and_sets_verbatim_speech(
     isolated_voice: tuple[Path, dict[str, str], str, str],
 ) -> None:

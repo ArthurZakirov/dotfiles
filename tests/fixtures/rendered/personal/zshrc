@@ -59,14 +59,6 @@ export CHEZMOI_SOURCE_PATH="<DOTFILES_REPO>/home"
 export EDITOR="code --wait"
 # WORKFLOW COMMANDS & ALIASES
 # ------------------------------------------------------
-function codex {
-  if [[ "${1:-}" == voice ]]; then
-    shift
-    "$HOME/.local/bin/codex-voice" "$@"
-  else
-    command codex "$@"
-  fi
-}
 alias sync-systemsmith="npx --yes skills add ArthurZakirov/SystemSmith --global --agent codex --skill '*' --yes"
 
 # Personal Mac only. Credentials stay in Keychain, outside this repository.
