@@ -136,7 +136,9 @@ install_brew_manifest "$repo_root/dependencies/brew/common/cli.Brewfile"
 calls=()
 PENDING_BREW_ACTIONS=()
 install_brew_manifest "$repo_root/dependencies/brew/common/gui.Brewfile"
-[[ "${PENDING_BREW_ACTIONS[*]}" == 'vscode-cli' ]]
+expected_actions="vscode-cli"
+if [[ $(uname -m) == arm64 ]]; then expected_actions="herdr-core vscode-cli"; fi
+[[ "${PENDING_BREW_ACTIONS[*]}" == "$expected_actions" ]]
 herdr_install=''
 if [[ $(uname -m) == arm64 ]]; then herdr_install='install --cask herdr-app '; fi
 [[ "${calls[*]}" == 'install --cask alt-tab install --cask betterdisplay install --cask displaylink install --cask ddpm '"$herdr_install"'install --cask warp install --cask google-drive install --cask hammerspoon install --cask logi-options+ install --cask logitune install --cask docker-desktop install --cask raycast install --cask rectangle install --cask visual-studio-code install --cask google-chrome install --cask claude install --cask chatgpt' ]]
