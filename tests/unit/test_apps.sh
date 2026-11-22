@@ -137,7 +137,9 @@ calls=()
 PENDING_BREW_ACTIONS=()
 install_brew_manifest "$repo_root/dependencies/brew/common/gui.Brewfile"
 [[ "${PENDING_BREW_ACTIONS[*]}" == 'vscode-cli' ]]
-[[ "${calls[*]}" == 'install --cask alt-tab install --cask betterdisplay install --cask displaylink install --cask ddpm install --cask warp install --cask google-drive install --cask hammerspoon install --cask logi-options+ install --cask logitune install --cask docker-desktop install --cask raycast install --cask rectangle install --cask visual-studio-code install --cask google-chrome install --cask claude install --cask chatgpt' ]]
+herdr_install=''
+if [[ $(uname -m) == arm64 ]]; then herdr_install='install --cask herdr-app '; fi
+[[ "${calls[*]}" == 'install --cask alt-tab install --cask betterdisplay install --cask displaylink install --cask ddpm '"$herdr_install"'install --cask warp install --cask google-drive install --cask hammerspoon install --cask logi-options+ install --cask logitune install --cask docker-desktop install --cask raycast install --cask rectangle install --cask visual-studio-code install --cask google-chrome install --cask claude install --cask chatgpt' ]]
 calls=()
 
 # Personal Brewfile entries stay out of the professional profile.

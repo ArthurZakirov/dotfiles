@@ -106,6 +106,10 @@ install_brew_manifest() {
     check_type="${BASH_REMATCH[3]}"
     check_value="${BASH_REMATCH[4]}"
     post_action=""
+    if [[ "$check_value" == *"; arch: "* ]]; then
+      [[ "$(uname -m)" == "${check_value##*; arch: }" ]] || continue
+      check_value="${check_value%%; arch: *}"
+    fi
     minimum=""
     if [[ "$check_value" == *"; min-version: "* ]]; then
       minimum="${check_value##*; min-version: }"
