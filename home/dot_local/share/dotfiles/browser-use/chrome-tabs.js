@@ -49,8 +49,21 @@ function application(pid) {
         return Array.from({length: count}, (_, i) => list.objectAtIndex(i));
     }
     function wrapTab(obj) {
-        return {id: () => property(obj, "id"), url: () => property(obj, "URL"),
-                title: () => property(obj, "title")};
+        return {
+            id: () => property(obj, "id"),
+            url: () => property(obj, "URL"),
+            title: () => property(obj, "title"),
+            read: (url, selector) => {
+                const args = [url, selector].map(value => JSON.stringify(value)).join(",");
+                const source = "(" + readField.toString() + ")(" + args + ")";
+                const reply = ObjC.unwrap(obj.performSelectorWithObject("executeJavascript:", $(source)));
+                if (typeof reply !== "string")
+                    throw Error("Chrome did not return page text. Inspect the identified window through Accessibility.");
+                const field = JSON.parse(reply);
+                if (field.error) throw Error(field.error);
+                return field;
+            }
+        };
     }
     function wrapWindow(obj) {
         return {
@@ -74,6 +87,17 @@ function application(pid) {
     return {windows: () => elements(app, "windows").map(wrapWindow)};
 }
 
+// Executed in the selected page. Only a single visible field leaves the tab.
+function readField(url, selector) {
+    if (location.href !== url) return JSON.stringify({error: "Tab URL changed."});
+    const fields = document.querySelectorAll(selector);
+    if (fields.length !== 1 || !fields[0].checkVisibility({visibilityProperty: true, opacityProperty: true}))
+        return JSON.stringify({error: "Expected one visible field at the requested selector."});
+    const text = fields[0].innerText;
+    if (typeof text !== "string" || !text.trim()) return JSON.stringify({error: "The field has no visible text."});
+    return JSON.stringify({url: location.href, title: document.title, text: text.trim()});
+}
+
 function locate(pids, application, url) {
     const matches = [];
     for (const pid of pids) {
@@ -93,10 +117,10 @@ function run(args) {
     const pids = chromePids();
     if (args[0] === "--pids") return JSON.stringify(pids);
     const [command, url, destination] = args;
-    if (!["--find-tab", "--focus-tab", "--new-tab-in"].includes(command) ||
-        args.length !== (command === "--new-tab-in" ? 3 : 2) ||
+    if (!["--find-tab", "--read-tab", "--focus-tab", "--new-tab-in"].includes(command) ||
+        args.length !== (["--new-tab-in", "--read-tab"].includes(command) ? 3 : 2) ||
         !/^https?:\/\//i.test(url) || (command === "--new-tab-in" && !/^https?:\/\//i.test(destination))) {
-        throw Error("Use --find-tab URL, --focus-tab URL, or --new-tab-in ANCHOR_URL DESTINATION_URL (HTTP/S).");
+        throw Error("Use --find-tab URL, --read-tab URL CSS_SELECTOR, --focus-tab URL, or --new-tab-in ANCHOR_URL DESTINATION_URL (HTTP/S).");
     }
     const {pid, app, windowId, tabId} = locate(pids, application, url);
     const window = app.windows().find(w => w.id() === windowId);
@@ -104,6 +128,7 @@ function run(args) {
     const tabs = window.tabs();
     const index = tabs.findIndex(t => t.id() === tabId);
     if (index < 0 || tabs[index].url() !== url) throw Error("Anchor changed; inspect again.");
+    if (command === "--read-tab") return JSON.stringify(tabs[index].read(url, destination));
     let resultTab = tabs[index];
     if (command === "--focus-tab" && window.focus(index) !== tabId)
         throw Error("Active tab changed; verify before acting.");

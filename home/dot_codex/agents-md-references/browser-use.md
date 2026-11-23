@@ -53,6 +53,25 @@ account across existing windows. After an interrupted write, read back the
 destination before any further attempt. Finish by verifying the requested
 result in the service.
 
+## Read a page through native Chrome
+
+If CDP is unavailable, use the exact URL in the previously verified account.
+When Chrome already permits JavaScript from Apple Events, read a single visible
+field by CSS selector. The command rechecks the page URL and returns its URL,
+document title and selected text. For example, on a Jira issue whose summary is
+the only `h1` and is visible, read the displayed summary with this command.
+
+```sh
+browser-use-signed-in --read-tab 'https://example.atlassian.net/browse/OPS-123' 'h1'
+```
+
+Match the resulting URL, the issue key shown in the breadcrumb or heading,
+and the displayed summary. Use selectors from the actual page. Read only
+the fields needed for the request. If native scripting is unavailable or a
+field is ambiguous, inspect the same window with authorized Accessibility,
+Peekaboo or a screenshot. Verify its account indicator before reporting the
+record. Leave Chrome running throughout recovery.
+
 ## Recover from an observed failure
 
 - **Missing command or outdated instructions.** Check
@@ -81,3 +100,37 @@ result in the service.
   name the actual consent prompt or login screen and the minimum action it
   requires. Ask for a screenshot or window identification only when accessible
   observations cannot resolve the choice.
+
+## Diagnose a denied discovery-file read
+
+Record the time, reader PID, file path and how the command was initiated.
+In Console, inspect the macOS privacy service (`tccd`) events around that
+time. Match the reader PID to the attribution chain, then follow the same
+request ID through its attribution and decision records. Record the
+responsible app and the service evaluated if visible. If the entries are
+missing or redacted, report attribution as unknown.
+
+For example, when Herdr Core sent an Apple Event to Terminal.app, the shell
+ran under Terminal → login → zsh and Python attempted the file read. The
+matching privacy record attributed that request to Herdr Core. A command
+typed manually into Terminal, Warp or Ghostty has a different initiation
+path and was untested in that incident. Recommend a privacy change only
+when the matching decision identifies the responsible app and permission.
+
+Check the managed launcher first. For diagnosis, take the regular Chrome
+PID identified by the launcher or exact-tab lookup, verify that it owns the
+regular user-data directory, and inspect its listeners with
+`/usr/sbin/lsof -nP -a -p "$pid" -iTCP -sTCP:LISTEN`. When access to the
+profile lock is restricted, the launcher checks running stable Chrome processes
+and requires a unique candidate without an alternate user-data directory.
+A port number alone cannot identify the intended browser.
+
+One confirmed recovery used the following managed CLI environment after
+regular Chrome was verified to own the loopback listener. This example
+identifies the transport in a diagnostic trace. Use the launcher for tasks.
+Starting the example as a separate connection can create another consent dialog.
+
+```sh
+BU_NAME=work-chrome-direct BU_CDP_WS=ws://127.0.0.1:9222/devtools/browser \
+  BH_TAB_MARKER=0 BH_TELEMETRY=0 ~/.local/share/dotfiles/browser-use/bin/browser-use
+```

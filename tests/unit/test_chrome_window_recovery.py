@@ -64,6 +64,11 @@ assert.throws(lookup, /found 0/);
 ])
 def test_launch_regular_chrome_only_when_missing(commands, launch, ambiguous, tmp_path, monkeypatch):
     monkeypatch.setattr(signed_in, "PROFILE", tmp_path)
+    def deny_lock_read(path):
+        assert path == tmp_path / "SingletonLock"
+        raise PermissionError(path)
+
+    monkeypatch.setattr(signed_in.os, "readlink", deny_lock_read)
     monkeypatch.setattr(signed_in, "uses_login_home", lambda: True)
     monkeypatch.setattr(signed_in.subprocess, "check_output",
                         lambda *args, **kwargs: str(list(range(len(commands)))))
