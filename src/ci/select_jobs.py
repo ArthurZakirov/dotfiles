@@ -63,6 +63,8 @@ def jobs_for_path(path: str) -> frozenset[str]:
         if path in {
             "home/run_after_40-ensure-peekaboo-skill.sh.tmpl",
             "home/run_after_50-ensure-browser-use.sh.tmpl",
+            "home/dot_local/bin/executable_browser-use-signed-in",
+            "home/dot_local/share/dotfiles/browser-use/signed-in.py",
         }:
             return HOME | COMPUTER_USE
         if path.startswith("home/dot_local/share/local-skills-mcp/"):
