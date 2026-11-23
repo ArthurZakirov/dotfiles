@@ -55,3 +55,29 @@ windows[22] = [];
 assert.throws(lookup, /found 0/);
 """
     subprocess.run(["node", "-e", js], check=True)
+
+@pytest.mark.parametrize(("commands", "launch", "ambiguous"), [
+    (["Chrome --user-data-dir=/test"], True, False),
+    (["Chrome --user-data-dir=/test", "Chrome"], False, False),
+    (["Chrome", "Chrome"], False, True),
+    ([], True, False),
+])
+def test_launch_regular_chrome_only_when_missing(commands, launch, ambiguous, tmp_path, monkeypatch):
+    monkeypatch.setattr(signed_in, "PROFILE", tmp_path)
+    monkeypatch.setattr(signed_in, "uses_login_home", lambda: True)
+    monkeypatch.setattr(signed_in.subprocess, "check_output",
+                        lambda *args, **kwargs: str(list(range(len(commands)))))
+    launches = []
+
+    def run(args, **kwargs):
+        if args[0] == "/bin/ps":
+            return subprocess.CompletedProcess(args, 0, stdout=commands[int(args[-1])])
+        launches.append(args)
+
+    monkeypatch.setattr(signed_in.subprocess, "run", run)
+    if ambiguous:
+        with pytest.raises(RuntimeError, match="Multiple Chrome processes"):
+            signed_in.ensure_regular_chrome()
+    else:
+        signed_in.ensure_regular_chrome()
+    assert launches == ([["/usr/bin/open", "-n", "-g", "-b", "com.google.Chrome"]] if launch else [])

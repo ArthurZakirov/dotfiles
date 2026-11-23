@@ -5,6 +5,7 @@ import http.client
 import json
 import os
 from pathlib import Path
+import pwd
 import re
 import subprocess
 import sys
@@ -17,6 +18,10 @@ PROFILE = Path.home() / "Library/Application Support/Google/Chrome"
 
 def native(*args):
     return ["/usr/bin/osascript", "-l", "JavaScript", str(ROOT / "chrome-tabs.js"), *args]
+
+
+def uses_login_home():
+    return Path(pwd.getpwuid(os.getuid()).pw_dir).resolve() == Path.home().resolve()
 
 
 def regular_pid():
@@ -32,19 +37,36 @@ def regular_pid():
         if (len(identity) == 2 and identity[0] == str(os.getuid()) and
                 identity[1].endswith("/Google Chrome.app/Contents/MacOS/Google Chrome")):
             return int(holder)
-    pids = json.loads(subprocess.check_output(native("--pids"), text=True))
     # If the entire Chrome directory is protected, exclude processes launched
     # with alternate user data. Never select a process merely by its port.
-    import pwd
-    if Path(pwd.getpwuid(os.getuid()).pw_dir).resolve() != Path.home().resolve():
+    if not uses_login_home():
         return None
+    pids = json.loads(subprocess.check_output(native("--pids"), text=True))
     candidates = []
     for pid in pids:
         argv = subprocess.run(["/bin/ps", "-ww", "-o", "command=", "-p", str(pid)],
                               text=True, capture_output=True)
-        if argv.returncode == 0 and argv.stdout.strip() and "--user-data-dir" not in argv.stdout:
+        if argv.returncode or not argv.stdout.strip():
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                continue
+            raise RuntimeError("Cannot identify the running Chrome profile.")
+        if "--user-data-dir" not in argv.stdout:
             candidates.append(pid)
-    return candidates[0] if len(candidates) == 1 else None
+    if len(candidates) > 1:
+        raise RuntimeError("Multiple Chrome processes could be using the regular profile.")
+    return candidates[0] if candidates else None
+
+
+def ensure_regular_chrome():
+    if regular_pid() is not None:
+        return
+    if not uses_login_home():
+        raise RuntimeError("No Chrome holds the requested home directory's regular profile.")
+    # A plain bundle activation can deliver the open event to an alternate
+    # instance. A new normal launch lets Chrome select its default data directory.
+    subprocess.run(["/usr/bin/open", "-n", "-g", "-b", "com.google.Chrome"], check=True)
 
 
 def listener_ports(pid):
@@ -81,11 +103,9 @@ def published_endpoint(pid):
 
 
 def chrome_port(setup):
-    from browser_harness.daemon import browser_running_for_profile
     from browser_use.browser.local import _left_over
 
-    if not browser_running_for_profile(PROFILE) and not json.loads(subprocess.check_output(native("--pids"), text=True)):
-        subprocess.run(["/usr/bin/open", "-g", "-b", "com.google.Chrome"], check=True)
+    ensure_regular_chrome()
     marker = PROFILE / "DevToolsActivePort"
     for attempt in range(325 if setup else 25):
         try:
