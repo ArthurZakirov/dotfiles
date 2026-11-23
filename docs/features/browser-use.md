@@ -14,13 +14,18 @@ after a disconnect or restart.
 
 An interactive `chezmoi apply` prepares the connection while you are at the
 keyboard. If Chrome needs its debugging setting enabled, setup opens that page
-and names the checkbox. Unattended installs defer the connection until use.
+for inspection when one Chrome process is running. Unattended installs defer the connection until use.
 
 Codex can open regular Chrome and try an already authorized way to operate its
 window. If Chrome shows **Allow remote debugging?**, review that prompt. If the
 browser setting is off, Codex can open the relevant Chrome page for you.
 An “Operation not permitted” file error can also come from the calling app or
 its sandbox. It alone does not identify a missing Chrome or macOS setting.
+
+If the profile file is unreadable, the launcher checks for a debugging endpoint
+on a loopback socket owned by regular Google Chrome. Chrome still controls
+consent. Codex can separately locate an existing tab by exact URL through
+macOS Automation and continue in the matching window if that route is authorized.
 
 ## Restore the previous setup
 

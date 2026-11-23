@@ -1,6 +1,11 @@
 #!/bin/sh
 set -eu
 managed="$HOME/.local/share/dotfiles/browser-use"
+case "${1-}" in
+    --find-tab|--focus-tab|--new-tab-in)
+        exec /usr/bin/osascript -l JavaScript "$managed/chrome-tabs.js" "$@"
+        ;;
+esac
 python="$managed/tools/browser-use/bin/python"
 if [ ! -x "$python" ]; then
     echo "Browser Use installation is incomplete. Apply the managed Browser Use installer." >&2

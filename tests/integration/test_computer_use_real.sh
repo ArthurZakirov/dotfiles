@@ -34,7 +34,7 @@ for hook in run_after_40-ensure-peekaboo-skill.sh run_after_50-ensure-browser-us
   bash "$trial/$hook"
 done
 printf '[data]\nprofile="professional"\n' > "$trial/config.toml"
-chezmoi --config "$trial/config.toml" --source "$repo_root/home" apply --exclude=scripts "$HOME/.local/bin/browser-use-signed-in" "$HOME/.local/share/dotfiles/browser-use/signed-in.py"
+chezmoi --config "$trial/config.toml" --source "$repo_root/home" apply --exclude=scripts "$HOME/.local/bin/browser-use-signed-in" "$HOME/.local/share/dotfiles/browser-use/signed-in.py" "$HOME/.local/share/dotfiles/browser-use/chrome-tabs.js"
 # A fresh install exposes the CLI on PATH. A subsequent apply also works
 # with a separately managed executable in the public bin directory.
 [[ "$(command -v browser-use)" == "$HOME/.local/bin/browser-use" ]]
@@ -70,22 +70,16 @@ launch_fixture() {
 launch_fixture
 export FIXTURE_URL="$page"
 cd "$trial"
-# Simulate the reported OS denial on a live Chrome. The action must never run.
+# No profile read on a cold attachment: use only the endpoint published by
+# the Chrome process that owns this fixture. Keep the file unreadable for reuse.
 chmod 000 "$profile/DevToolsActivePort"
-if browser-use-signed-in >"$trial/out" 2>"$trial/error" <<'PYCODE'
-raise AssertionError("ran in the wrong browser")
-PYCODE
-then exit 1; fi
-grep -q "Access denied by this execution context" "$trial/error"
-[[ ! -e "$HOME/.local/share/dotfiles/browser-use/run/bu-signed-in.pid" ]]
-chmod 600 "$profile/DevToolsActivePort"
 # A bogus inherited endpoint must not select some other browser.
 export BU_CDP_WS=ws://127.0.0.1:1/devtools/browser/wrong
 browser-use-signed-in --setup
 browser-use-signed-in <<'PY'
 import os
 from browser_harness.admin import daemon_browser_kind
-assert daemon_browser_kind(NAME) == 'local'
+assert daemon_browser_kind(NAME) == 'cdp'
 target = next(tab for tab in list_tabs() if tab.get('url') == os.environ['FIXTURE_URL'])
 switch_tab(target['targetId'])
 js("document.querySelector('button').click()")
@@ -95,7 +89,7 @@ chmod 000 "$profile/DevToolsActivePort"
 browser-use-signed-in <<'PY'
 import os
 from browser_harness.admin import daemon_browser_kind
-assert daemon_browser_kind(NAME) == 'local'
+assert daemon_browser_kind(NAME) == 'cdp'
 assert page_info()['url'] == os.environ['FIXTURE_URL']
 assert js("document.title") == '1'
 PY
