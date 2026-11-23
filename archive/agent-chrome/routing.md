@@ -1,0 +1,5 @@
+# Archived browser routing
+
+| When | Then |
+| --- | --- |
+| A structured integration is unavailable, cannot perform the required operation, or remains blocked after the supported connection/authentication path is attempted or declined. | Use browser interaction as the fallback. When the runtime can control the user's regular Chrome profile and the task benefits from existing sessions, extensions, or password-manager access, prefer that Chrome profile over an isolated or in-app browser; otherwise use the available browser surface and state the limitation when it materially affects the task. On macOS, choose `agent-chrome` when the user requests it or the fallback needs their regular signed-in Chrome. Read the [signed-in Chrome fallback procedure](signed-in-chrome-fallback.md) before the first browser command. For this workflow, use the Vercel `agent-browser` skill only for subcommand syntax. For detailed syntax, run `agent-chrome skills get core --full`. Follow the fallback procedure for connection and session handling, and run all browser operations through `agent-chrome`. An explicitly requested isolated browser can use the generic `agent-browser` workflow. |

@@ -84,7 +84,7 @@ exit "${BROWSER_TEST_EXIT:-0}"
 STUB
 chmod +x "$trial/bin/agent-browser"
 export PATH="$trial/bin:$PATH"
-entrypoint="$root/home/dot_local/bin/executable_agent-chrome"
+entrypoint="$root/archive/agent-chrome/bin/executable_agent-chrome"
 # Exercise launch and restricted inspection without touching the user's Chrome.
 cat > "$trial/bin/uname" <<'STUB'
 #!/bin/sh

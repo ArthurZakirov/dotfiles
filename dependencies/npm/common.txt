@@ -1,3 +1,2 @@
 # binary npm-package version-check
 skills skills version
-agent-browser agent-browser version

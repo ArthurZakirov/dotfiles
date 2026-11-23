@@ -150,7 +150,7 @@ calls=()
 
 # Both npm inventories install the same globally available CLIs as before.
 install_npm_manifest "$repo_root/dependencies/npm/common.txt"
-[[ "${calls[*]}" == 'npm install --global skills npm install --global agent-browser' ]]
+[[ "${calls[*]}" == 'npm install --global skills' ]]
 calls=()
 install_npm_manifest "$repo_root/dependencies/npm/personal.txt"
 [[ "${calls[*]}" == 'npm install --global @wonderwhy-er/desktop-commander' ]]

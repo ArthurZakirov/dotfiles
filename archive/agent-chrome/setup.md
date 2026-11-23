@@ -1,12 +1,12 @@
 # 🌐 Agent Browser automation
 
-[← Features](README.md) · [Peekaboo computer use](peekaboo.md)
+Archived setup from the previous default. For current installation and rollback, see [Browser Use](../../docs/features/browser-use.md).
 
-Both Mac profiles install the [Vercel agent-browser](https://github.com/vercel-labs/agent-browser)
+The retired setup installed the [Vercel agent-browser](https://github.com/vercel-labs/agent-browser)
 CLI through npm in [`src/apps.sh`](../../src/apps.sh), alongside the standalone
 Vercel [`skills` CLI](https://github.com/vercel-labs/skills) (the package invoked
 by `npx skills`). The
-[`run_after_50-ensure-agent-browser.sh.tmpl`](../../home/run_after_50-ensure-agent-browser.sh.tmpl)
+[`run_after_50-ensure-agent-browser.sh.tmpl`](run_after_50-ensure-agent-browser.sh.tmpl)
 hook installs the official global `agent-browser` skill using
 `npx --no-install skills add` for **Codex only**.
 
@@ -76,7 +76,7 @@ apps, and [Peekaboo](peekaboo.md) for native macOS UI and final visual checks.
 
 ## Test fidelity
 
-[`tests/integration/test_computer_use_real.sh`](../../tests/integration/test_computer_use_real.sh)
+[`tests/integration/test_computer_use_real.sh`](https://github.com/ArthurZakirov/dotfiles/blob/35329e3fadc4470727f296b5ad3bd1b2632d20ef/tests/integration/test_computer_use_real.sh)
 provisions the real npm CLIs, both official npx skills, and Chromium in a
 disposable HOME and performs browser click/snapshot verification. The macOS CI
 job runs this separately from stubbed and profile-rendering tests. **Never run

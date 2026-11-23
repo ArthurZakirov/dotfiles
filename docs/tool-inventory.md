@@ -54,16 +54,16 @@ These tools are declared in [`dependencies/`](../dependencies/) and installed th
 
 | Package | Scope | Purpose |
 | --- | --- | --- |
-| `agent-browser` | Shared | [Browser and supported Electron automation](features/agent-browser.md) |
-| `skills` (used by `npx skills`) | Shared | Install and maintain selected [agent skills](features/agent-browser.md) |
+| `skills` (used by `npx skills`) | Shared | Install and maintain selected [agent skills](features/peekaboo.md) |
 | `@wonderwhy-er/desktop-commander` | Personal | [Remote command/file tooling](features/desktop-commander.md) |
 
-DevMac installs these through [`src/apps.sh`](../src/apps.sh), not the Brewfile. The official **Peekaboo** and **Agent Browser** skills are installed and validated through `npx skills`, separately from the CLI binaries.
+DevMac installs these through [`src/apps.sh`](../src/apps.sh), not the Brewfile. The official Peekaboo skill is installed and validated through `npx skills`.
 
 ## Direct bootstrap and upstream installations
 
 | Component | Scope | Source and installation method | Purpose |
 | --- | --- | --- | --- |
+| Browser Use | Shared | `uv tool install` via the [Browser Use setup](features/browser-use.md) | Control regular Chrome |
 | Bitwarden Secrets Manager CLI (`bws`) | Personal | [`src/setup-actions.sh`](../src/setup-actions.sh) downloads and runs the [upstream shell installer](https://bws.bitwarden.com/install) if `bws` is missing | [Retrieve runtime secrets](features/secrets-management.md) for personal integrations |
 | Oh My Zsh | Shared | [`src/setup-actions.sh`](../src/setup-actions.sh) clones the upstream repository and checks out the revision pinned in [`dependencies/git/common/oh-my-zsh.commit`](../dependencies/git/common/oh-my-zsh.commit) | [Zsh framework](features/zsh.md) |
 | Homebrew bootstrap | Shared | [`src/homebrew.sh`](../src/homebrew.sh) installs Homebrew if absent | Install formulae and casks listed above |
