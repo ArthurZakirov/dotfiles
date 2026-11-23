@@ -10,6 +10,7 @@ defaults = json.loads(r'''{
     "enabled": true
   },
   "font_ligatures": false,
+  "option_as_alt": "on",
   "terminal_line_height": 1.0,
   "terminal_cell_width": 1.0,
   "terminal_scroll_speed": 1.0,
