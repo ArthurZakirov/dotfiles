@@ -7,4 +7,4 @@
     # A normal chezmoi apply provisions the verified pinned release when missing.
     # The installer verifies an existing installation and skips downloading it again.
     enabled = true
-    tag = "voice-v0.171.0-r30"
+    tag = "voice-v0.171.0-r28"
