@@ -57,21 +57,9 @@ configure_desktop_commander_cli() {
   ln -sfn "$cli" "$target"
 }
 
-install_herdr_core() (
-  if command -v herdr-core >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/herdr-core" ]]; then
-    return 0
-  fi
-  local installer
-  installer="$(mktemp)" || return
-  trap 'rm -f "$installer"' EXIT
-  curl -fsSL 'https://raw.githubusercontent.com/herdrdev/herdr-core/c7517808d64f06609e4ecf0db1757005373cc3a3/distribution/install.sh' -o "$installer" &&
-    /bin/sh "$installer"
-)
-
 run_dependency_post_install() {
   case "$1" in
     desktop-commander-link) configure_desktop_commander_cli ;;
-    herdr-core) install_herdr_core ;;
     vscode-cli) configure_vscode_cli ;;
     *) echo "Unsupported post-install action: $1" >&2; return 2 ;;
   esac

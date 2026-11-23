@@ -4,7 +4,6 @@ cask "alt-tab" # apps: AltTab.app
 cask "betterdisplay" # apps: BetterDisplay.app
 cask "displaylink" # apps: DisplayLink Manager.app
 cask "ddpm" # apps: DDPM/DDPM.app
-cask "herdr-app" # apps: Herdr.app; post: herdr-core; arch: arm64
 cask "warp" # apps: Warp.app
 cask "google-drive" # apps: Google Drive.app
 cask "hammerspoon" # apps: Hammerspoon.app
