@@ -17,3 +17,11 @@ if [[ ! -e "$shortcut" && ! -L "$shortcut" ]]; then
   ln -s "$UV_TOOL_BIN_DIR/browser-use" "$shortcut"
 fi
 python3 "$DOTFILES_ROOT/src/retire-agent-browser-skill.py"
+
+# A human running chezmoi in a terminal can authorize the connection here once.
+# Scheduled provisioning must not open Chrome or wait for someone at the keyboard.
+if [[ -t 0 && -t 1 && -x "$HOME/.local/bin/browser-use-signed-in" ]]; then
+  "$HOME/.local/bin/browser-use-signed-in" --setup || {
+    echo 'Browser Use installed. Signed-in access still needs attention (see the message above).' >&2
+  }
+fi

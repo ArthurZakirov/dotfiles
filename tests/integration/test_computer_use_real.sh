@@ -12,7 +12,7 @@ export PATH="$HOME/.local/bin:$npm_config_prefix/bin:$PATH"
 chrome_pid=
 cleanup() {
   if [[ -n "$chrome_pid" ]]; then
-    browser-use --reload >/dev/null 2>&1 || true
+    BH_RUNTIME_DIR="$HOME/.local/share/dotfiles/browser-use/run" BU_NAME=signed-in browser-use --reload >/dev/null 2>&1 || true
     kill "$chrome_pid" 2>/dev/null || true
     wait "$chrome_pid" 2>/dev/null || true
   fi
@@ -33,6 +33,8 @@ for hook in run_after_40-ensure-peekaboo-skill.sh run_after_50-ensure-browser-us
   chezmoi --source "$repo_root/home" execute-template --file "$repo_root/home/$hook.tmpl" > "$trial/$hook"
   bash "$trial/$hook"
 done
+printf '[data]\nprofile="professional"\n' > "$trial/config.toml"
+chezmoi --config "$trial/config.toml" --source "$repo_root/home" apply --exclude=scripts "$HOME/.local/bin/browser-use-signed-in" "$HOME/.local/share/dotfiles/browser-use/signed-in.py"
 # A fresh install exposes the CLI on PATH. A subsequent apply also works
 # with a separately managed executable in the public bin directory.
 [[ "$(command -v browser-use)" == "$HOME/.local/bin/browser-use" ]]
@@ -58,14 +60,29 @@ profile="$HOME/Library/Application Support/Google/Chrome"
 mkdir -p "$profile"
 page="file://$trial/fixture.html"
 echo '<title>Browser Use fixture</title><button onclick="document.title=String(++window.count)">Update</button><script>window.count=0</script>' > "$trial/fixture.html"
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --no-first-run \
-  --user-data-dir="$profile" --remote-debugging-port=0 "$page" >"$trial/chrome.log" 2>&1 &
-chrome_pid=$!
-for _ in {1..100}; do [[ -s "$profile/DevToolsActivePort" ]] && break; sleep 0.1; done
-[[ -s "$profile/DevToolsActivePort" ]]
+launch_fixture() {
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --no-first-run \
+    --user-data-dir="$profile" --remote-debugging-port=0 "$page" >"$trial/chrome.log" 2>&1 &
+  chrome_pid=$!
+  for _ in {1..100}; do [[ -s "$profile/DevToolsActivePort" ]] && break; sleep 0.1; done
+  [[ -s "$profile/DevToolsActivePort" ]]
+}
+launch_fixture
 export FIXTURE_URL="$page"
 cd "$trial"
-browser-use <<'PY'
+# Simulate the reported OS denial on a live Chrome. The action must never run.
+chmod 000 "$profile/DevToolsActivePort"
+if browser-use-signed-in >"$trial/out" 2>"$trial/error" <<'PYCODE'
+raise AssertionError("ran in the wrong browser")
+PYCODE
+then exit 1; fi
+grep -q "Access denied by this execution context" "$trial/error"
+[[ ! -e "$HOME/.local/share/dotfiles/browser-use/run/bu-signed-in.pid" ]]
+chmod 600 "$profile/DevToolsActivePort"
+# A bogus inherited endpoint must not select some other browser.
+export BU_CDP_WS=ws://127.0.0.1:1/devtools/browser/wrong
+browser-use-signed-in --setup
+browser-use-signed-in <<'PY'
 import os
 from browser_harness.admin import daemon_browser_kind
 assert daemon_browser_kind(NAME) == 'local'
@@ -74,11 +91,24 @@ switch_tab(target['targetId'])
 js("document.querySelector('button').click()")
 PY
 cd "$HOME"
-browser-use <<'PY'
+chmod 000 "$profile/DevToolsActivePort"
+browser-use-signed-in <<'PY'
 import os
 from browser_harness.admin import daemon_browser_kind
 assert daemon_browser_kind(NAME) == 'local'
 assert page_info()['url'] == os.environ['FIXTURE_URL']
 assert js("document.title") == '1'
 PY
+# A restarted browser has a new endpoint. A read-only check must rebind and
+# later actions must reach the new page even with the old daemon record.
+chmod 600 "$profile/DevToolsActivePort"
+kill "$chrome_pid"
+wait "$chrome_pid" || true
+rm -f "$profile/DevToolsActivePort"
+launch_fixture
+browser-use-signed-in --check
+browser-use-signed-in <<'PYCODE'
+import os
+assert any(t["url"] == os.environ["FIXTURE_URL"] for t in list_tabs())
+PYCODE
 echo 'Browser Use migrated the old skill and reused the same live page across two CLI processes.'

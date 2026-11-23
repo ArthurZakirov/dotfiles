@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+managed="$HOME/.local/share/dotfiles/browser-use"
+python="$managed/tools/browser-use/bin/python"
+if [ ! -x "$python" ]; then
+    echo "Browser Use installation is incomplete. Apply the managed Browser Use installer." >&2
+    exit 1
+fi
+exec "$python" -I "$managed/signed-in.py" "$@"
