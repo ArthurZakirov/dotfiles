@@ -1,8 +1,11 @@
 """Run Browser Use actions only through a verified regular Chrome connection."""
 
 import fcntl
+import http.client
+import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
@@ -12,11 +15,76 @@ RUNTIME = ROOT / "run"
 PROFILE = Path.home() / "Library/Application Support/Google/Chrome"
 
 
+def native(*args):
+    return ["/usr/bin/osascript", "-l", "JavaScript", str(ROOT / "chrome-tabs.js"), *args]
+
+
+def regular_pid():
+    # Prefer the actual regular profile holder even if several Chrome instances run.
+    try:
+        holder = os.readlink(PROFILE / "SingletonLock").rsplit("-", 1)[-1]
+    except (FileNotFoundError, PermissionError):
+        holder = None
+    if holder and holder.isdecimal():
+        process = subprocess.run(["/bin/ps", "-p", holder, "-o", "uid=", "-o", "comm="],
+                                 capture_output=True, text=True)
+        identity = process.stdout.strip().split(None, 1)
+        if (len(identity) == 2 and identity[0] == str(os.getuid()) and
+                identity[1].endswith("/Google Chrome.app/Contents/MacOS/Google Chrome")):
+            return int(holder)
+    pids = json.loads(subprocess.check_output(native("--pids"), text=True))
+    # If the entire Chrome directory is protected, exclude processes launched
+    # with alternate user data. Never select a process merely by its port.
+    import pwd
+    if Path(pwd.getpwuid(os.getuid()).pw_dir).resolve() != Path.home().resolve():
+        return None
+    candidates = []
+    for pid in pids:
+        argv = subprocess.run(["/bin/ps", "-ww", "-o", "command=", "-p", str(pid)],
+                              text=True, capture_output=True)
+        if argv.returncode == 0 and argv.stdout.strip() and "--user-data-dir" not in argv.stdout:
+            candidates.append(pid)
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def listener_ports(pid):
+    result = subprocess.run(["/usr/sbin/lsof", "-nP", "-a", "-p", str(pid),
+                             "-iTCP", "-sTCP:LISTEN", "-Fn"], capture_output=True, text=True)
+    return [int(match[1]) for line in result.stdout.splitlines()
+            if (match := re.fullmatch(r"n127\.0\.0\.1:(\d+)", line))]
+
+
+def published_endpoint(pid):
+    # A direct local GET follows no redirects and ignores environment proxies.
+    choices = []
+    for port in listener_ports(pid):
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=1)
+        try:
+            conn.request("GET", "/json/version")
+            response = conn.getresponse()
+            prefix = f"ws://127.0.0.1:{port}/devtools/browser"
+            if response.status == 404 and port == 9222:
+                # Stable Chrome's approval-only server intentionally disables HTTP discovery.
+                choices.append((port, prefix))
+            elif response.status == 200:
+                data = json.loads(response.read(16384))
+                ws = data.get("webSocketDebuggerUrl", "") if isinstance(data, dict) else ""
+                if isinstance(ws, str) and re.fullmatch(re.escape(prefix) + r"/[A-Za-z0-9-]+", ws):
+                    choices.append((port, ws))
+        except (OSError, http.client.HTTPException, ValueError):
+            continue
+        finally:
+            conn.close()
+    if len(choices) != 1:
+        raise RuntimeError("Discovery file unreadable and no unique Chrome-owned debugging endpoint was found.")
+    return choices[0]
+
+
 def chrome_port(setup):
     from browser_harness.daemon import browser_running_for_profile
     from browser_use.browser.local import _left_over
 
-    if not browser_running_for_profile(PROFILE):
+    if not browser_running_for_profile(PROFILE) and not json.loads(subprocess.check_output(native("--pids"), text=True)):
         subprocess.run(["/usr/bin/open", "-g", "-b", "com.google.Chrome"], check=True)
     marker = PROFILE / "DevToolsActivePort"
     for attempt in range(325 if setup else 25):
@@ -37,12 +105,18 @@ def chrome_port(setup):
                         capture_output=True, text=True)
                     if f"p{holder}" in listen.stdout.splitlines():
                         return port
-        if attempt == 24 and setup:
-            print("In Chrome, enable ‘Allow remote debugging for this browser instance’.", file=sys.stderr)
+        if attempt == 24 and setup and len(json.loads(subprocess.check_output(native("--pids"), text=True))) == 1:
+            print("Opening Chrome’s remote debugging page to inspect the current setting.", file=sys.stderr)
             subprocess.run(["/usr/bin/open", "-b", "com.google.Chrome",
                             "chrome://inspect/#remote-debugging"], check=True)
         time.sleep(0.2)
     raise RuntimeError("Regular Chrome has not published a current debugging endpoint.")
+
+
+def daemon_generation(admin, pidfile):
+    pid = admin._pending_pid_record(pidfile)
+    started = admin._process_start_time(pid) if pid else None
+    return (pid, started) if started else None
 
 
 def prepare(setup):
@@ -52,18 +126,33 @@ def prepare(setup):
 
     pidfile = ipc.pid_path(admin.NAME)
     verified = RUNTIME / "verified-generation"
-    generation = admin._fingerprinted_pending_generation(pidfile)
+    generation = daemon_generation(admin, pidfile)
     if generation and verified.exists() and verified.read_text() == repr(generation):
-        if admin.daemon_browser_kind() == "local" and admin.daemon_browser_ready():
+        if admin.daemon_browser_kind() in {"local", "cdp"} and admin.daemon_browser_ready():
             return
 
-    port = chrome_port(setup)
-    require_debug_port()
+    owner = None
+    env = None
+    try:
+        port = chrome_port(setup)
+        require_debug_port()
+    except PermissionError as denied:
+        owner = regular_pid()
+        if not owner:
+            raise
+        try:
+            port, ws = published_endpoint(owner)
+        except RuntimeError as error:
+            raise RuntimeError(f"{denied.strerror} reading {denied.filename}. {error}") from error
+        env = {"BU_CDP_WS": ws}
+
     # Native local mode keeps the original handshake parked while a human reviews
     # Chrome's Allow sheet. A finite caller wait leaves that connection available.
-    admin.ensure_daemon(wait=120)
-    generation = admin._fingerprinted_pending_generation(pidfile)
-    if not generation or admin.daemon_browser_kind() != "local":
+    if env and admin._starting_daemon_pid() and not admin.daemon_alive():
+        raise RuntimeError("An existing connection is starting. Review the pending Chrome prompt before retrying.")
+    admin.ensure_daemon(wait=120, env=env)
+    generation = daemon_generation(admin, pidfile)
+    if not generation or admin.daemon_browser_kind() not in {"local", "cdp"}:
         raise RuntimeError("Could not verify the local browser connection.")
     # Discovery in the harness also knows about other Chromium browsers. Prove
     # the socket reaches regular Chrome before passing a task to that daemon.
@@ -72,6 +161,8 @@ def prepare(setup):
          "-sTCP:ESTABLISHED", "-Fn"], capture_output=True, text=True, check=False)
     if not any(line.endswith(f"->127.0.0.1:{port}") for line in sockets.stdout.splitlines()):
         raise RuntimeError("The connection to regular Chrome could not be verified.")
+    if owner and (regular_pid() != owner or port not in listener_ports(owner)):
+        raise RuntimeError("Chrome changed during connection verification.")
     admin.require_existing_daemon()
     verified.write_text(repr(generation))
 

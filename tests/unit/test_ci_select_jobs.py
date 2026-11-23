@@ -68,6 +68,7 @@ def test_documentation_or_editor_metadata_never_runs_expensive_jobs(path: str) -
             {"profiles", "fresh_home", "computer_use_e2e"},
         ),
         ("home/dot_local/bin/executable_browser-use-signed-in", {"profiles", "fresh_home", "computer_use_e2e"}),
+        ("home/dot_local/share/dotfiles/browser-use/chrome-tabs.js", {"profiles", "fresh_home", "computer_use_e2e"}),
         ("home/dot_local/share/dotfiles/browser-use/signed-in.py", {"profiles", "fresh_home", "computer_use_e2e"}),
         (
             "src/agent-browser-runtime.sh",

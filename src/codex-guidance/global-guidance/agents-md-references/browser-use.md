@@ -1,42 +1,81 @@
 # Use signed-in Chrome on macOS
 
-Run `browser-use-signed-in` for an operation in regular Google Chrome. It opens
-Chrome if needed and reuses the Dotfiles connection. To see which tab belongs
-to the task, pass Browser Use Python on standard input.
+## Locate the intended window
+
+When given an existing tab URL, locate it before connecting or opening a tab.
+This read-only command searches the normal windows of running stable Chrome
+processes and returns the process, window, tab, title and URL for one exact match.
+
+```sh
+browser-use-signed-in --find-tab 'https://example.com/tasks/343'
+```
+
+For a screenshot, inspect the visible Chrome window using authorized
+Accessibility or computer use. Match its address, visible account and page
+content. If an exact URL has zero or multiple matches, inspect the candidate
+windows for the account or profile and page shown. Never choose the first
+window just because it is active. A URL or tab title alone does not prove identity.
+
+## Perform the task
+
+Use `browser-use-signed-in` with Browser Use Python on stdin. Locate the
+unique matching CDP target in `list_tabs()`, select its target ID and check the
+URL and visible account in the same invocation as an edit. Native tab IDs
+and CDP target IDs belong to different interfaces. Read helper syntax with
+`~/.local/share/dotfiles/browser-use/bin/browser-use skill show`.
+
+For example, read the title of the tab identified above in one invocation.
 
 ```sh
 browser-use-signed-in <<'PY'
-print(list_tabs())
+url = 'https://example.com/tasks/343'
+matches = [t for t in list_tabs() if t.get('url') == url]
+if len(matches) != 1:
+    raise ValueError(f'Expected one matching tab, found {len(matches)}')
+switch_tab(matches[0]['targetId'])
+page = page_info()
+if page['url'] != url:
+    raise ValueError('The selected tab navigated away')
+print(page['title'])
 PY
 ```
 
-Keep the task tab ID. In each invocation that edits a page, select that ID
-with `switch_tab(target_id)`, check the URL and account, then perform the
-action in that invocation. Open a task tab with `new_tab(url)` if needed. Read the managed CLI's helper syntax with
-`~/.local/share/dotfiles/browser-use/bin/browser-use skill show`.
+For a new task tab in an identified window, use the existing tab as its anchor.
 
-## Recover and finish the task
+```sh
+browser-use-signed-in --new-tab-in 'https://example.com/tasks/343' 'https://example.com/tasks/344'
+```
 
-- **Command missing.** Try `~/.local/bin/browser-use-signed-in --check`.
-  If the managed installation is incomplete, repair it through the Dotfiles
-  installation workflow before using this command.
-- **Access denied.** Use the runtime's supported approval mechanism for a
-  read-only `browser-use-signed-in --check` if available. If it succeeds,
-  continue through the same authorized execution context. A denied profile
-  read does not tell you whether Chrome's debugging setting is enabled.
-- **Browser access unavailable.** Try an already authorized browser extension
-  or native computer-use tool on the visible regular Chrome window. Verify the
-  intended account and tab, then complete and check the original task there.
-  A fresh Chromium, a cloud browser and an in-app browser with a different
-  account are unsuitable. Leave privacy settings and approval buttons to the user.
-- **Approval in progress.** Keep the pending attempt alive. If the task requires
-  that connection, ask the user to review the visible Chrome prompt once.
-  Do not issue parallel connections or reset the shared session.
-- **All authorized routes blocked.** Report the exact failed check. For a
-  missing debugging endpoint, open Chrome's setup page for the user
-  (`open -b com.google.Chrome 'chrome://inspect/#remote-debugging'`) and
-  ask them to enable remote debugging if off. For a denied file read, request
-  access only for the identified host through its supported permission flow.
-  Do not infer a particular System Settings switch from the file error alone.
-- **Interrupted edit.** Read back the affected record before repeating any
-  write through either interface. Confirm the saved outcome in the target site.
+If the new page asks for sign-in unexpectedly, recheck the anchor and the
+account across existing windows. After an interrupted write, read back the
+destination before any further attempt. Finish by verifying the requested
+result in the service.
+
+## Recover from an observed failure
+
+- **Missing command or outdated instructions.** Check
+  `~/.local/bin/browser-use-signed-in` and compare the installed reference and
+  launcher with the managed Dotfiles revision. Repair missing managed files
+  through chezmoi.
+- **Connection unavailable.** Run `browser-use-signed-in --check`. The launcher
+  first reuses a verified connection. On a denied discovery read it can
+  connect to a verified local Chrome listener, subject to Chrome's approval.
+  A file denial or timeout cannot establish which setting is off.
+- **Consent pending.** Inspect the actual sheet in the intended Chrome window
+  using an authorized native tool. Keep that attempt alive. Leave the
+  consent decision to the user. Do not issue parallel attachments or reload.
+- **CDP still unavailable.** Use native tab lookup and
+  `browser-use-signed-in --focus-tab URL` for a unique anchor, then operate
+  that same window through already authorized Accessibility, Peekaboo, an
+  extension, or computer use. Verify the visible account before acting.
+  Never launch a temporary profile to diagnose or perform a signed-in task.
+- **Setting in question.** If relevant, inspect the existing
+  `chrome://inspect/#remote-debugging` page or open it in the identified
+  window through Chrome's UI. Read the checkbox through Accessibility or a
+  screenshot. Ask for a change only after observing it is off and that the
+  task actually needs it. If policy or permissions prevent observation, report
+  that limitation without guessing the responsible app or macOS toggle.
+- **User action required.** After checking the available authorized routes,
+  name the actual consent prompt or login screen and the minimum action it
+  requires. Ask for a screenshot or window identification only when accessible
+  observations cannot resolve the choice.
