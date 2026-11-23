@@ -17,6 +17,11 @@ cleanup() {
     kill "$chrome_pid" 2>/dev/null || true
     wait "$chrome_pid" 2>/dev/null || true
   fi
+  # Chrome helpers can finish writing profile files after the parent exits.
+  for _ in {1..5}; do
+    if rm -rf "$trial" 2>/dev/null; then return 0; fi
+    sleep 1
+  done
   rm -rf "$trial"
 }
 trap cleanup EXIT
