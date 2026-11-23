@@ -67,6 +67,14 @@ launch_fixture() {
   for _ in {1..100}; do [[ -s "$profile/DevToolsActivePort" ]] && break; sleep 0.1; done
   [[ -s "$profile/DevToolsActivePort" ]]
 }
+# An empty disposable home has no verified regular Chrome holder. A live
+# browser elsewhere on this Mac must never satisfy this first check.
+if browser-use-signed-in --check >"$trial/no-holder.log" 2>&1; then
+  echo 'Unexpected connection before the fixture browser existed' >&2
+  exit 1
+fi
+grep -Fq "No Chrome holds the requested home directory" "$trial/no-holder.log"
+[[ ! -e "$HOME/.local/share/dotfiles/browser-use/run/verified-generation" ]]
 launch_fixture
 export FIXTURE_URL="$page"
 cd "$trial"

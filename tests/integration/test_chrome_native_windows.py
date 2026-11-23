@@ -16,7 +16,7 @@ import pytest
                     reason="requires an interactive Mac with authorized Chrome Apple Events")
 def test_exact_tab_and_new_tab_stay_in_the_owning_process(tmp_path):
     script = Path(__file__).resolve().parents[2] / "home/dot_local/share/dotfiles/browser-use/chrome-tabs.js"
-    (tmp_path / "anchor.html").write_text("<title>Anchor</title>")
+    (tmp_path / "anchor.html").write_text("<title>Anchor</title><h1>Fixture issue</h1><p>Other field</p>")
     (tmp_path / "task.html").write_text("<title>Task</title>")
     server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(SimpleHTTPRequestHandler, directory=tmp_path))
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -29,6 +29,11 @@ def test_exact_tab_and_new_tab_stay_in_the_owning_process(tmp_path):
                               text=True, capture_output=True, timeout=15)
 
     def launch(name):
+        if name == "first":
+            # Configure only this newly created fixture, never a live profile.
+            profile = tmp_path / name / "Default"
+            profile.mkdir(parents=True)
+            (profile / "Preferences").write_text(json.dumps({"browser": {"allow_javascript_apple_events": True}}))
         processes.append(subprocess.Popen(
             ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "--user-data-dir=" + str(tmp_path / name),
              "--no-first-run", "--no-default-browser-check", "--disable-sync", anchor],
@@ -49,12 +54,17 @@ def test_exact_tab_and_new_tab_stay_in_the_owning_process(tmp_path):
         launch("first")
         first = await_lookup(anchor)
         assert first["pid"] == processes[0].pid
+        field = native("--read-tab", anchor, "h1")
+        assert field.returncode == 0, field.stderr
+        assert json.loads(field.stdout) == {"url": anchor, "title": "Anchor", "text": "Fixture issue"}
+        assert native("--read-tab", anchor, "h2").returncode != 0
         assert native("--focus-tab", anchor).returncode == 0
         assert native("--new-tab-in", anchor, task).returncode == 0
         opened = await_lookup(task)
         assert (opened["pid"], opened["windowId"]) == (first["pid"], first["windowId"])
         launch("second")
         await_lookup(anchor, duplicate=True)
+        assert "found 2" in native("--read-tab", anchor, "h1").stderr
         assert "found 2" in native("--new-tab-in", anchor, task + "?duplicate").stderr
         assert "found 0" in native("--find-tab", task + "?duplicate").stderr
     finally:

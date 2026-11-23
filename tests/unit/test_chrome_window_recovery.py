@@ -28,11 +28,7 @@ def test_discovery_only_accepts_a_verified_local_endpoint(ports, status, payload
     with patch.object(signed_in, "listener_ports", return_value=ports) as listeners, \
             patch.object(signed_in.http.client, "HTTPConnection") as connection:
         connection.return_value.getresponse.return_value = response
-        if expected is None:
-            with pytest.raises(RuntimeError, match="no unique"):
-                signed_in.published_endpoint(345)
-        else:
-            assert signed_in.published_endpoint(345) == expected
+        assert signed_in.endpoint_candidates(345) == ([] if expected is None else [expected])
         listeners.assert_called_once_with(345)
 
 
@@ -64,6 +60,11 @@ assert.throws(lookup, /found 0/);
 ])
 def test_launch_regular_chrome_only_when_missing(commands, launch, ambiguous, tmp_path, monkeypatch):
     monkeypatch.setattr(signed_in, "PROFILE", tmp_path)
+    def deny_lock_read(path):
+        assert path == tmp_path / "SingletonLock"
+        raise PermissionError(path)
+
+    monkeypatch.setattr(signed_in.os, "readlink", deny_lock_read)
     monkeypatch.setattr(signed_in, "uses_login_home", lambda: True)
     monkeypatch.setattr(signed_in.subprocess, "check_output",
                         lambda *args, **kwargs: str(list(range(len(commands)))))
@@ -81,3 +82,18 @@ def test_launch_regular_chrome_only_when_missing(commands, launch, ambiguous, tm
     else:
         signed_in.ensure_regular_chrome()
     assert launches == ([["/usr/bin/open", "-n", "-g", "-b", "com.google.Chrome"]] if launch else [])
+
+def test_discovery_waits_for_same_chrome_without_attaching(monkeypatch):
+    target = (9222, "ws://127.0.0.1:9222/devtools/browser")
+    monkeypatch.setattr(signed_in, "regular_pid", lambda: 345)
+    monkeypatch.setattr(signed_in.time, "sleep", lambda _: None)
+    probe = Mock(side_effect=[[], [target]])
+    monkeypatch.setattr(signed_in, "endpoint_candidates", probe)
+    assert signed_in.published_endpoint(345) == target
+    assert probe.call_count == 2
+    probe.side_effect = [[target, (1234, "other")]]
+    with pytest.raises(RuntimeError, match="no unique"):
+        signed_in.published_endpoint(345)
+    monkeypatch.setattr(signed_in, "regular_pid", lambda: 346)
+    with pytest.raises(RuntimeError, match="changed"):
+        signed_in.published_endpoint(345)
