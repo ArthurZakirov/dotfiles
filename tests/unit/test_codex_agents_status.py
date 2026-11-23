@@ -23,15 +23,13 @@ def run_provider(codex_home: Path, thread_id: str | None) -> subprocess.Complete
     )
 
 
-def test_reports_five_actual_pipeline_states_without_reinterpreting_unknown(tmp_path):
+def test_reports_three_actual_pipeline_states_without_reinterpreting_unknown(tmp_path):
     pipeline = tmp_path / "hooks-json/agents-md-freshness/pipeline.py"
     pipeline.parent.mkdir(parents=True)
     payload = {
         "overall": "outdated",
         "stages": [
-            {"key": "github", "status": "current"},
             {"key": "local", "status": "unknown"},
-            {"key": "generated", "status": "current"},
             {"key": "deployed", "status": "current"},
             {"key": "session", "status": "outdated"},
         ],
@@ -45,7 +43,7 @@ def test_reports_five_actual_pipeline_states_without_reinterpreting_unknown(tmp_
     result = run_provider(tmp_path, THREAD)
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "AGENTS G✓ L? R✓ C✓ S✕\n"
+    assert result.stdout == "AGENTS Git pulled? Chezmoi applied✓ Session loaded✕\n"
 
 
 def test_missing_pipeline_does_not_show_false_green(tmp_path):
@@ -53,7 +51,7 @@ def test_missing_pipeline_does_not_show_false_green(tmp_path):
         result = run_provider(tmp_path, session_id)
 
         assert result.returncode == 0, result.stderr
-        assert result.stdout == "AGENTS G? L? R? C? S?\n"
+        assert result.stdout == "AGENTS Git pulled? Chezmoi applied? Session loaded?\n"
 
 
 def test_invalid_pipeline_response_returns_unknown(tmp_path):
@@ -64,7 +62,7 @@ def test_invalid_pipeline_response_returns_unknown(tmp_path):
     result = run_provider(tmp_path, THREAD)
 
     assert result.returncode == 0
-    assert result.stdout == "AGENTS G? L? R? C? S?\n"
+    assert result.stdout == "AGENTS Git pulled? Chezmoi applied? Session loaded?\n"
 
 
 def test_missing_session_preserves_other_pipeline_stages(tmp_path):
@@ -75,10 +73,10 @@ def test_missing_session_preserves_other_pipeline_stages(tmp_path):
         "assert '--session-id' not in sys.argv\n"
         "print(json.dumps({'stages': ["
         "{'key': key, 'status': 'current' if key != 'session' else 'unknown'} "
-        "for key in ('github', 'local', 'generated', 'deployed', 'session')]}))\n"
+        "for key in ('local', 'deployed', 'session')]}))\n"
     )
 
     result = run_provider(tmp_path, None)
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "AGENTS G✓ L✓ R✓ C✓ S?\n"
+    assert result.stdout == "AGENTS Git pulled✓ Chezmoi applied✓ Session loaded?\n"

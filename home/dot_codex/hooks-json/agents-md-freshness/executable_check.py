@@ -178,7 +178,7 @@ def evaluate(event: dict, codex_home: Path) -> dict:
 
 
 def warning(result: dict, stages: list[dict[str, str]]) -> str:
-    """Describe the same five boundaries shown by the desktop shortcut."""
+    """Describe the same three comparisons shown by the desktop shortcut."""
     symbol = {"current": "✓", "outdated": "✕", "unknown": "?"}
     lines = [
         f"⚠️ Codex AGENTS.md out of sync (session {result['session_id'][:8]}):",
@@ -186,25 +186,25 @@ def warning(result: dict, stages: list[dict[str, str]]) -> str:
     for stage in stages:
         lines.append(f"{symbol[stage['status']]} {stage['label']}: {stage['detail']}")
     lines.append(
-        "Update the earliest outdated stage first (local main → render.py → "
+        "Update the earliest outdated stage first (git pull → "
         "chezmoi apply → new Codex session). These checks never change files."
     )
     return "\n".join(lines)
 
 
 
-def notify_macos(message: str) -> None:
+def notify_macos(title: str, message: str) -> None:
     if sys.platform != "darwin":
         return
     # argv avoids shell injection and AppleScript string escaping issues.
     script = (
         "on run argv\n"
-        "display notification (item 1 of argv) with title "
-        '"Codex AGENTS.md out of sync"\n'
+        "display notification (item 2 of argv) with title "
+        "(item 1 of argv)\n"
         "end run"
     )
     subprocess.run(
-        ["/usr/bin/osascript", "-e", script, message],
+        ["/usr/bin/osascript", "-e", script, title, message],
         check=False,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -279,22 +279,26 @@ def main() -> int:
     # evaluated its Codex snapshot, so pass it in to avoid a recursive check.py
     # invocation. Unknown stages never become green by inference.
     repo = args.repo if args.repo is not None else pipeline.find_source()
-    stages = pipeline.check(
+    repository, guidance = pipeline.check(
         repo, args.codex_home, session_id,
         args.codex_home / "hooks-json/agents-md-freshness/check.py",
         session_result=result,
     )
-    if not report_if_changed(
-        session_id, stages, Path.home() / ".cache/codex-agents-md-freshness"
-    ):
-        return 0
-    message = warning(result, stages)
-    print(json.dumps({"systemMessage": message}, ensure_ascii=False))
+    cache = Path.home() / ".cache/codex-agents-md-freshness"
+    alerts = []
+    if report_if_changed(session_id, [repository], cache / "repository"):
+        title = "Chezmoi repository out of sync"
+        alerts.append((title, f"{title} · {repository['detail']}"))
+    if report_if_changed(session_id, guidance, cache):
+        alerts.append(("Codex AGENTS.md out of sync", warning(result, guidance)))
+    if alerts:
+        print(json.dumps({"systemMessage": "\n\n".join(message for _, message in alerts)}, ensure_ascii=False))
     if not args.no_notify:
-        try:
-            notify_macos(message)
-        except (OSError, subprocess.SubprocessError):
-            pass  # The Codex UI warning remains useful without OS notification.
+        for title, message in alerts:
+            try:
+                notify_macos(title, message)
+            except (OSError, subprocess.SubprocessError):
+                pass  # The Codex UI warning remains useful without OS notification.
     return 0
 
 

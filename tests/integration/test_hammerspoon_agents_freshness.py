@@ -84,14 +84,14 @@ def test_new_chezmoi_install_includes_runnable_session_checker(
     assert shared.is_file()
     assert desktop.is_file()
 
-    # Hammerspoon and the installed Codex hook use one five-stage checker.
+    # Hammerspoon and the installed Codex hook use one three-stage checker.
     desktop_result = subprocess.run(
         [str(desktop), "--repo", str(tmp_path), "--codex-home", str(tmp_path / ".codex")],
         capture_output=True, text=True, timeout=10,
     )
     assert desktop_result.returncode == 0, desktop_result.stderr
     assert [stage["key"] for stage in json.loads(desktop_result.stdout)["stages"]] == [
-        "github", "local", "generated", "deployed", "session"
+        "local", "deployed", "session"
     ]
 
     invoked = subprocess.run(

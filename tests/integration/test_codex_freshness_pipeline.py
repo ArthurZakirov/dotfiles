@@ -1,4 +1,4 @@
-"""The desktop shortcut and Codex hook observe the same five-stage audit."""
+"""The desktop shortcut and Codex hook observe the same three-stage audit."""
 
 import json
 import os
@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import sys
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 SHARED = ROOT / "home/dot_codex/hooks-json/agents-md-freshness/pipeline.py"
 HOOK = ROOT / "home/dot_codex/hooks-json/agents-md-freshness/executable_check.py"
@@ -14,7 +16,8 @@ DESKTOP = ROOT / "home/dot_hammerspoon/bin/executable_agents_md_pipeline"
 SESSION = "01a1935b-e50c-7d52-a754-3f81fdffcaee"
 
 
-def test_hook_reports_stale_main_even_when_session_is_current(tmp_path):
+@pytest.mark.parametrize("guidance_changed", [False, True])
+def test_hook_reports_stale_main_even_when_session_is_current(tmp_path, guidance_changed):
     # GIVEN a private, offline Git remote with a newer commit than local main
     environment = {
         **os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
@@ -42,10 +45,11 @@ def test_hook_reports_stale_main_even_when_session_is_current(tmp_path):
 
     publisher = tmp_path / "publisher"
     git("clone", "-q", str(remote), str(publisher))
-    (publisher / "home/dot_codex/AGENTS.md.tmpl").write_text("updated guidance\n")
+    (publisher / ("home/dot_codex/AGENTS.md.tmpl" if guidance_changed else "unrelated")).write_text("updated guidance\n")
     git("add", ".", cwd=publisher)
     git("commit", "-qm", "Update global guidance", cwd=publisher)
     git("push", "-q", "origin", "main", cwd=publisher)
+
 
     # The Codex session has already loaded the installed guidance correctly.
     home = tmp_path / ".codex"
@@ -85,14 +89,16 @@ def test_hook_reports_stale_main_even_when_session_is_current(tmp_path):
     # THEN the hook warns for the same outdated stage as the desktop pipeline.
     stages = json.loads(desktop.stdout)["stages"]
     assert [stage["key"] for stage in stages] == [
-        "github", "local", "generated", "deployed", "session"
+        "local", "deployed", "session"
     ]
     statuses = {stage["key"]: stage["status"] for stage in stages}
-    assert statuses["github"] == "current"
-    assert statuses["local"] == "outdated"
+    assert json.loads(desktop.stdout)["repository"]["status"] == "outdated"
+    assert statuses["local"] == ("outdated" if guidance_changed else "current")
     assert statuses["session"] == "current"
     message = json.loads(hook.stdout)["systemMessage"]
-    for stage in stages:
+    assert "Chezmoi repository out of sync" in message
+    assert ("Codex AGENTS.md out of sync" in message) == guidance_changed
+    for stage in stages if guidance_changed else []:
         symbol = {"current": "✓", "outdated": "✕", "unknown": "?"}[stage["status"]]
         assert f"{symbol} {stage['label']}: {stage['detail']}" in message
 
