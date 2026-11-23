@@ -76,7 +76,7 @@ def listener_ports(pid):
             if (match := re.fullmatch(r"n127\.0\.0\.1:(\d+)", line))]
 
 
-def published_endpoint(pid):
+def endpoint_candidates(pid):
     # A direct local GET follows no redirects and ignores environment proxies.
     choices = []
     for port in listener_ports(pid):
@@ -97,9 +97,21 @@ def published_endpoint(pid):
             continue
         finally:
             conn.close()
-    if len(choices) != 1:
-        raise RuntimeError("Discovery file unreadable and no unique Chrome-owned debugging endpoint was found.")
-    return choices[0]
+    return choices
+
+
+def published_endpoint(pid):
+    # Chrome can create DevToolsActivePort before its HTTP endpoint is ready.
+    # Probe availability without opening a WebSocket or spawning another daemon.
+    deadline = time.monotonic() + 5
+    while regular_pid() == pid:
+        choices = endpoint_candidates(pid)
+        if len(choices) == 1:
+            return choices[0]
+        if len(choices) > 1 or time.monotonic() >= deadline:
+            raise RuntimeError("Discovery file unreadable and no unique Chrome-owned debugging endpoint was found.")
+        time.sleep(0.2)
+    raise RuntimeError("Chrome changed during endpoint discovery.")
 
 
 def chrome_port(setup):
