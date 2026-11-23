@@ -67,7 +67,10 @@ def jobs_for_path(path: str) -> frozenset[str]:
             return HOME | COMPUTER_USE
         if path.startswith("home/dot_local/share/local-skills-mcp/"):
             return HOME | COMPUTER_USE
+        if path in {"home/dot_local/bin/executable_herdr-codex-history.tmpl", "home/run_after_46-ensure-herdr.sh"}:
+            return HOME
         if path.startswith((
+            "home/dot_config/herdr-app/",
             "home/dot_codex/",
             "home/dot_config/raycast/",
             "home/dot_config/repo-refresh/",

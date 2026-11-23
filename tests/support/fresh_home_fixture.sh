@@ -52,6 +52,11 @@ when_chezmoi_renders_machine() {
 }
 
 then_shared_setup_is_rendered() {
+  assert_file_contains "$HOME/.config/herdr-app/keys.json" "$HOME/.local/bin/codex-voice"
+  assert_file_contains "$HOME/.config/herdr-app/mods/codex-history-launcher/main.js" "$HOME/.local/bin/herdr-codex-history"
+  assert_file_contains "$HOME/.config/herdr-app/shared.json" 'main-with-history'
+  assert_file_exists "$HOME/.config/herdr-app/layouts/main-with-history.json"
+  assert_file_contains "$HOME/.local/bin/herdr-codex-history" "#!$HOME/.local/share/herdr-history-venv/bin/python"
   assert_file_exists "$HOME/.zshrc"
   assert_file_exists "$config"
   /bin/zsh -n "$HOME/.zshrc"

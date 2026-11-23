@@ -1,0 +1,252 @@
+#!{{ .chezmoi.homeDir }}/.local/share/herdr-history-venv/bin/python
+import curses
+import time
+import json
+import os
+from pathlib import Path
+import sqlite3
+import subprocess
+import re
+from functools import lru_cache
+from rich.cells import cell_len, set_cell_size
+from rich.color import ColorSystem
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.text import Text
+
+HOME = Path.home()
+CODEX = Path(os.environ.get("CODEX_HOME", HOME / ".codex"))
+HERDR = HOME / ".local/bin/herdr-app"
+
+
+def index():
+    database = CODEX / "state_5.sqlite"
+    if not database.is_file():
+        return []
+    with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) as db:
+        rows = db.execute("""select id, coalesce(nullif(name,''),nullif(title,''),id),
+                             cwd, rollout_path, first_user_message, preview, updated_at from threads order by updated_at desc""").fetchall()
+    visible = []
+    for ident, title, folder, path, first, preview, updated in rows:
+        saved = [v for v in (first, preview) if meaningful(v, ident)]
+        if not saved or not meaningful(title, ident):
+            excerpt = next((body for _, body in messages(path) if meaningful(body, ident)), "")
+            if not excerpt and not saved:
+                continue
+            if not meaningful(title, ident):
+                title = (saved or [excerpt])[0].strip().splitlines()[0]
+        visible.append((ident, title, folder, path, first, preview, updated))
+    return visible
+
+
+def meaningful(value, ident):
+    value = (value or "").strip()
+    return bool(value and value != ident and not re.fullmatch(
+        r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", value
+    ) and not value.startswith(("# AGENTS.md instructions", "<environment_context>")))
+
+
+def messages(path):
+    try:
+        with open(path, errors="replace") as stream:
+            for line in stream:
+                if '"response_item"' not in line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                item = event.get("payload", {})
+                role = item.get("role")
+                if event.get("type") != "response_item" or item.get("type") != "message" or role not in ("user", "assistant"):
+                    continue
+                body = "\n".join(part.get("text", "") for part in item.get("content", []) if isinstance(part, dict))
+                if meaningful(body, ""):
+                    yield role, body
+    except OSError:
+        return
+
+
+def transcript(row, width):
+    console = Console(width=width, color_system="256")
+    turns = list(messages(row[3]))
+    if not turns:
+        turns = [(label, body) for label, body in zip(("First message", "Saved preview"), row[4:6])
+                 if meaningful(body, row[0])]
+        if len(turns) == 2 and turns[0][1] == turns[1][1]:
+            turns.pop()
+        turns.insert(0, ("History", "Only the saved index text is available."))
+    lines = []
+    for role, body in turns:
+        label, color = {"user": ("› You", "bright_cyan"), "assistant": ("● Codex", "bright_green")}.get(role, (role, "bright_blue"))
+        if lines:
+            lines.append([])
+        lines.extend(console.render_lines(Text(label, style="bold " + color), pad=False))
+        lines.extend(console.render_lines(Markdown(body, style="cyan" if role == "user" else "default",
+                                                  hyperlinks=False), pad=False))
+    return lines
+
+
+@lru_cache(maxsize=None)
+def color_pair(fg, bg):
+    if not curses.has_colors():
+        return 0
+    number = color_pair.cache_info().currsize + 1
+    if number >= curses.COLOR_PAIRS:
+        return 0
+    curses.init_pair(number, fg, bg)
+    return curses.color_pair(number)
+
+
+def attributes(style):
+    if not style:
+        return 0
+    attr = (curses.A_BOLD if style.bold else 0) | (curses.A_UNDERLINE if style.underline else 0)
+    if not curses.has_colors():
+        return attr
+    system = ColorSystem.EIGHT_BIT if curses.COLORS >= 256 else ColorSystem.STANDARD
+    def number(color):
+        if color is None or color.is_default:
+            return -1
+        return color.downgrade(system).number % curses.COLORS
+    return attr | color_pair(number(style.color), number(style.bgcolor))
+
+
+def resume(row, opened):
+    ident, title, folder = row[:3]
+    if not Path(row[3]).is_file():
+        return "Full transcript unavailable on this Mac."
+    if ident in opened:
+        selected = subprocess.run([HERDR, "do", "tab.select", "--id", opened[ident]], capture_output=True)
+        if selected.returncode == 0:
+            return ""
+    if not os.path.isdir(folder):
+        return "Project folder unavailable. Transcript remains readable."
+    reply = subprocess.run([HERDR, "do", "tab.new", json.dumps({
+        "folder": folder, "argv": [str(HOME / ".local/bin/codex-voice"), "-c", "check_for_update_on_startup=false", "resume", ident]
+    })], capture_output=True)
+    if reply.returncode:
+        return "Herdr could not open the session."
+    opened[ident] = json.loads(reply.stdout)["tab"]
+    return ""
+
+
+def age(updated, now):
+    seconds = max(0, int(now - updated))
+    for unit, duration in (("d", 86400), ("h", 3600), ("m", 60)):
+        if seconds >= duration:
+            return f"{seconds // duration}{unit} ago"
+    return "now"
+
+
+def browse(win):
+    if curses.has_colors():
+        curses.use_default_colors()
+    sidebar = color_pair(252, 236) if curses.has_colors() and curses.COLORS >= 256 else curses.A_DIM
+    curses.curs_set(0)
+    curses.mousemask(curses.ALL_MOUSE_EVENTS)
+    win.keypad(True)
+    win.timeout(15000)
+    rows = index()
+    pos = scroll = 0
+    query = notice = ""
+    editing = False
+    loaded = None
+    opened = {}
+    while True:
+        height, width = win.getmaxyx()
+        split = max(1, min(48, width // 3))
+        wrap = max(4, width - split - 3)
+        view = max(1, height - 3)
+        matches = [r for r in rows if query.casefold() in (r[1]+" "+r[2]).casefold()]
+        pos = max(0, min(pos, len(matches)-1))
+        start = max(0, pos-view+1)
+        row = matches[pos] if matches else None
+        key = (row[0] if row else None, wrap)
+        if loaded != key:
+            loaded = key
+            lines = transcript(row, wrap) if row else []
+            scroll = max(0, len(lines)-view)
+        scroll = max(0, min(scroll, len(lines)-view))
+        win.erase()
+
+        def put(y, x, value, limit, style=0):
+            try:
+                win.addnstr(y, x, value.replace("\n", " "), max(0, limit), style)
+            except curses.error:
+                pass
+
+        time_width = min(9, max(0, split-5))
+        divider = split-time_width-3
+        heading = f"/ {query}" if editing or query else f"Chats ({len(matches)})"
+
+        def sidebar_row(y, title, updated, style):
+            title = set_cell_size(title.replace("\n", " "), max(0, divider))
+            put(y, 0, title, max(0, divider), style)
+            if divider >= 0:
+                put(y, divider, "│", 1, sidebar)
+                put(y, divider+1, " " + updated.rjust(time_width), time_width+1, style)
+            put(y, split-1, "│", 1, curses.A_DIM)
+
+        sidebar_row(0, heading, "Updated", sidebar | curses.A_BOLD)
+        if row:
+            stamp = time.strftime("%Y-%m-%d %H:%M %Z", time.localtime(row[6]))
+            put(0, split+1, f"Updated {stamp}", wrap, curses.A_BOLD)
+        now = time.time()
+        for i in range(view):
+            idx = start+i
+            title = matches[idx][1] if idx < len(matches) else ""
+            label = age(matches[idx][6], now) if idx < len(matches) else ""
+            style = sidebar | (curses.A_REVERSE | curses.A_BOLD if idx == pos and row else 0)
+            sidebar_row(i+1, title, label, style)
+        for i, line in enumerate(lines[scroll:scroll+view]):
+            x = split+1
+            for segment in line:
+                put(i+1, x, segment.text, width-x, attributes(segment.style))
+                x += cell_len(segment.text)
+        if not row:
+            put(1, split+1, "No matching chats.", wrap)
+        put(height-1, 0, notice or ("Type a title or folder · Enter accepts · Esc clears" if editing else
+            "↑↓ chat · / search · PgUp/PgDn transcript · Enter resume · R refresh"), width-1)
+        try:
+            cmd = win.get_wch()
+        except curses.error:
+            continue
+        notice = ""
+        if editing:
+            if cmd in ("\n", "\r", curses.KEY_ENTER):
+                editing = False
+            elif cmd == "\x1b":
+                editing, query = False, ""
+            elif cmd in (curses.KEY_BACKSPACE, "\x7f", "\b"):
+                query = query[:-1]
+            elif isinstance(cmd, str) and cmd.isprintable():
+                query += cmd
+            pos = 0
+        elif cmd == "/":
+            editing = True
+        elif cmd == "\x1b":
+            query = ""
+        elif cmd == curses.KEY_UP:
+            pos -= 1
+        elif cmd == curses.KEY_DOWN:
+            pos += 1
+        elif cmd == curses.KEY_MOUSE:
+            try:
+                _, x, y, _, buttons = curses.getmouse()
+                if x < split and 1 <= y <= min(view,len(matches)-start) and buttons & (curses.BUTTON1_CLICKED | curses.BUTTON1_PRESSED):
+                    pos = start+y-1
+            except curses.error:
+                pass
+        elif cmd in (curses.KEY_NPAGE, curses.KEY_PPAGE):
+            scroll += view if cmd == curses.KEY_NPAGE else -view
+        elif cmd in (curses.KEY_HOME, curses.KEY_END):
+            scroll = 0 if cmd == curses.KEY_HOME else len(lines)
+        elif cmd == "R":
+            rows, loaded = index(), None
+        elif row and cmd in ("\n", "\r", curses.KEY_ENTER):
+            notice = resume(row, opened)
+
+
+if __name__ == "__main__":
+    curses.wrapper(browse)
