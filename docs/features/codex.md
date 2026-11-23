@@ -165,22 +165,13 @@ the *visible* Codex thread ID. It launches the read-only
 [pipeline checker](../../home/dot_hammerspoon/bin/executable_agents_md_pipeline)
 in a separate local Python process; **no agent turn or task interruption**.
 
-The results are displayed as five independent green / red / unknown stages:
+The card shows three comparisons. Each can be current, outdated, or unknown.
 
-| Stage | Verified contract |
+| Stage | What it compares |
 | --- | --- |
-| **GitHub main** | `git ls-remote origin refs/heads/main` obtains the real GitHub commit (not merely a stale local remote-tracking ref). |
-| **Lokales main** | The local `main` commit matches GitHub and the actual checked-out managed guidance file equals `main`'s committed version. |
-| **Guidance erzeugt** | The versioned `AGENTS.md.tmpl` and references match the canonical guidance manifest/components, using `render.py --check` in the Dotfiles Python environment. |
-| **Chezmoi apply** | The actual `~/.codex/AGENTS.md` bytes match `chezmoi --source <checkout>/home cat ~/.codex/AGENTS.md`, including profile-specific template rendering. |
-| **Codex-Kontext** | The current session's most recently recorded model-visible global instructions match `~/.codex/AGENTS.md`, using the [chezmoi-managed session checker](../../home/dot_codex/hooks-json/agents-md-freshness/executable_check.py). |
-
-Each stage reports what is *actually* known; inability to contact GitHub,
-find a usable project Python environment, or identify the session is
-**unknown**, not green. Later local stages remain visible even if GitHub
-is unavailable. The pipeline never runs `git fetch`, `chezmoi apply`,
-regenerates guidance, or changes Codex state. It does **not** guarantee
-the private inference context or project-level `AGENTS.md` freshness.
+| **Git pulled** | The checked-out guidance template and the same file at the live remote `main` commit. If that commit is unavailable locally, Git reads it in a temporary shallow clone. |
+| **Chezmoi applied** | The rendered chezmoi template and the installed `~/.codex/AGENTS.md`. |
+| **Session loaded** | The installed file and the global guidance recorded for the visible Codex session. |
 
 The final card appears only once all checks complete (no intermediate blue
 flashing). It closes after about three seconds if all stages match, or
@@ -254,18 +245,12 @@ invocation. Delete the local override file to return to `codex`.
 ## AGENTS.md freshness warnings
 
 The desktop shortcut and Codex hooks call the
-[same five-stage pipeline](../../home/dot_codex/hooks-json/agents-md-freshness/pipeline.py):
+[same three-stage pipeline](../../home/dot_codex/hooks-json/agents-md-freshness/pipeline.py).
+The desktop card displays all three comparisons. The automatic hooks issue a
+guidance alert for a confirmed file or session mismatch. A separate repository
+alert reports different local and remote `main` commits. Each alert suppresses
+repeats independently for the session.
 
-| Stage | What is verified |
-| --- | --- |
-| **GitHub main** | The remote default-branch commit is obtainable via Git. |
-| **Lokales main** | Local main and the managed guidance checkout agree with GitHub. |
-| **Guidance erzeugt** | Generated guidance matches the canonical source components. |
-| **Chezmoi apply** | Installed `~/.codex/AGENTS.md` matches the rendered chezmoi template. |
-| **Codex-Kontext** | This session's last recorded model-visible instructions match the installed file. |
-
-- **Desktop shortcut:** Always displays all five statuses, including `unknown`.
-- **Automatic hooks:** `UserPromptSubmit` and `Stop` call that same read-only pipeline; confirmed `outdated` stages produce a Codex UI `systemMessage` and macOS notification. Repeated notifications for the same session and mismatch are suppressed.
 - **Missing evidence:** Stays `unknown` and never silently becomes `current`. A disconnected remote or missing session snapshot does not itself trigger a warning.
 - **Safety:** All checks are read-only, asynchronous, and advisory. No `git pull`, `chezmoi apply`, or model-visible instructions are injected. The bedtime guard remains a separate synchronous hook.
 - **Scope:** Global instructions only. Project-level `AGENTS.md` files and the model's private inference context are not verified.
@@ -281,7 +266,7 @@ The result is JSON with `current`, `outdated`, or `unknown`, plus hashes
 and (when available) the generated source digests. The check uses the
 session's specific rollout, not the newest unrelated chat.
 
-To inspect all five stages outside the desktop shortcut:
+To inspect all three stages outside the desktop shortcut:
 
 ```bash
 python3 ~/.codex/hooks-json/agents-md-freshness/pipeline.py \

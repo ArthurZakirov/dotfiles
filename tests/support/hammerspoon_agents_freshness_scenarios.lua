@@ -85,14 +85,14 @@ _G.hs = {
   json = { decode = function(value)
     if value == "garbled" then error("not json") end
     local statusesByScenario = {
-      current = {"current", "current", "current", "current", "current"},
-      outdated = {"current", "current", "current", "current", "outdated"},
-      no_snapshot = {"current", "current", "current", "current", "unknown"},
-      local_stale = {"current", "outdated", "current", "current", "current"},
-      deployed_stale = {"current", "current", "current", "outdated", "current"},
+      current = {"current", "current", "current"},
+      outdated = {"current", "current", "outdated"},
+      no_snapshot = {"current", "current", "unknown"},
+      local_stale = {"outdated", "current", "current"},
+      deployed_stale = {"current", "outdated", "current"},
     }
     local states = statusesByScenario[value] or statusesByScenario.current
-    local labels = {"GitHub main", "Lokales main", "Guidance erzeugt", "Chezmoi apply", "Codex-Kontext"}
+    local labels = {"Git pulled", "Chezmoi applied", "Session loaded"}
     local stages = {}
     local overall = "current"
     for i, status in ipairs(states) do
@@ -132,32 +132,32 @@ trigger()
 assert(#statuses == (scenario == "wrong_app" and 1 or 0), "no intermediate overlay")
 if scenario == "python_missing" then
   runNext()
-  assert(statuses[1].label == "AGENTS.md · 0/5 aktuell")
+  assert(statuses[1].label == "AGENTS.md · 0/3 aktuell")
   assert(not task)
 elseif scenario == "wrong_app" then
-  assert(statuses[1].label == "AGENTS.md · 0/5 aktuell")
+  assert(statuses[1].label == "AGENTS.md · 0/3 aktuell")
   assert(not task)
 elseif scenario == "checker_missing" then
   runNext()
-  assert(statuses[1].label == "AGENTS.md · 0/5 aktuell")
+  assert(statuses[1].label == "AGENTS.md · 0/3 aktuell")
   assert(not task)
 elseif scenario == "multi_clipboard" then
   assert(injection == 0)
   assert(taskArguments[1]:match("agents_md_pipeline$"))
   assert(taskArguments[2] == nil)
   task.callback(0, "no_snapshot", "")
-  assert(statuses[1].icons[5] == "?")
+  assert(statuses[1].icons[3] == "?")
 elseif scenario == "no_link" then
   for i=1, 15 do runNext() end
   assert(taskArguments[2] == nil)
   task.callback(0, "no_snapshot", "")
-  assert(statuses[1].icons[5] == "?")
+  assert(statuses[1].icons[3] == "?")
   assert(clipboard == "original user content")
 elseif scenario == "wrong_link" then
   runNext()
   assert(taskArguments[2] == nil)
   task.callback(0, "no_snapshot", "")
-  assert(statuses[1].icons[5] == "?")
+  assert(statuses[1].icons[3] == "?")
   assert(clipboard == "a user clipboard change, not a Codex link")
   assert(clipboardWrites == 0)
 else
@@ -169,30 +169,30 @@ else
   assert(taskArguments[2] == "--session-id" and taskArguments[3] == sid)
   if scenario == "intel_homebrew" then
     task.callback(0, "current", "")
-    assert(statuses[1].label == "AGENTS.md · 5/5 aktuell")
+    assert(statuses[1].label == "AGENTS.md · 3/3 aktuell")
   elseif scenario == "current" then
     task.callback(0, "current", "")
-    assert(statuses[1].label == "AGENTS.md · 5/5 aktuell")
-    assert(table.concat(statuses[1].icons) == "✓✓✓✓✓")
+    assert(statuses[1].label == "AGENTS.md · 3/3 aktuell")
+    assert(table.concat(statuses[1].icons) == "✓✓✓")
   elseif scenario == "outdated" then
     task.callback(0, "outdated", "")
-    assert(statuses[1].label == "AGENTS.md · 4/5 aktuell")
-    assert(table.concat(statuses[1].icons) == "✓✓✓✓✕")
+    assert(statuses[1].label == "AGENTS.md · 2/3 aktuell")
+    assert(table.concat(statuses[1].icons) == "✓✓✕")
   elseif scenario == "local_stale" then
     task.callback(0, "local_stale", "")
-    assert(table.concat(statuses[1].icons) == "✓✕✓✓✓")
+    assert(table.concat(statuses[1].icons) == "✕✓✓")
   elseif scenario == "deployed_stale" then
     task.callback(0, "deployed_stale", "")
-    assert(table.concat(statuses[1].icons) == "✓✓✓✕✓")
+    assert(table.concat(statuses[1].icons) == "✓✕✓")
   elseif scenario == "no_snapshot" then
     task.callback(0, "no_snapshot", "")
-    assert(table.concat(statuses[1].icons) == "✓✓✓✓?")
+    assert(table.concat(statuses[1].icons) == "✓✓?")
   elseif scenario == "corrupt_json" then
     task.callback(0, "garbled", "")
-    assert(statuses[1].label == "AGENTS.md · 0/5 aktuell")
+    assert(statuses[1].label == "AGENTS.md · 0/3 aktuell")
   elseif scenario == "checker_error" then
     task.callback(1, "", "bad exit")
-    assert(statuses[1].label == "AGENTS.md · 0/5 aktuell")
+    assert(statuses[1].label == "AGENTS.md · 0/3 aktuell")
   end
 end
 print("PASS " .. scenario)

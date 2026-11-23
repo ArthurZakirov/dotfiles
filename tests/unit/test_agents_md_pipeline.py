@@ -27,12 +27,6 @@ def pipeline(tmp_path, monkeypatch):
     source = repo / "home/dot_codex/AGENTS.md.tmpl"
     source.parent.mkdir(parents=True)
     source.write_text("source guidance\n")
-    interpreter = repo / ".venv/bin/python"
-    interpreter.parent.mkdir(parents=True)
-    interpreter.write_text("")
-    renderer = repo / "src/codex-guidance/render.py"
-    renderer.parent.mkdir(parents=True)
-    renderer.write_text("")
     codex_home = tmp_path / ".codex"
     codex_home.mkdir()
     (codex_home / "AGENTS.md").write_text("rendered guidance\n")
@@ -44,7 +38,6 @@ def pipeline(tmp_path, monkeypatch):
         "remote": SHA_LOCAL,
         "local": SHA_LOCAL,
         "committed": "source guidance\n",
-        "rendered_status": "current",
         "applied": "rendered guidance\n",
         "session_status": "current",
     }
@@ -60,10 +53,6 @@ def pipeline(tmp_path, monkeypatch):
             return subprocess.CompletedProcess(argv, 0, state["local"] + "\n", "")
         if "show" in argv:
             return subprocess.CompletedProcess(argv, 0, state["committed"], "")
-        if "--check" in argv and "render.py" in " ".join(argv):
-            return (subprocess.CompletedProcess(argv, 0, "Codex guidance matches canonical sources.", "")
-                    if state["rendered_status"] == "current"
-                    else subprocess.CompletedProcess(argv, 1, "", "Outdated Codex guidance: AGENTS.md.tmpl"))
         if "chezmoi" in argv:
             return subprocess.CompletedProcess(argv, 0, state["applied"], "")
         if "--session-id" in argv:
@@ -78,21 +67,21 @@ def pipeline(tmp_path, monkeypatch):
 
 def statuses(pipeline, session_id=SESSION):
     repo, codex_home, checker, _ = pipeline
-    return {r["key"]: r["status"] for r in module.check(repo, codex_home, session_id, checker)}
+    repository, stages = module.check(repo, codex_home, session_id, checker)
+    return {r["key"]: r["status"] for r in [repository, *stages]}
 
 
-def test_all_five_boundaries_current(pipeline):
+def test_repository_and_guidance_current(pipeline):
     assert statuses(pipeline) == dict.fromkeys(
-        ("github", "local", "generated", "deployed", "session"), "current"
+        ("github", "local", "deployed", "session"), "current"
     )
 
 
 @pytest.mark.parametrize(
     ("case", "change", "expected_stage", "expected_status"),
     [
-        ("main-behind", {"remote": SHA_REMOTE}, "local", "outdated"),
+        ("main-behind", {"remote": SHA_REMOTE}, "github", "outdated"),
         ("uncommitted-guidance", {"committed": "different\n"}, "local", "outdated"),
-        ("generated-stale", {"rendered_status": "outdated"}, "generated", "outdated"),
         ("chezmoi-stale", {"applied": "new guidance\n"}, "deployed", "outdated"),
         ("session-stale", {"session_status": "outdated"}, "session", "outdated"),
         ("github-unreachable", {"remote": None}, "github", "unknown"),
@@ -106,26 +95,18 @@ def test_each_boundary_identifies_its_failure(
     assert result[expected_stage] == expected_status
     if case == "github-unreachable":
         assert result["local"] == "unknown"
-        assert result["generated"] == "current"
 
 
 def test_missing_session_does_not_hide_other_layer_results(pipeline):
     result = statuses(pipeline, session_id=None)
     assert result["session"] == "unknown"
-    assert all(result[key] == "current" for key in ("github", "local", "generated", "deployed"))
-
-
-def test_missing_local_python_environment_is_unverifiable(pipeline):
-    repo = pipeline[0]
-    (repo / ".venv/bin/python").unlink()
-    result = statuses(pipeline)
-    assert result["generated"] == "unknown"
-    assert result["deployed"] == "current"
+    assert all(result[key] == "current" for key in ("github", "local", "deployed"))
 
 
 def test_invalid_repository_has_no_false_green(tmp_path):
     repo = tmp_path / "not-a-repository"
     repo.mkdir()
-    stages = module.check(repo, tmp_path / ".codex", None, tmp_path / "checker")
-    assert len(stages) == 5
+    repository, stages = module.check(repo, tmp_path / ".codex", None, tmp_path / "checker")
+    assert len(stages) == 3
+    assert repository["status"] == "unknown"
     assert all(stage["status"] == "unknown" for stage in stages)

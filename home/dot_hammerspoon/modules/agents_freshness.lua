@@ -41,11 +41,9 @@ local function stopPrevious()
 end
 
 local STAGE_LABELS = {
-  "GitHub main",
-  "Lokales main",
-  "Guidance erzeugt",
-  "Chezmoi apply",
-  "Codex-Kontext",
+  "Git pulled",
+  "Chezmoi applied",
+  "Session loaded",
 }
 
 local function unknownResult(reason)
@@ -65,7 +63,7 @@ local function show(result)
     if stage.status == "current" then current = current + 1 end
   end
   local headline = "AGENTS.md · " .. current .. "/" .. #STAGE_LABELS .. " aktuell"
-  local width, height = 670, 344
+  local width, height = 670, 246
   local screen = hs.mouse.getCurrentScreen() or hs.screen.mainScreen()
   local frame = screen:frame()
   card = hs.canvas.new({

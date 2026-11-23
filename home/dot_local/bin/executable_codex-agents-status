@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compact, read-only five-stage AGENTS.md indicator for Codex CLI."""
+"""Compact, read-only three-stage AGENTS.md indicator for Codex CLI."""
 from __future__ import annotations
 
 import json
@@ -8,13 +8,13 @@ from pathlib import Path
 import subprocess
 import sys
 
-STAGES = ("github", "local", "generated", "deployed", "session")
+STAGES = ("local", "deployed", "session")
 SYMBOLS = {"current": "✓", "outdated": "✕", "unknown": "?"}
-LABELS = "GLRCS"
+LABELS = ("Git pulled", "Chezmoi applied", "Session loaded")
 
 
 def check() -> str:
-    """Return a truthful five-stage indicator, including unknown checks."""
+    """Return a truthful three-stage indicator, including unknown checks."""
     unknown = "AGENTS " + " ".join(f"{label}?" for label in LABELS)
     session_id = os.environ.get("CODEX_THREAD_ID")
     codex_home = Path(os.environ.get("CODEX_HOME", "~/.codex")).expanduser()
