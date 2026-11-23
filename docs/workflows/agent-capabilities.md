@@ -9,7 +9,7 @@ A task stalls when the agent needs you to copy a file, click through an app, ret
 | When an agent needs to… | DevMac supplies | How it works |
 | --- | --- | --- |
 | Read files, inspect processes, or run authorized commands on your Mac | [Desktop Commander remote](../features/desktop-commander.md) | A remote-access CLI and login service on the **personal** profile; requires an authorized connection |
-| Navigate browser pages or supported Electron apps | [Agent Browser](../features/agent-browser.md) | A CLI with its own browser runtime and an installed **Codex** skill |
+| Navigate signed-in browser pages | [Browser Use](../features/browser-use.md) | Browser Use CLI with the regular Chrome session |
 | Observe and operate native macOS windows | [Peekaboo](../features/peekaboo.md) | macOS accessibility and screen-capture tooling, plus a **Codex** skill |
 | Find instructions already installed on the Mac | [Local Agent Skills in ChatGPT](../features/chatgpt-skills-mcp.md) | A **read-only** MCP server through a configured tunnel on the **personal** profile |
 | Follow consistent coding conventions and hooks | [Codex configuration](../features/codex.md) | Managed guidance and selected shared Codex settings; not an alternative execution engine |

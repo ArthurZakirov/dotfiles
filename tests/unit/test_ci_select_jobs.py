@@ -64,7 +64,7 @@ def test_documentation_or_editor_metadata_never_runs_expensive_jobs(path: str) -
             {"profiles", "fresh_home", "chezmoi_vscode_diff_gui"},
         ),
         (
-            "home/run_after_50-ensure-agent-browser.sh.tmpl",
+            "home/run_after_50-ensure-browser-use.sh.tmpl",
             {"profiles", "fresh_home", "computer_use_e2e"},
         ),
         (

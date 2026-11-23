@@ -21,7 +21,7 @@ Give an agent a task without becoming its copy-paste assistant. DevMac equips it
 
 | Capability | Detailed feature documentation |
 | --- | --- |
-| 🌐 Work in browser sessions, including accounts authenticated for the agent | [Agent Browser](docs/features/agent-browser.md) |
+| 🌐 Work in browser sessions, including accounts authenticated for the agent | [Browser Use](docs/features/browser-use.md) |
 | 🖥️ See and control native macOS interfaces and desktop apps | [Peekaboo](docs/features/peekaboo.md) |
 | ◼️ Inspect files and run authorized commands on your Mac from a connected remote assistant | [Desktop Commander](docs/features/desktop-commander.md) |
 | 📚 Let a connected ChatGPT assistant read locally installed Agent Skills | [Local Agent Skills via MCP](docs/features/chatgpt-skills-mcp.md) |

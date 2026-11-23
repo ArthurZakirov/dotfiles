@@ -12,7 +12,7 @@ For ChatGPT, the [personalization instructions](chatgpt-personalization.md) tell
 
 | Capability | Detailed feature documentation |
 | --- | --- |
-| Work through browser pages and supported Electron apps | [Agent Browser](agent-browser.md) |
+| Work through signed-in browser pages | [Browser Use](browser-use.md) |
 | See and control native macOS interfaces | [Peekaboo](peekaboo.md) |
 | Inspect files and run authorized local commands remotely | [Desktop Commander](desktop-commander.md) (personal profile) |
 | Read locally installed Agent Skills from ChatGPT | [Local Agent Skills via MCP](chatgpt-skills-mcp.md) (personal profile) |

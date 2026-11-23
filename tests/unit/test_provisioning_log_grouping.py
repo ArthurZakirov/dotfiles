@@ -12,8 +12,7 @@ def test_no_recursive_chezmoi_source_path_in_after_hooks():
 
 def test_related_tools_share_sections():
     assert 'dotfiles_section "AGENT TOOLING"' in hook("run_after_40-ensure-peekaboo-skill.sh.tmpl")
-    assert 'dotfiles_subsection "NPX SKILLS / AGENT BROWSER"' in hook("run_after_50-ensure-agent-browser.sh.tmpl")
-    assert 'dotfiles_subsection "BROWSER RUNTIME"' in hook("run_after_50-ensure-agent-browser.sh.tmpl")
+    assert 'dotfiles_subsection "BROWSER USE"' in hook("run_after_50-ensure-browser-use.sh.tmpl")
     assert 'dotfiles_section "MACOS CONFIGURATION"' in hook("run_after_30-apply-macos-shortcuts.sh.tmpl")
     assert 'RAYCAST' in hook("run_after_60-raycast-onboarding.sh")
     assert 'dotfiles_section "BACKGROUND SERVICES"' in hook("run_after_20-ensure-desktop-commander-launch-agent.sh.tmpl")

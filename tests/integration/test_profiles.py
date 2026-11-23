@@ -148,23 +148,19 @@ def test_peekaboo_skill_hook_renders_without_running_provisioning(
 
 
 @pytest.mark.parametrize("profile", ["personal", "professional"])
-def test_agent_browser_hook_renders_for_both_profiles(
+def test_browser_use_hook_renders_for_both_profiles(
     profile: str, profile_factory: ChezmoiProfileFixture,
 ) -> None:
     rendered = profile_factory.render(profile)
     hook = profile_factory.render_hook(
         rendered.config, profile,
-        "run_after_50-ensure-agent-browser.sh.tmpl", "agent-browser",
+        "run_after_50-ensure-browser-use.sh.tmpl", "browser-use",
     )
     content = hook.read_text()
     assignment = next(line for line in content.splitlines() if line.startswith("DOTFILES_ROOT="))
     assert shlex.split(assignment) == [f"DOTFILES_ROOT={profile_factory.repository}"]
-    assert 'source "$DOTFILES_ROOT/src/agent-skills.sh"' in content
-    assert 'source "$DOTFILES_ROOT/src/homebrew.sh"' in content
-    assert 'ensure_agent_skill agent-browser vercel-labs/agent-browser' in content
-    assert 'for binary in agent-browser npm npx skills; do' in content
-    assert 'ensure_agent_browser_runtime' in content
-    assert 'source "$DOTFILES_ROOT/src/agent-browser-runtime.sh"' in content
+    assert 'uv tool install' in content
+    assert 'retire-agent-browser-skill.py' in content
     profile_factory.run("/bin/bash", "-n", str(hook))
     # Do not run the real installer in a rendering test.
     assert "DOTFILES_SKIP_OPTIONAL_APPS" not in content
