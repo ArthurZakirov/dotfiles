@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+import json
+import sys
+
+original = sys.stdin.read()
+state = json.loads(original) if original.strip() else {}
+preferences = {
+    "layout": "main-with-history",
+    "sidebar.width": 268,
+    "sidebar.collapsed": True,
+    "workspace.panels": ["changes", "files"],
+}
+if all(state.get(key) == value for key, value in preferences.items()):
+    sys.stdout.write(original)
+else:
+    state.update(preferences)
+    print(json.dumps(state, ensure_ascii=False, indent=2))

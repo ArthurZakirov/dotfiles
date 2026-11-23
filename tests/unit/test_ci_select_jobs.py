@@ -52,6 +52,9 @@ def test_documentation_or_editor_metadata_never_runs_expensive_jobs(path: str) -
             "home/dot_vscode/extensions/agentdesk.git-review-ui-0.1.0/extension.js",
             {"profiles", "fresh_home", "git_review_vscode"},
         ),
+        ("home/run_after_46-ensure-herdr.sh", {"profiles", "fresh_home"}),
+        ("home/dot_config/herdr-app/modify_keys.json.tmpl", {"profiles", "fresh_home"}),
+        ("home/dot_local/bin/executable_herdr-codex-history.tmpl", {"profiles", "fresh_home"}),
         (
             "home/dot_codex/config-toml/config.toml",
             {"profiles", "fresh_home"},

@@ -1,0 +1,31 @@
+import { View, div } from "gpui-kit";
+import { spaces, run, nextCommand } from "herdr";
+
+function openHistory() {
+  const space = spaces().find(s => !s.machine && s.name === "Codex history");
+  const tab = space?.tabs.find(t => t.name === "History");
+  if (tab) {
+    run("tab.select", { id: tab.id });
+    return;
+  }
+  const launch = { argv: ["{{ .chezmoi.homeDir }}/.local/bin/herdr-codex-history"], folder: "{{ .chezmoi.homeDir }}" };
+  if (space) {
+    run("tab.new", { ...launch, space: space.id, name: "History" });
+  } else {
+    run("space.new", { ...launch, name: "Codex history", tab: "History", machine: "" });
+  }
+}
+
+export default class HistoryLauncher extends View {
+  init(_props, cx) {
+    cx.spawn(async () => {
+      for (;;) {
+        if (await nextCommand() === "open") openHistory();
+      }
+    });
+  }
+
+  render() {
+    return div();
+  }
+}
