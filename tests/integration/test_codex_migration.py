@@ -613,6 +613,7 @@ def test_checkout_review_output_has_path_only_copy_block():
         example,
     )
     assert match is not None
+    assert f"[Open checkout in VS Code](<{match.group('path')}>)" in example
     assert match.group("path").startswith("/")
     assert "=" not in match.group("path")
     assert match.group("branch") == "feat/example"
