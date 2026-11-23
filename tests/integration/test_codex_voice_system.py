@@ -139,7 +139,7 @@ def test_chezmoi_launcher_forwards_flags_and_sets_verbatim_speech(
 
     output = command(str(home / LAUNCHER), "--no-daemon", env=env)
 
-    prefix = '1:-c tui.fullscreen_transcript=true -c tui.alternate_screen="always" '
+    prefix = '1:-c file_opener="vscode" -c tui.fullscreen_transcript=true -c tui.alternate_screen="always" '
     assert output.strip() == prefix + "--no-daemon"
     assert command(str(home / LAUNCHER), env=env).strip() == prefix + "--no-daemon"
     assert command(str(home / LAUNCHER), "resume", "--last", env=env).strip() == prefix + "--no-daemon resume --last"
