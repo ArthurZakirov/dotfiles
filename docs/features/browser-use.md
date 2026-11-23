@@ -1,7 +1,9 @@
 # 🌐 Use your signed-in Chrome
 
 Both Mac profiles install the [Browser Use CLI](https://github.com/browser-use/browser-use)
-with `uv` during `chezmoi apply`. Ask Codex to open a page in your browser.
+with `uv` during `chezmoi apply`. Codex uses the managed copy in
+`~/.local/share/dotfiles/browser-use/bin/`. A fresh install also creates
+`~/.local/bin/browser-use`; an existing executable at that path is preserved. Ask Codex to open a page in your browser.
 If Chrome requests remote debugging, review the prompt. The local workflow
 uses the running browser across commands. Chrome can request approval again
 after a disconnect or restart.

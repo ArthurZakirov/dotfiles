@@ -6,7 +6,6 @@ repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 trial="$(mktemp -d /tmp/browser-use-e2e.XXXXXXXX)"
 export HOME="$trial/home" CODEX_HOME="$trial/home/.codex"
 export npm_config_prefix="$trial/npm" npm_config_cache="$trial/npm-cache"
-export UV_TOOL_DIR="$trial/tools" UV_TOOL_BIN_DIR="$HOME/.local/bin"
 export BH_RUNTIME_DIR="$trial/run" BH_HOME="$trial/harness" BH_TELEMETRY=0
 unset BU_CDP_URL BU_CDP_WS BU_NAME BU_AUTOSPAWN BROWSER_USE_API_KEY BH_REQUIRE_EXISTING_DAEMON
 export PATH="$HOME/.local/bin:$npm_config_prefix/bin:$PATH"
@@ -34,13 +33,22 @@ for hook in run_after_40-ensure-peekaboo-skill.sh run_after_50-ensure-browser-us
   chezmoi --source "$repo_root/home" execute-template --file "$repo_root/home/$hook.tmpl" > "$trial/$hook"
   bash "$trial/$hook"
 done
+# A fresh install exposes the CLI on PATH. A subsequent apply also works
+# with a separately managed executable in the public bin directory.
+[[ "$(command -v browser-use)" == "$HOME/.local/bin/browser-use" ]]
+[[ -L "$HOME/.local/bin/browser-use" ]]
+rm "$HOME/.local/bin/browser-use"
+printf '#!/bin/sh\necho user-owned\n' > "$HOME/.local/bin/browser-use"
+chmod +x "$HOME/.local/bin/browser-use"
 bash "$trial/run_after_50-ensure-browser-use.sh"
+[[ "$(browser-use)" == user-owned ]]
+export PATH="$HOME/.local/share/dotfiles/browser-use/bin:$PATH"
 [[ -s "$HOME/.agents/skills/peekaboo/SKILL.md" && ! -e "$HOME/.agents/skills/agent-browser" ]]
 [[ ! -L "$CODEX_HOME/skills/agent-browser" ]]
 node -e 'const {skills}=require(process.argv[1]); if(skills["agent-browser"] || !skills.peekaboo)process.exit(1)' "$HOME/.agents/.skill-lock.json"
 archives=("$HOME/Library/Application Support/dotfiles/retired-skills"/agent-browser-*)
 [[ "${#archives[@]}" == 1 && "$(cat "${archives[0]}/agents/SKILL.md")" == local-customization ]]
-[[ "$(command -v browser-use)" == "$HOME/.local/bin/browser-use" ]]
+[[ "$(command -v browser-use)" == "$HOME/.local/share/dotfiles/browser-use/bin/browser-use" ]]
 browser-use skill show > "$trial/skill"
 grep -q 'list_tabs' "$trial/skill"
 peekaboo --version >/dev/null

@@ -2,8 +2,15 @@
 
 # Use the signed-in browser
 
-Use the local `browser-use` command. If the shell cannot find it, use
-`~/.local/bin/browser-use`. Open regular Chrome on macOS with
+Use the Browser Use CLI installed by Dotfiles. In the shell that runs a browser
+command, put its directory first so an independently installed version cannot
+change the workflow.
+
+```sh
+export PATH="$HOME/.local/share/dotfiles/browser-use/bin:$PATH"
+```
+
+Open regular Chrome on macOS with
 `open -a 'Google Chrome'` if it is closed. Keep the default session across
 commands. Leave it running when the task ends.
 
