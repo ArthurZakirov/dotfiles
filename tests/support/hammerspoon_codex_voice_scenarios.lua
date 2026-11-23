@@ -2,12 +2,14 @@
 local module = assert(arg[1])
 local scenario = assert(arg[2])
 
+local terminal = arg[3] or "Herdr"
+local bundle = terminal == "Herdr" and "dev.herdr.app" or "dev.warp.Warp-Stable"
 local events, alerts, queued = {}, {}, {}
 local state = { warpRunning = scenario ~= "warp_missing" }
 
 local warpApp, editorApp = {}, {}
 local warpWindow, editorWindow = {}, {}
-function warpApp:bundleID() return "dev.warp.Warp-Stable" end
+function warpApp:bundleID() return bundle end
 function editorApp:bundleID() return "com.microsoft.VSCode" end
 function editorApp:activate() state.frontApp, state.frontWindow = editorApp, editorWindow end
 function warpApp:activate() state.frontApp, state.frontWindow = warpApp, warpWindow end
@@ -42,9 +44,10 @@ end
 local hotkey, warpFocusObserver
 HammerspoonConfig = { afterModsReleased = function(fn) state.deferred = fn end }
 hs = {
+  json = { read = function() return terminal == "Warp" and {terminal_app = terminal} or {} end },
   application = {
-    get = function(bundle)
-      assert(bundle == "dev.warp.Warp-Stable")
+    get = function(id)
+      assert(id == bundle)
       return state.warpRunning and warpApp or nil
     end,
     frontmostApplication = function() return state.frontApp end,

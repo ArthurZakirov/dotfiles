@@ -26,9 +26,10 @@ pytestmark = pytest.mark.skipif(LUAJIT is None, reason="LuaJIT is required")
         "focus_blocked",
     ],
 )
-def test_global_voice_hotkey_only_sends_to_warp(scenario):
+@pytest.mark.parametrize("terminal", ["Herdr", "Warp"])
+def test_global_voice_hotkey_only_sends_to_selected_terminal(scenario, terminal):
     result = subprocess.run(
-        [LUAJIT, str(SCENARIOS), str(MODULE), scenario],
+        [LUAJIT, str(SCENARIOS), str(MODULE), scenario, terminal],
         capture_output=True,
         text=True,
         timeout=10,

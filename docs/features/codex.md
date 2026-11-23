@@ -396,3 +396,7 @@ This installer tracks the pinned release tag. It does not automatically
 rebase the source fork onto newer upstream Codex versions or establish
 compatibility for future model catalogs; upgrades require their own verified
 release.
+
+## Global voice shortcuts
+
+Option+1 sends F8 to the last focused Herdr window, then restores the previous app. To target Warp instead, set `"terminal_app": "Warp"` in `~/.config/codex-voice/config.json` and reload Hammerspoon. The default is `"Herdr"`. Option+Shift+Return sends directly to the dictating Codex session in either terminal.
