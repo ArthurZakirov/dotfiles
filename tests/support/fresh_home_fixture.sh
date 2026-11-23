@@ -46,12 +46,29 @@ when_chezmoi_renders_machine() {
   else
     git clone --local "$fixture_root" "$source_dir"
   fi
+  # Existing Herdr preferences and unrelated shortcuts survive the first apply.
+  mkdir -p "$HOME/.config/herdr-app"
+  printf '%s\n' '{"zoom":1.5,"custom_setting":true}' > "$HOME/.config/herdr-app/settings.json"
+  printf '%s\n' '{"global":{"cmd-t":"custom.tab","cmd-k":"old.action"},"custom":{"f1":"help"}}' > "$HOME/.config/herdr-app/keys.json"
   chezmoi "${args[@]}"
   chezmoi --source "$source_dir" --destination "$HOME" --config "$config" \
     apply --exclude scripts --force
 }
 
 then_shared_setup_is_rendered() {
+  python3 - "$HOME/.config/herdr-app" <<'PYTHON'
+import json
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+settings = json.loads((root / "settings.json").read_text())
+keys = json.loads((root / "keys.json").read_text())
+assert settings["zoom"] == 1.5 and settings["custom_setting"]
+assert settings["appearance"] == "dark"
+assert keys["custom"]["f1"] == "help" and keys["global"]["cmd-t"] == "custom.tab"
+assert keys["global"]["cmd-k"] == "codex-history-launcher.open"
+PYTHON
   assert_file_contains "$HOME/.config/herdr-app/keys.json" "$HOME/.local/bin/codex-voice"
   assert_file_contains "$HOME/.config/herdr-app/mods/codex-history-launcher/main.js" "$HOME/.local/bin/herdr-codex-history"
   assert_file_contains "$HOME/.config/herdr-app/shared.json" 'main-with-history'

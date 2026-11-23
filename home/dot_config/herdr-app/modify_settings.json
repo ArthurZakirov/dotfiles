@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+import json
+import sys
+
+original = sys.stdin.read()
+existing = json.loads(original) if original.strip() else {}
+defaults = json.loads(r'''{
+  "zoom": 1.0,
+  "sounds": {
+    "enabled": true
+  },
+  "font_ligatures": false,
+  "terminal_line_height": 1.0,
+  "terminal_cell_width": 1.0,
+  "terminal_scroll_speed": 1.0,
+  "telemetry": false,
+  "minimum_contrast": 1.0,
+  "appearance": "dark"
+}''')
+merged = {**defaults, **existing}
+
+if merged == existing and original.strip():
+    sys.stdout.write(original)
+else:
+    print(json.dumps(merged, indent=2, ensure_ascii=False))

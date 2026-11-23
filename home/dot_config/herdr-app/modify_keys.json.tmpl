@@ -1,4 +1,10 @@
-{
+#!/usr/bin/env python3
+import json
+import sys
+
+original = sys.stdin.read()
+existing = json.loads(original) if original.strip() else {}
+defaults = json.loads(r'''{
   "global": {
     "cmd-k": "codex-history-launcher.open",
     "cmd-q": "app.quit",
@@ -76,4 +82,14 @@
     "cmd-right": "send:\u0005",
     "cmd-backspace": "send:\u0015"
   }
-}
+}''')
+merged = existing.copy()
+for section, bindings in defaults.items():
+    merged[section] = {**bindings, **existing.get(section, {})}
+for shortcut in ("ctrl-q", "cmd-k", "cmd-shift-t"):
+    merged["global"][shortcut] = defaults["global"][shortcut]
+
+if merged == existing and original.strip():
+    sys.stdout.write(original)
+else:
+    print(json.dumps(merged, indent=2, ensure_ascii=False))
